@@ -63,6 +63,13 @@ fun SyncScreen(
         }
     }
 
+    LaunchedEffect(uiState.userMessage) {
+        uiState.userMessage?.let { msg ->
+            snackbarHostState.showSnackbar(msg)
+            onEvent(SyncEvent.ClearUserMessage)
+        }
+    }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         topBar = {

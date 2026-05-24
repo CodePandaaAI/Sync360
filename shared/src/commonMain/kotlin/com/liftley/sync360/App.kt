@@ -31,7 +31,8 @@ fun App(
     onHideOverlay: (() -> Unit)? = null,
     onReadClipboard: (() -> String?)? = null,
     onWriteClipboard: ((String) -> Unit)? = null,
-    onOpenFilePicker: ((mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) -> Unit)? = null,
+    syncClient: com.liftley.sync360.core.network.SyncClient? = null,
+    onOpenFilePicker: ((kind: com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null,
     onSaveFile: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 ) {
     AppTheme {
@@ -59,6 +60,7 @@ fun App(
                         platformContext = platformContext,
                         initialServerIp = serverIp,
                         initialServerClientCount = serverClientCount,
+                        syncClient = syncClient,
                         serverIncomingFlow = serverIncomingFlow,
                         onServerBroadcast = onServerBroadcast,
                         onStartService = onStartService,

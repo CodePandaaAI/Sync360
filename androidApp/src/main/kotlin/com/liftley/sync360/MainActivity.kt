@@ -22,6 +22,11 @@ import com.liftley.sync360.overlay.FloatingDockManager
 import com.liftley.sync360.service.SyncForegroundService
 import androidx.core.net.toUri
 import androidx.core.content.edit
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import android.content.ContentValues
+import android.provider.MediaStore
 
 /**
  * Main entry-point activity for the Sync360 Android app.
@@ -37,57 +42,109 @@ class MainActivity : ComponentActivity() {
 
     // ── Floating overlay manager (lazy-init after permissions are confirmed) ──
     private var floatingDockManager: FloatingDockManager? = null
-    private var onFilePickedCallback: ((name: String, content: ByteArray) -> Unit)? = null
+    private var onFilePickedCallback: ((name: String, mimeType: String, content: ByteArray) -> Unit)? = null
 
     private val filePickerLauncher =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-            val callback = onFilePickedCallback ?: return@registerForActivityResult
-            if (uri != null) {
+            handleFilePicked(uri)
+        }
+
+    private val pickVisualMediaLauncher =
+        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
+            handleFilePicked(uri)
+        }
+
+    private fun handleFilePicked(uri: Uri?) {
+        val callback = onFilePickedCallback ?: return
+        if (uri != null) {
+            lifecycleScope.launch(Dispatchers.IO) {
                 try {
                     val contentResolver = applicationContext.contentResolver
                     var fileName = "file_${System.currentTimeMillis()}"
                     contentResolver.query(uri, null, null, null, null)?.use { cursor ->
                         val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                        if (nameIndex != -1 && cursor.moveToFirst()) {
-                            fileName = cursor.getString(nameIndex)
+                        val sizeIndex = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+                        if (cursor.moveToFirst()) {
+                            if (nameIndex != -1) fileName = cursor.getString(nameIndex)
+                            if (sizeIndex != -1) {
+                                val size = cursor.getLong(sizeIndex)
+                                if (size > 50 * 1024 * 1024) {
+                                    launch(Dispatchers.Main) {
+                                        Toast.makeText(this@MainActivity, "File exceeds 50MB limit", Toast.LENGTH_LONG).show()
+                                    }
+                                    return@launch
+                                }
+                            }
                         }
                     }
+                    val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
                     val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
                     if (bytes != null) {
-                        callback(fileName, bytes)
+                        callback(fileName, mimeType, bytes)
                     }
                 } catch (e: Exception) {
-                    Toast.makeText(this, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                } finally {
+                    onFilePickedCallback = null
                 }
             }
+        } else {
+            onFilePickedCallback = null
         }
+    }
 
     private fun saveFileToDownloads(name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) {
-        try {
-            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
-            val syncDir = java.io.File(downloadsDir, "Sync360")
-            if (!syncDir.exists()) syncDir.mkdirs()
-            val file = java.io.File(syncDir, name)
-            file.writeBytes(content)
-            runOnUiThread {
-                Toast.makeText(this, "Saved: ${file.name} to Downloads", Toast.LENGTH_LONG).show()
-                onResult(true, file.absolutePath)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
+        lifecycleScope.launch(Dispatchers.IO) {
             try {
-                val extDir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
-                val file = java.io.File(extDir, name)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val resolver = applicationContext.contentResolver
+                    val contentValues = ContentValues().apply {
+                        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                        put(MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360")
+                        put(MediaStore.MediaColumns.IS_PENDING, 1)
+                    }
+                    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                    if (uri != null) {
+                        resolver.openOutputStream(uri)?.use { it.write(content) }
+                        contentValues.clear()
+                        contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                        resolver.update(uri, contentValues, null, null)
+                        launch(Dispatchers.Main) {
+                            Toast.makeText(this@MainActivity, "Saved: $name to Downloads", Toast.LENGTH_LONG).show()
+                            onResult(true, uri.toString())
+                        }
+                        return@launch
+                    }
+                }
+                
+                // Fallback for pre-Q or if MediaStore fails
+                val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val syncDir = java.io.File(downloadsDir, "Sync360")
+                if (!syncDir.exists()) syncDir.mkdirs()
+                val file = java.io.File(syncDir, name)
                 file.writeBytes(content)
-                runOnUiThread {
-                    Toast.makeText(this, "Saved to App Storage (Downloads folder blocked)", Toast.LENGTH_LONG).show()
+                launch(Dispatchers.Main) {
+                    Toast.makeText(this@MainActivity, "Saved: ${file.name} to Downloads", Toast.LENGTH_LONG).show()
                     onResult(true, file.absolutePath)
                 }
-            } catch (ex: Exception) {
-                ex.printStackTrace()
-                runOnUiThread {
-                    Toast.makeText(this, "Failed to save: ${ex.message}", Toast.LENGTH_SHORT).show()
-                    onResult(false, null)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                try {
+                    val extDir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                    val file = java.io.File(extDir, name)
+                    file.writeBytes(content)
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Saved to App Storage (Downloads folder blocked)", Toast.LENGTH_LONG).show()
+                        onResult(true, file.absolutePath)
+                    }
+                } catch (ex: Exception) {
+                    ex.printStackTrace()
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Failed to save: ${ex.message}", Toast.LENGTH_SHORT).show()
+                        onResult(false, null)
+                    }
                 }
             }
         }
@@ -142,15 +199,27 @@ class MainActivity : ComponentActivity() {
             App(
                 isDesktop = false,
                 platformContext = applicationContext,
+                syncClient = com.liftley.sync360.core.SyncConnectionHolder.client,
                 onStartService = { hostIp -> startSyncService(hostIp) },
                 onStopService = { stopSyncService() },
                 onShowOverlay = { showOverlay() },
                 onHideOverlay = { hideOverlay() },
                 onReadClipboard = { readCurrentClipboardText() },
                 onWriteClipboard = { text -> writeCurrentClipboardText(text) },
-                onOpenFilePicker = { mimeType, callback ->
+                onOpenFilePicker = { kind, callback ->
                     onFilePickedCallback = callback
-                    filePickerLauncher.launch(mimeType)
+                    when (kind) {
+                        com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Media -> {
+                            pickVisualMediaLauncher.launch(
+                                androidx.activity.result.PickVisualMediaRequest(
+                                    ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                                )
+                            )
+                        }
+                        com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Any -> {
+                            filePickerLauncher.launch("*/*")
+                        }
+                    }
                 },
                 onSaveFile = { name, bytes, onResult ->
                     saveFileToDownloads(name, bytes, onResult)
@@ -169,6 +238,7 @@ class MainActivity : ComponentActivity() {
     override fun onDestroy() {
         // Clean up the floating overlay when the activity is destroyed.
         floatingDockManager?.hide()
+        com.liftley.sync360.core.SyncConnectionHolder.client.close()
         super.onDestroy()
     }
 

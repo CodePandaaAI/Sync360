@@ -39,8 +39,8 @@ fun main() = application {
             },
             onReadClipboard = { readDesktopClipboardText() },
             onWriteClipboard = { text -> writeDesktopClipboardText(text) },
-            onOpenFilePicker = { mimeType, callback ->
-                openDesktopFilePicker(mimeType, callback)
+            onOpenFilePicker = { kind, callback ->
+                openDesktopFilePicker(kind, callback)
             },
             onSaveFile = { name, bytes, onResult ->
                 saveDesktopFile(name, bytes, onResult)
@@ -49,7 +49,10 @@ fun main() = application {
     }
 }
 
-private fun openDesktopFilePicker(mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) {
+private fun openDesktopFilePicker(
+    kind: com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind,
+    onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
+) {
     try {
         val mode = java.awt.FileDialog.LOAD
         val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select File to Share", mode)
@@ -59,7 +62,17 @@ private fun openDesktopFilePicker(mimeType: String, onFileSelected: (name: Strin
         if (file != null && directory != null) {
             val selectedFile = java.io.File(directory, file)
             val bytes = selectedFile.readBytes()
-            onFileSelected(file, bytes)
+            val extension = file.substringAfterLast('.', "")
+            val mimeType = when (extension.lowercase()) {
+                "jpg", "jpeg" -> "image/jpeg"
+                "png" -> "image/png"
+                "gif" -> "image/gif"
+                "mp4" -> "video/mp4"
+                "pdf" -> "application/pdf"
+                "txt" -> "text/plain"
+                else -> "application/octet-stream"
+            }
+            onFileSelected(file, mimeType, bytes)
         }
     } catch (e: Exception) {
         e.printStackTrace()

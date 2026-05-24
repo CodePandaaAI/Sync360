@@ -31,6 +31,7 @@ data class SyncUiState(
     val localNetworkHealthy: Boolean = true,
     val outgoingText: String = "",
     val pendingConnectDevice: DeviceProfile? = null,
-    val pendingFileOffer: FileOffer? = null
+    val pendingFileOffer: FileOffer? = null,
+    val userMessage: String? = null
 )
 

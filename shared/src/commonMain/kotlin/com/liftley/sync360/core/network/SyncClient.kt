@@ -105,4 +105,10 @@ class SyncClient {
             }
         }
     }
+
+    fun close() {
+        disconnect()
+        clientScope.cancel()
+        client.close()
+    }
 }

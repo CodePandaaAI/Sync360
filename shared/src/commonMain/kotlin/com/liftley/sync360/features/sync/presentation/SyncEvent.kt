@@ -22,9 +22,11 @@ sealed interface SyncEvent {
     object ConfirmConnect : SyncEvent
     object DismissConnectRequest : SyncEvent
     object PasteFromClipboard : SyncEvent
-    data class OpenFilePicker(val mimeType: String) : SyncEvent
+    enum class FilePickerKind { Media, Any }
+    data class OpenFilePicker(val kind: FilePickerKind) : SyncEvent
     data class SendFile(val name: String, val mimeType: String, val content: ByteArray) : SyncEvent
     object AcceptFileOffer : SyncEvent
     object DeclineFileOffer : SyncEvent
+    object ClearUserMessage : SyncEvent
 }
 

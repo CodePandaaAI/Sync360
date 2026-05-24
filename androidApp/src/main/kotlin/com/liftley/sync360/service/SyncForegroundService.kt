@@ -2,18 +2,17 @@ package com.liftley.sync360.service
 
 import android.app.*
 import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.edit
 import com.liftley.sync360.MainActivity
 import com.liftley.sync360.R
 import com.liftley.sync360.core.network.SyncClient
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.StateFlow
-import androidx.core.content.edit
 
 /**
  * Android Foreground Service that maintains a persistent WebSocket connection
@@ -66,7 +65,7 @@ class SyncForegroundService : Service() {
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         notificationManager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
-        client = SyncClient()
+        client = com.liftley.sync360.core.SyncConnectionHolder.client
         syncClient = client
 
         clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
@@ -76,11 +75,11 @@ class SyncForegroundService : Service() {
                     val text = clip.getItemAt(0).coerceToText(this)?.toString()
                     if (!text.isNullOrBlank()) {
                         if (client.connectionStatus.value == ConnectionStatus.CONNECTED) {
-                            val sharedPrefs = getSharedPreferences("sync360_prefs", Context.MODE_PRIVATE)
+                            val sharedPrefs = getSharedPreferences("sync360_prefs", MODE_PRIVATE)
                             var deviceId = sharedPrefs.getString("device_uuid", null)
                             if (deviceId == null) {
                                 deviceId = java.util.UUID.randomUUID().toString()
-                                sharedPrefs.edit().putString("device_uuid", deviceId).apply()
+                                sharedPrefs.edit { putString("device_uuid", deviceId) }
                             }
                             val model = listOf(Build.MANUFACTURER, Build.MODEL)
                                 .filter { it.isNotBlank() }

@@ -110,7 +110,7 @@ fun SharePanel(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker("image/*,video/*")) },
+                                .clickable { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Media)) },
                             shape = RoundedCornerShape(14.dp),
                             color = colorScheme.surface
                         ) {
@@ -134,7 +134,7 @@ fun SharePanel(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker("*/*")) },
+                                .clickable { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Any)) },
                             shape = RoundedCornerShape(14.dp),
                             color = colorScheme.surface
                         ) {
@@ -241,14 +241,14 @@ fun SharePanel(
                             icon = Icons.Default.PermMedia,
                             label = "Image / Video",
                             contentDescription = "Pick image or video",
-                            onClick = { onEvent(SyncEvent.OpenFilePicker("image/*,video/*")) },
+                            onClick = { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Media)) },
                             modifier = Modifier.weight(1f)
                         )
                         FilePickerTile(
                             icon = Icons.Default.Folder,
                             label = "Any File",
                             contentDescription = "Pick any file",
-                            onClick = { onEvent(SyncEvent.OpenFilePicker("*/*")) },
+                            onClick = { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Any)) },
                             modifier = Modifier.weight(1f)
                         )
                     }

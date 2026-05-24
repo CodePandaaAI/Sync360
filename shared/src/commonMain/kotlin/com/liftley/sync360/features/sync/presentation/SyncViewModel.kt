@@ -44,6 +44,7 @@ class SyncViewModel(
     val platformContext: Any? = null,
     val initialServerIp: String = "127.0.0.1",
     val initialServerClientCount: Int = 0,
+    private val syncClient: com.liftley.sync360.core.network.SyncClient? = null,
     private val serverIncomingFlow: Flow<String>? = null,
     private val onServerBroadcast: ((String) -> Unit)? = null,
     private val onStartService: ((String) -> Unit)? = null,
@@ -52,13 +53,12 @@ class SyncViewModel(
     private val onHideOverlay: (() -> Unit)? = null,
     private val onReadClipboard: (() -> String?)? = null,
     private val onWriteClipboard: ((String) -> Unit)? = null,
-    private val onOpenFilePicker: ((mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) -> Unit)? = null,
+    private val onOpenFilePicker: ((kind: SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null,
     private val onSaveFile: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 ) : ViewModel() {
 
 
     private val discoveryService = createNetworkDiscoveryService(platformContext)
-    private val syncClient = if (!isDesktop) SyncClient() else null
     private var pairRequestDevice: DeviceProfile? = null
     private val localDevice = createLocalDeviceProfile(platformContext, isDesktop, initialServerIp)
 
@@ -146,8 +146,8 @@ class SyncViewModel(
                 _uiState.update { it.copy(backgroundMonitoringEnabled = event.enabled) }
             }
             is SyncEvent.OpenFilePicker -> {
-                onOpenFilePicker?.invoke(event.mimeType) { name, content ->
-                    onEvent(SyncEvent.SendFile(name, event.mimeType, content))
+                onOpenFilePicker?.invoke(event.kind) { name, mimeType, content ->
+                    onEvent(SyncEvent.SendFile(name, mimeType, content))
                 }
             }
             is SyncEvent.SendFile -> {
@@ -182,6 +182,9 @@ class SyncViewModel(
             }
             is SyncEvent.DeclineFileOffer -> {
                 _uiState.update { it.copy(pendingFileOffer = null) }
+            }
+            is SyncEvent.ClearUserMessage -> {
+                _uiState.update { it.copy(userMessage = null) }
             }
         }
     }
@@ -270,41 +273,47 @@ class SyncViewModel(
     }
 
     private fun sendFilePayload(name: String, mimeType: String, content: ByteArray) {
-        val base64Data = content.encodeBase64()
-        val filePayload = com.liftley.sync360.core.network.FilePayload(
-            fileName = name,
-            mimeType = mimeType,
-            fileSize = content.size.toLong(),
-            base64Data = base64Data
-        )
-        val jsonStr = com.liftley.sync360.core.network.SyncPayloadCodec.encodeFile(filePayload)
-
-        val payload = SyncPayload(
-            kind = "file",
-            originDeviceId = localDevice.id,
-            originDeviceName = localDevice.name,
-            originDeviceType = localDevice.type.name,
-            content = jsonStr,
-            timestamp = nowMillis(),
-            targetDeviceId = _uiState.value.activeDeviceId
-        )
-        val frame = SyncPayloadCodec.encode(payload)
-
-        if (isDesktop) {
-            onServerBroadcast?.invoke(frame)
-        } else {
-            syncClient?.sendFrame(frame)
+        if (_uiState.value.connectionStatus != ConnectionStatus.CONNECTED || _uiState.value.activeDeviceId == null) {
+            _uiState.update { it.copy(userMessage = "Cannot send file: No active connection") }
+            return
         }
+        viewModelScope.launch(Dispatchers.IO) {
+            val base64Data = content.encodeBase64()
+            val filePayload = com.liftley.sync360.core.network.FilePayload(
+                fileName = name,
+                mimeType = mimeType,
+                fileSize = content.size.toLong(),
+                base64Data = base64Data
+            )
+            val jsonStr = com.liftley.sync360.core.network.SyncPayloadCodec.encodeFile(filePayload)
 
-        val category = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) "MEDIA" else "DOCUMENT"
-        persistFilePayload(
-            fileName = name,
-            mimeType = mimeType,
-            fileSize = content.size.toLong(),
-            originDeviceId = localDevice.id,
-            category = category
-        )
-        addMessage("Sent: $name", isFromMe = true)
+            val payload = SyncPayload(
+                kind = "file",
+                originDeviceId = localDevice.id,
+                originDeviceName = localDevice.name,
+                originDeviceType = localDevice.type.name,
+                content = jsonStr,
+                timestamp = nowMillis(),
+                targetDeviceId = _uiState.value.activeDeviceId
+            )
+            val frame = SyncPayloadCodec.encode(payload)
+
+            if (isDesktop) {
+                onServerBroadcast?.invoke(frame)
+            } else {
+                syncClient?.sendFrame(frame)
+            }
+
+            val category = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) "MEDIA" else "DOCUMENT"
+            persistFilePayload(
+                fileName = name,
+                mimeType = mimeType,
+                fileSize = content.size.toLong(),
+                originDeviceId = localDevice.id,
+                category = category
+            )
+            addMessage("Sent: $name", isFromMe = true)
+        }
     }
 
     private fun persistFilePayload(
@@ -332,13 +341,11 @@ class SyncViewModel(
     private fun connectToHost(device: DeviceProfile) {
         val host = device.connectionHost
         if (host.isBlank()) return
-        syncClient?.connect(host)
         onStartService?.invoke(host)
     }
 
     private fun connectToHost(host: String) {
         if (host.isBlank()) return
-        syncClient?.connect(host)
         onStartService?.invoke(host)
     }
 
@@ -394,6 +401,10 @@ class SyncViewModel(
 
     private fun sendClipboard(text: String) {
         if (text.isBlank()) return
+        if (_uiState.value.connectionStatus != ConnectionStatus.CONNECTED || _uiState.value.activeDeviceId == null) {
+            _uiState.update { it.copy(userMessage = "Cannot send text: No active connection") }
+            return
+        }
         if (text == lastReceivedText) return // Deduplicate loopback
         lastSentText = text
 

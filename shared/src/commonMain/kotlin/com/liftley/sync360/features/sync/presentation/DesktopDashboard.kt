@@ -35,6 +35,13 @@ fun DesktopDashboard(
         }
     }
 
+    LaunchedEffect(uiState.userMessage) {
+        uiState.userMessage?.let { msg ->
+            copiedFeedbackText = msg
+            onEvent(SyncEvent.ClearUserMessage)
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -122,7 +129,7 @@ fun DesktopDashboard(
                 }
             }
 
-            // HUD HUD Feedback
+            // HUD Feedback
             androidx.compose.animation.AnimatedVisibility(
                 visible = copiedFeedbackText != null,
                 enter = fadeIn() + slideInVertically(initialOffsetY = { it }),
@@ -137,7 +144,7 @@ fun DesktopDashboard(
                     tonalElevation = 6.dp
                 ) {
                     Text(
-                        text = "Copied to clipboard",
+                        text = copiedFeedbackText ?: "",
                         color = colorScheme.inverseOnSurface,
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
