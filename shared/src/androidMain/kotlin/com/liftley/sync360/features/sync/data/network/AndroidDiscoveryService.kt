@@ -47,10 +47,14 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                                 else -> DeviceType.DESKTOP
                             }
                             
+                            val advertisedId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+                                serviceInfo.attributes["deviceId"]?.let { String(it) }
+                            } else null
                             val device = DeviceProfile(
-                                id = ip,
+                                id = advertisedId?.takeIf { it.isNotBlank() } ?: ip,
                                 name = serviceInfo.serviceName,
-                                type = resolvedType
+                                type = resolvedType,
+                                hostAddress = ip
                             )
                             devicesMap[serviceInfo.serviceName] = device
                             _discoveredDevices.value = devicesMap.values.toList()
@@ -77,13 +81,14 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
         }
     }
 
-    override fun registerHost(port: Int, deviceName: String, deviceType: String) {
+    override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {
         val serviceInfo = NsdServiceInfo().apply {
             this.serviceName = deviceName
             this.serviceType = this@AndroidDiscoveryService.serviceType
             this.port = port
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
                 this.setAttribute("type", deviceType)
+                this.setAttribute("deviceId", deviceId)
             }
         }
         

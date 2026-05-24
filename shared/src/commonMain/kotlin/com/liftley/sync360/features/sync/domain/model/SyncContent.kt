@@ -6,8 +6,10 @@ data class DeviceStream(
     val media: List<SyncAsset>,
     val documents: List<SyncAsset>,
     val storageUsedPercent: Int,
-    val lastSeenLabel: String
+    val lastSeenLabel: String,
+    val latestTexts: List<ClipboardEntry> = emptyList()
 )
+
 
 data class ClipboardEntry(
     val text: String,

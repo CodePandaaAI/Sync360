@@ -17,6 +17,14 @@ sealed interface SyncEvent {
     data class RequestDownload(val assetId: String) : SyncEvent
     data class SetOverlayEnabled(val enabled: Boolean) : SyncEvent
     data class SetBackgroundMonitoringEnabled(val enabled: Boolean) : SyncEvent
-    object DismissProactivePrompt : SyncEvent
-    data class ConfirmProactiveConnect(val device: DeviceProfile) : SyncEvent
+    data class UpdateOutgoingText(val text: String) : SyncEvent
+    data class RequestConnect(val deviceId: String) : SyncEvent
+    object ConfirmConnect : SyncEvent
+    object DismissConnectRequest : SyncEvent
+    object PasteFromClipboard : SyncEvent
+    data class OpenFilePicker(val mimeType: String) : SyncEvent
+    data class SendFile(val name: String, val mimeType: String, val content: ByteArray) : SyncEvent
+    object AcceptFileOffer : SyncEvent
+    object DeclineFileOffer : SyncEvent
 }
+

@@ -31,7 +31,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
-import kotlinx.coroutines.delay
+import io.ktor.util.encodeBase64
+import io.ktor.util.decodeBase64Bytes
 import kotlin.math.absoluteValue
 import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
@@ -50,8 +51,11 @@ class SyncViewModel(
     private val onShowOverlay: (() -> Unit)? = null,
     private val onHideOverlay: (() -> Unit)? = null,
     private val onReadClipboard: (() -> String?)? = null,
-    private val onWriteClipboard: ((String) -> Unit)? = null
+    private val onWriteClipboard: ((String) -> Unit)? = null,
+    private val onOpenFilePicker: ((mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) -> Unit)? = null,
+    private val onSaveFile: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 ) : ViewModel() {
+
 
     private val discoveryService = createNetworkDiscoveryService(platformContext)
     private val syncClient = if (!isDesktop) SyncClient() else null
@@ -77,25 +81,13 @@ class SyncViewModel(
         observeDiscovery()
 
         // Register and Discover on BOTH platforms for symmetric peer presence
-        discoveryService.registerHost(8080, localDevice.name, localDevice.type.name)
+        discoveryService.registerHost(
+            port = 8080,
+            deviceId = localDevice.id,
+            deviceName = localDevice.name,
+            deviceType = localDevice.type.name
+        )
         discoveryService.startDiscovery()
-
-        // Automatically poll system clipboard on Desktop to sync copies to Mobile
-        if (isDesktop && onReadClipboard != null) {
-            viewModelScope.launch(Dispatchers.IO) {
-                var lastLocalClip: String? = null
-                while (isActive) {
-                    val clip = onReadClipboard.invoke()
-                    if (clip != null && clip != lastLocalClip && clip.isNotBlank()) {
-                        lastLocalClip = clip
-                        if (_uiState.value.activeDeviceId != null) {
-                            sendClipboard(clip)
-                        }
-                    }
-                    delay(1500)
-                }
-            }
-        }
     }
 
     override fun onCleared() {
@@ -108,9 +100,30 @@ class SyncViewModel(
             is SyncEvent.OnIpChange -> _uiState.update { it.copy(clientIpInput = event.ip) }
             is SyncEvent.Connect -> connectToHost(_uiState.value.clientIpInput)
             is SyncEvent.Disconnect -> disconnect()
-            is SyncEvent.SendMessage -> sendClipboard(event.text)
+            is SyncEvent.SendMessage -> {
+                sendClipboard(event.text)
+                _uiState.update { it.copy(outgoingText = "") }
+            }
             is SyncEvent.SendCurrentClipboard -> {
                 onReadClipboard?.invoke()?.let { sendClipboard(it) }
+            }
+            is SyncEvent.UpdateOutgoingText -> {
+                _uiState.update { it.copy(outgoingText = event.text) }
+            }
+            is SyncEvent.PasteFromClipboard -> {
+                val clip = onReadClipboard?.invoke().orEmpty()
+                if (clip.isNotBlank()) {
+                    _uiState.update { it.copy(outgoingText = clip) }
+                }
+            }
+            is SyncEvent.RequestConnect -> requestConnect(event.deviceId)
+            SyncEvent.ConfirmConnect -> {
+                val device = _uiState.value.pendingConnectDevice ?: return
+                _uiState.update { it.copy(pendingConnectDevice = null) }
+                pairWithDevice(device.id)
+            }
+            SyncEvent.DismissConnectRequest -> {
+                _uiState.update { it.copy(pendingConnectDevice = null) }
             }
             is SyncEvent.ReceiveMessage -> receiveFrame(event.text, event.isFromMe)
             is SyncEvent.SwitchDevice -> switchDevice(event.deviceId)
@@ -132,14 +145,54 @@ class SyncViewModel(
             is SyncEvent.SetBackgroundMonitoringEnabled -> {
                 _uiState.update { it.copy(backgroundMonitoringEnabled = event.enabled) }
             }
-            is SyncEvent.DismissProactivePrompt -> {
-                _uiState.update { it.copy(proactivePromptDevice = null) }
+            is SyncEvent.OpenFilePicker -> {
+                onOpenFilePicker?.invoke(event.mimeType) { name, content ->
+                    onEvent(SyncEvent.SendFile(name, event.mimeType, content))
+                }
             }
-            is SyncEvent.ConfirmProactiveConnect -> {
-                _uiState.update { it.copy(proactivePromptDevice = null) }
-                pairWithDevice(event.device.id)
+            is SyncEvent.SendFile -> {
+                sendFilePayload(event.name, event.mimeType, event.content)
+            }
+            is SyncEvent.AcceptFileOffer -> {
+                val offer = _uiState.value.pendingFileOffer
+                if (offer != null) {
+                    _uiState.update { it.copy(pendingFileOffer = null) }
+                    val bytes = try {
+                        offer.base64Data.decodeBase64Bytes()
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                        null
+                    }
+                    if (bytes != null) {
+                        onSaveFile?.invoke(offer.fileName, bytes) { success, _ ->
+                            if (success) {
+                                val category = if (offer.mimeType.startsWith("image/") || offer.mimeType.startsWith("video/")) "MEDIA" else "DOCUMENT"
+                                persistFilePayload(
+                                    fileName = offer.fileName,
+                                    mimeType = offer.mimeType,
+                                    fileSize = offer.fileSize,
+                                    originDeviceId = offer.senderId,
+                                    category = category
+                                )
+                                addMessage("Received: ${offer.fileName}", isFromMe = false)
+                            }
+                        }
+                    }
+                }
+            }
+            is SyncEvent.DeclineFileOffer -> {
+                _uiState.update { it.copy(pendingFileOffer = null) }
             }
         }
+    }
+
+
+    private fun requestConnect(deviceId: String) {
+        val device = (_uiState.value.nearbyDevices + _uiState.value.connectedDevices)
+            .firstOrNull { it.id == deviceId }
+            ?: return
+        if (device.id == localDevice.id) return
+        _uiState.update { it.copy(pendingConnectDevice = device) }
     }
 
     private fun observeDatabase() {
@@ -155,10 +208,8 @@ class SyncViewModel(
                 val profiles = devices.map { it.toDeviceProfile() }.filter { it.id != localDevice.id }
                 val streams = buildStreams(devices.filter { it.deviceId != localDevice.id }, items)
                 _uiState.update { state ->
-                    val activeId = when {
-                        state.activeDeviceId != null && profiles.any { it.id == state.activeDeviceId } -> state.activeDeviceId
-                        profiles.isNotEmpty() -> profiles.first().id
-                        else -> null
+                    val activeId = state.activeDeviceId?.takeIf { id ->
+                        profiles.any { it.id == id }
                     }
                     state.copy(
                         connectedDevices = profiles,
@@ -200,35 +251,89 @@ class SyncViewModel(
     private fun observeDiscovery() {
         viewModelScope.launch {
             discoveryService.discoveredDevices.collect { devices ->
-                val filteredNearby = devices.filter { it.id != localDevice.id }
-                _uiState.update { it.copy(nearbyDevices = filteredNearby) }
+                val filteredNearby = devices.filter { device ->
+                    val isSelfId = device.id == localDevice.id || 
+                                   device.id.removePrefix("android-").removePrefix("desktop-") == 
+                                   localDevice.id.removePrefix("android-").removePrefix("desktop-")
+                    val isSelfName = device.name.equals(localDevice.name, ignoreCase = true) ||
+                                     device.name.contains(localDevice.name, ignoreCase = true) ||
+                                     localDevice.name.contains(device.name, ignoreCase = true)
+                    val isSelfHost = device.connectionHost == localDevice.connectionHost ||
+                                     device.hostAddress == "127.0.0.1" ||
+                                     device.hostAddress == "localhost"
 
-                // Automatically establish WebSocket link in background when nearby hosts found (Mobile)
-                if (!isDesktop) {
-                    filteredNearby.firstOrNull()?.let { device ->
-                        if (_uiState.value.connectionStatus == ConnectionStatus.DISCONNECTED) {
-                            connectToHost(device.id)
-                        }
-
-                        // Trigger proactive pairing dialog if found device is not already paired/active
-                        val isAlreadyPaired = _uiState.value.connectedDevices.any { it.id == device.id }
-                        if (!isAlreadyPaired && _uiState.value.proactivePromptDevice?.id != device.id && _uiState.value.activeDeviceId != device.id) {
-                            _uiState.update { it.copy(proactivePromptDevice = device) }
-                        }
-                    }
-                } else {
-                    // Trigger proactive pairing dialog on Desktop if an unpaired device resolves on the network
-                    filteredNearby.firstOrNull { device ->
-                        val isPaired = _uiState.value.connectedDevices.any { it.id == device.id }
-                        !isPaired
-                    }?.let { device ->
-                        if (_uiState.value.proactivePromptDevice?.id != device.id && _uiState.value.activeDeviceId != device.id) {
-                            _uiState.update { it.copy(proactivePromptDevice = device) }
-                        }
-                    }
+                    !isSelfId && !isSelfName && !isSelfHost
                 }
+                _uiState.update { it.copy(nearbyDevices = filteredNearby) }
             }
         }
+    }
+
+    private fun sendFilePayload(name: String, mimeType: String, content: ByteArray) {
+        val base64Data = content.encodeBase64()
+        val filePayload = com.liftley.sync360.core.network.FilePayload(
+            fileName = name,
+            mimeType = mimeType,
+            fileSize = content.size.toLong(),
+            base64Data = base64Data
+        )
+        val jsonStr = com.liftley.sync360.core.network.SyncPayloadCodec.encodeFile(filePayload)
+
+        val payload = SyncPayload(
+            kind = "file",
+            originDeviceId = localDevice.id,
+            originDeviceName = localDevice.name,
+            originDeviceType = localDevice.type.name,
+            content = jsonStr,
+            timestamp = nowMillis(),
+            targetDeviceId = _uiState.value.activeDeviceId
+        )
+        val frame = SyncPayloadCodec.encode(payload)
+
+        if (isDesktop) {
+            onServerBroadcast?.invoke(frame)
+        } else {
+            syncClient?.sendFrame(frame)
+        }
+
+        val category = if (mimeType.startsWith("image/") || mimeType.startsWith("video/")) "MEDIA" else "DOCUMENT"
+        persistFilePayload(
+            fileName = name,
+            mimeType = mimeType,
+            fileSize = content.size.toLong(),
+            originDeviceId = localDevice.id,
+            category = category
+        )
+        addMessage("Sent: $name", isFromMe = true)
+    }
+
+    private fun persistFilePayload(
+        fileName: String,
+        mimeType: String,
+        fileSize: Long,
+        originDeviceId: String,
+        category: String
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.syncDatabaseQueries.insertOrUpdateItem(
+                itemId = "file-$originDeviceId-${nowMillis()}-${fileName.hashCode().absoluteValue}",
+                originDeviceId = originDeviceId,
+                categoryType = category,
+                mimeType = mimeType,
+                metaContent = "$fileName|$fileSize",
+                thumbnailBytes = null,
+                syncState = SyncTransferState.FULLY_DOWNLOADED.name,
+                timestamp = nowMillis()
+            )
+        }
+    }
+
+
+    private fun connectToHost(device: DeviceProfile) {
+        val host = device.connectionHost
+        if (host.isBlank()) return
+        syncClient?.connect(host)
+        onStartService?.invoke(host)
     }
 
     private fun connectToHost(host: String) {
@@ -243,21 +348,39 @@ class SyncViewModel(
         onStopService?.invoke()
     }
 
+    private fun resolveDevice(deviceId: String): DeviceProfile? {
+        val stored = _uiState.value.connectedDevices.firstOrNull { it.id == deviceId }
+        val nearby = _uiState.value.nearbyDevices.firstOrNull { it.id == deviceId }
+        return when {
+            stored != null && nearby != null -> stored.copy(hostAddress = nearby.hostAddress ?: stored.hostAddress)
+            nearby != null -> nearby
+            else -> stored
+        }
+    }
+
     private fun switchDevice(deviceId: String) {
-        _uiState.update { it.copy(activeDeviceId = deviceId) }
-        if (!isDesktop && deviceId.isNotBlank() && _uiState.value.connectedDevices.any { it.id == deviceId }) {
-            connectToHost(deviceId)
+        val device = resolveDevice(deviceId) ?: return
+        _uiState.update {
+            it.copy(
+                activeDeviceId = device.id,
+                clientIpInput = device.connectionHost
+            )
+        }
+        if (!isDesktop) {
+            connectToHost(device)
         }
     }
 
     private fun pairWithDevice(deviceId: String) {
-        val device = (_uiState.value.nearbyDevices + _uiState.value.connectedDevices)
-            .firstOrNull { it.id == deviceId }
+        val device = resolveDevice(deviceId)
+            ?: (_uiState.value.nearbyDevices + _uiState.value.connectedDevices)
+                .firstOrNull { it.id == deviceId }
             ?: return
+        if (device.id == localDevice.id) return
         _uiState.update {
             it.copy(
                 activeDeviceId = device.id,
-                clientIpInput = device.id
+                clientIpInput = device.connectionHost
             )
         }
         if (isDesktop) {
@@ -265,7 +388,7 @@ class SyncViewModel(
             sendPairingResponse(kind = "pair_accept", targetDeviceId = device.id)
         } else {
             pairRequestDevice = device
-            connectToHost(device.id)
+            connectToHost(device)
         }
     }
 
@@ -316,9 +439,29 @@ class SyncViewModel(
                     onWriteClipboard?.invoke(payload.content)
                 }
             }
+            "file" -> {
+                if (payload.originDeviceId == _uiState.value.activeDeviceId) {
+                    val filePayload = SyncPayloadCodec.decodeFileOrNull(payload.content)
+                    if (filePayload != null) {
+                        _uiState.update { state ->
+                            state.copy(
+                                pendingFileOffer = FileOffer(
+                                    senderId = payload.originDeviceId,
+                                    senderName = payload.originDeviceName,
+                                    fileName = filePayload.fileName,
+                                    mimeType = filePayload.mimeType,
+                                    fileSize = filePayload.fileSize,
+                                    base64Data = filePayload.base64Data
+                                )
+                            )
+                        }
+                    }
+                }
+            }
             else -> Unit
         }
     }
+
 
     private fun sendPendingPairRequest() {
         val device = pairRequestDevice ?: return
@@ -389,7 +532,7 @@ class SyncViewModel(
         _uiState.update {
             it.copy(
                 activeDeviceId = device.id,
-                clientIpInput = device.id
+                clientIpInput = device.connectionHost
             )
         }
     }
@@ -499,6 +642,14 @@ class SyncViewModel(
         return devices.associate { device ->
             val deviceItems = itemsByDevice[device.deviceId].orEmpty()
             val latestText = deviceItems.firstOrNull { it.categoryType == "TEXT" }
+            val textItems = deviceItems.filter { it.categoryType == "TEXT" }.take(5)
+            val latestTexts = textItems.map { item ->
+                ClipboardEntry(
+                    text = item.metaContent,
+                    updatedLabel = relativeTimeLabel(item.timestamp),
+                    sourceApp = "Clipboard"
+                )
+            }
             device.deviceId to DeviceStream(
                 deviceId = device.deviceId,
                 clipboard = ClipboardEntry(
@@ -513,10 +664,12 @@ class SyncViewModel(
                     .filter { it.categoryType == "DOCUMENT" }
                     .map { it.toAsset() },
                 storageUsedPercent = 0,
-                lastSeenLabel = relativeTimeLabel(device.lastActiveTimestamp)
+                lastSeenLabel = relativeTimeLabel(device.lastActiveTimestamp),
+                latestTexts = latestTexts
             )
         }
     }
+
 
     private fun SharedItemEntity.toAsset(): SyncAsset {
         val assetType = when {

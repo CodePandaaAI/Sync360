@@ -38,12 +38,50 @@ fun main() = application {
                 syncServer.broadcast(text)
             },
             onReadClipboard = { readDesktopClipboardText() },
-            onWriteClipboard = { text -> writeDesktopClipboardText(text) }
+            onWriteClipboard = { text -> writeDesktopClipboardText(text) },
+            onOpenFilePicker = { mimeType, callback ->
+                openDesktopFilePicker(mimeType, callback)
+            },
+            onSaveFile = { name, bytes, onResult ->
+                saveDesktopFile(name, bytes, onResult)
+            }
         )
     }
 }
 
+private fun openDesktopFilePicker(mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) {
+    try {
+        val mode = java.awt.FileDialog.LOAD
+        val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select File to Share", mode)
+        dialog.isVisible = true
+        val file = dialog.file
+        val directory = dialog.directory
+        if (file != null && directory != null) {
+            val selectedFile = java.io.File(directory, file)
+            val bytes = selectedFile.readBytes()
+            onFileSelected(file, bytes)
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+    }
+}
+
+private fun saveDesktopFile(name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) {
+    try {
+        val downloadsPath = System.getProperty("user.home") + java.io.File.separator + "Downloads" + java.io.File.separator + "Sync360"
+        val dir = java.io.File(downloadsPath)
+        if (!dir.exists()) dir.mkdirs()
+        val file = java.io.File(dir, name)
+        file.writeBytes(content)
+        onResult(true, file.absolutePath)
+    } catch (e: Exception) {
+        e.printStackTrace()
+        onResult(false, null)
+    }
+}
+
 private fun readDesktopClipboardText(): String? {
+
     return try {
         val transferable = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
         if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {

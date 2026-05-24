@@ -5,6 +5,15 @@ import com.liftley.sync360.features.sync.domain.model.DeviceStream
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 
+data class FileOffer(
+    val senderId: String,
+    val senderName: String,
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Long,
+    val base64Data: String
+)
+
 data class SyncUiState(
     val isDesktop: Boolean = false,
     val serverIp: String = "127.0.0.1",
@@ -20,5 +29,8 @@ data class SyncUiState(
     val overlayEnabled: Boolean = false,
     val backgroundMonitoringEnabled: Boolean = true,
     val localNetworkHealthy: Boolean = true,
-    val proactivePromptDevice: DeviceProfile? = null
+    val outgoingText: String = "",
+    val pendingConnectDevice: DeviceProfile? = null,
+    val pendingFileOffer: FileOffer? = null
 )
+

@@ -21,6 +21,7 @@ import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.overlay.FloatingDockManager
 import com.liftley.sync360.service.SyncForegroundService
 import androidx.core.net.toUri
+import androidx.core.content.edit
 
 /**
  * Main entry-point activity for the Sync360 Android app.
@@ -36,8 +37,64 @@ class MainActivity : ComponentActivity() {
 
     // ── Floating overlay manager (lazy-init after permissions are confirmed) ──
     private var floatingDockManager: FloatingDockManager? = null
+    private var onFilePickedCallback: ((name: String, content: ByteArray) -> Unit)? = null
+
+    private val filePickerLauncher =
+        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+            val callback = onFilePickedCallback ?: return@registerForActivityResult
+            if (uri != null) {
+                try {
+                    val contentResolver = applicationContext.contentResolver
+                    var fileName = "file_${System.currentTimeMillis()}"
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (nameIndex != -1 && cursor.moveToFirst()) {
+                            fileName = cursor.getString(nameIndex)
+                        }
+                    }
+                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        callback(fileName, bytes)
+                    }
+                } catch (e: Exception) {
+                    Toast.makeText(this, "Failed to read file: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+
+    private fun saveFileToDownloads(name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) {
+        try {
+            val downloadsDir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS)
+            val syncDir = java.io.File(downloadsDir, "Sync360")
+            if (!syncDir.exists()) syncDir.mkdirs()
+            val file = java.io.File(syncDir, name)
+            file.writeBytes(content)
+            runOnUiThread {
+                Toast.makeText(this, "Saved: ${file.name} to Downloads", Toast.LENGTH_LONG).show()
+                onResult(true, file.absolutePath)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            try {
+                val extDir = getExternalFilesDir(android.os.Environment.DIRECTORY_DOWNLOADS)
+                val file = java.io.File(extDir, name)
+                file.writeBytes(content)
+                runOnUiThread {
+                    Toast.makeText(this, "Saved to App Storage (Downloads folder blocked)", Toast.LENGTH_LONG).show()
+                    onResult(true, file.absolutePath)
+                }
+            } catch (ex: Exception) {
+                ex.printStackTrace()
+                runOnUiThread {
+                    Toast.makeText(this, "Failed to save: ${ex.message}", Toast.LENGTH_SHORT).show()
+                    onResult(false, null)
+                }
+            }
+        }
+    }
 
     // ── Runtime permission launcher for POST_NOTIFICATIONS (Android 13+) ──
+
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -90,10 +147,18 @@ class MainActivity : ComponentActivity() {
                 onShowOverlay = { showOverlay() },
                 onHideOverlay = { hideOverlay() },
                 onReadClipboard = { readCurrentClipboardText() },
-                onWriteClipboard = { text -> writeCurrentClipboardText(text) }
+                onWriteClipboard = { text -> writeCurrentClipboardText(text) },
+                onOpenFilePicker = { mimeType, callback ->
+                    onFilePickedCallback = callback
+                    filePickerLauncher.launch(mimeType)
+                },
+                onSaveFile = { name, bytes, onResult ->
+                    saveFileToDownloads(name, bytes, onResult)
+                }
             )
         }
     }
+
 
     private fun writeCurrentClipboardText(text: String) {
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
@@ -179,7 +244,7 @@ class MainActivity : ComponentActivity() {
         var deviceId = sharedPrefs.getString("device_uuid", null)
         if (deviceId == null) {
             deviceId = java.util.UUID.randomUUID().toString()
-            sharedPrefs.edit().putString("device_uuid", deviceId).apply()
+            sharedPrefs.edit {putString("device_uuid", deviceId)}
         }
 
         floatingDockManager = FloatingDockManager(

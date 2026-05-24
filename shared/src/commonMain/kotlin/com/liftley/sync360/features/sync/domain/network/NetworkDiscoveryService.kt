@@ -7,7 +7,7 @@ interface NetworkDiscoveryService {
     val discoveredDevices: StateFlow<List<DeviceProfile>>
     fun startDiscovery()
     fun stopDiscovery()
-    fun registerHost(port: Int, deviceName: String, deviceType: String)
+    fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String)
 }
 
 expect fun createNetworkDiscoveryService(context: Any? = null): NetworkDiscoveryService

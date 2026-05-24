@@ -30,7 +30,9 @@ fun App(
     onShowOverlay: (() -> Unit)? = null,
     onHideOverlay: (() -> Unit)? = null,
     onReadClipboard: (() -> String?)? = null,
-    onWriteClipboard: ((String) -> Unit)? = null
+    onWriteClipboard: ((String) -> Unit)? = null,
+    onOpenFilePicker: ((mimeType: String, onFileSelected: (name: String, content: ByteArray) -> Unit) -> Unit)? = null,
+    onSaveFile: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 ) {
     AppTheme {
         Box(
@@ -61,9 +63,12 @@ fun App(
                         onShowOverlay = onShowOverlay,
                         onHideOverlay = onHideOverlay,
                         onReadClipboard = onReadClipboard,
-                        onWriteClipboard = onWriteClipboard
+                        onWriteClipboard = onWriteClipboard,
+                        onOpenFilePicker = onOpenFilePicker,
+                        onSaveFile = onSaveFile
                     )
                 }
+
 
                 val uiState by viewModel.uiState.collectAsState()
 

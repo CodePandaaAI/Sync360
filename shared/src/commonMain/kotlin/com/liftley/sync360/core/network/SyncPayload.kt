@@ -14,6 +14,14 @@ data class SyncPayload(
     val targetDeviceId: String? = null
 )
 
+@Serializable
+data class FilePayload(
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Long,
+    val base64Data: String
+)
+
 object SyncPayloadCodec {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -29,4 +37,15 @@ object SyncPayloadCodec {
             null
         }
     }
+
+    fun encodeFile(file: FilePayload): String = json.encodeToString(FilePayload.serializer(), file)
+
+    fun decodeFileOrNull(jsonStr: String): FilePayload? {
+        return try {
+            json.decodeFromString(FilePayload.serializer(), jsonStr)
+        } catch (_: Exception) {
+            null
+        }
+    }
 }
+

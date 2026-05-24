@@ -38,10 +38,12 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                 "TABLET" -> DeviceType.TABLET
                 else -> DeviceType.PHONE
             }
+            val advertisedId = event.info.getPropertyString("deviceId")
             val device = DeviceProfile(
-                id = ip,
+                id = advertisedId?.takeIf { it.isNotBlank() } ?: ip,
                 name = event.name,
-                type = resolvedType
+                type = resolvedType,
+                hostAddress = ip
             )
             devicesMap[event.name] = device
             _discoveredDevices.value = devicesMap.values.toList()
@@ -64,13 +66,13 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         jmdns = null
     }
 
-    override fun registerHost(port: Int, deviceName: String, deviceType: String) {
+    override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {
         try {
             if (jmdns == null) {
                 val localAddress = InetAddress.getLocalHost()
                 jmdns = JmDNS.create(localAddress)
             }
-            val properties = mapOf("type" to deviceType)
+            val properties = mapOf("type" to deviceType, "deviceId" to deviceId)
             val serviceInfo = ServiceInfo.create(
                 serviceType,
                 deviceName,
