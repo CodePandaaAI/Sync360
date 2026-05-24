@@ -43,7 +43,10 @@ fun App(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .safeContentPadding()
+                    .then(
+                        if (isDesktop) Modifier.safeContentPadding()
+                        else Modifier
+                    )
             ) {
                 // Instantiate the ViewModel using the KMP viewModel() function
                 val viewModel = viewModel {

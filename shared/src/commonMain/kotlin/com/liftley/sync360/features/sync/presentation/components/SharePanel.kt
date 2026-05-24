@@ -7,6 +7,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -14,6 +15,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.liftley.sync360.core.designsystem.Spacing
+import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 import com.liftley.sync360.features.sync.presentation.SyncEvent
@@ -155,31 +158,35 @@ fun SharePanel(
             }
         }
     } else {
-        // Mobile Transmission Panel
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(SyncDimens.cornerMedium),
             color = colorScheme.surfaceContainerHigh
         ) {
             Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier.padding(Spacing.md),
+                verticalArrangement = Arrangement.spacedBy(Spacing.md)
             ) {
                 Text(
                     text = "Share with ${activeDevice.name}",
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = colorScheme.onSurface
                 )
-                
+
                 OutlinedTextField(
                     value = uiState.outgoingText,
                     onValueChange = { onEvent(SyncEvent.UpdateOutgoingText(it)) },
                     modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Type something to share…", color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
+                    placeholder = {
+                        Text(
+                            "Type something to share…",
+                            color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    },
                     minLines = 3,
                     maxLines = 5,
-                    shape = RoundedCornerShape(12.dp),
+                    shape = RoundedCornerShape(SyncDimens.cornerSmall),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = colorScheme.primary,
                         unfocusedBorderColor = colorScheme.outlineVariant,
@@ -190,96 +197,60 @@ fun SharePanel(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    horizontalArrangement = Arrangement.spacedBy(Spacing.sm + Spacing.xs)
                 ) {
                     OutlinedButton(
                         onClick = { onEvent(SyncEvent.PasteFromClipboard) },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                        shape = RoundedCornerShape(SyncDimens.cornerSmall),
+                        contentPadding = PaddingValues(vertical = Spacing.sm + Spacing.xs)
                     ) {
                         Icon(
                             imageVector = Icons.Default.ContentPaste,
-                            contentDescription = "Paste",
-                            modifier = Modifier.size(16.dp)
+                            contentDescription = "Paste from clipboard",
+                            modifier = Modifier.size(Spacing.lg)
                         )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Paste", fontWeight = FontWeight.Bold)
+                        Spacer(modifier = Modifier.width(Spacing.xs + 2.dp))
+                        Text("Paste", fontWeight = FontWeight.SemiBold)
                     }
                     Button(
                         onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
                         enabled = uiState.outgoingText.isNotBlank(),
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
-                        contentPadding = PaddingValues(vertical = 10.dp)
+                        shape = RoundedCornerShape(SyncDimens.cornerSmall),
+                        contentPadding = PaddingValues(vertical = Spacing.sm + Spacing.xs)
                     ) {
-                        Text("Send", fontWeight = FontWeight.Bold)
+                        Text("Send", fontWeight = FontWeight.SemiBold)
                     }
                 }
 
                 HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // Quick Share Local Files with Uniform Height
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
                         text = "Send Local Media & Files",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Medium,
                         color = colorScheme.onSurfaceVariant
                     )
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.sm + Spacing.xs)
                     ) {
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker("image/*,video/*")) },
-                            shape = RoundedCornerShape(14.dp),
-                            color = colorScheme.surface
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Share,
-                                    contentDescription = "Share Media",
-                                    tint = colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Image / Video", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker("*/*")) },
-                            shape = RoundedCornerShape(14.dp),
-                            color = colorScheme.surface
-                        ) {
-                            Row(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Folder,
-                                    contentDescription = "Share File",
-                                    tint = colorScheme.primary,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Any File", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
+                        FilePickerTile(
+                            icon = Icons.Default.PermMedia,
+                            label = "Image / Video",
+                            contentDescription = "Pick image or video",
+                            onClick = { onEvent(SyncEvent.OpenFilePicker("image/*,video/*")) },
+                            modifier = Modifier.weight(1f)
+                        )
+                        FilePickerTile(
+                            icon = Icons.Default.Folder,
+                            label = "Any File",
+                            contentDescription = "Pick any file",
+                            onClick = { onEvent(SyncEvent.OpenFilePicker("*/*")) },
+                            modifier = Modifier.weight(1f)
+                        )
                     }
                 }
             }

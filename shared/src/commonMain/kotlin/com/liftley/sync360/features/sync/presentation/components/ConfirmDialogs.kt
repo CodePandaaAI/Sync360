@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 
@@ -25,7 +25,7 @@ fun ConfirmDialogs(
     uiState.pendingConnectDevice?.let { device ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DismissConnectRequest) },
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(SyncDimens.cornerMedium),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Text(
@@ -44,7 +44,7 @@ fun ConfirmDialogs(
             confirmButton = {
                 Button(
                     onClick = { onEvent(SyncEvent.ConfirmConnect) },
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(SyncDimens.cornerSmall)
                 ) {
                     Text("Connect", fontWeight = FontWeight.Bold)
                 }
@@ -57,11 +57,10 @@ fun ConfirmDialogs(
         )
     }
 
-    // Elegant Receive File Confirmation Dialog
     uiState.pendingFileOffer?.let { offer ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DeclineFileOffer) },
-            shape = RoundedCornerShape(24.dp),
+            shape = RoundedCornerShape(SyncDimens.cornerMedium),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Text(
@@ -78,7 +77,7 @@ fun ConfirmDialogs(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Surface(
-                        shape = RoundedCornerShape(14.dp),
+                        shape = RoundedCornerShape(SyncDimens.cornerSmall + 2.dp),
                         color = MaterialTheme.colorScheme.surface,
                         modifier = Modifier.fillMaxWidth()
                     ) {
@@ -116,7 +115,7 @@ fun ConfirmDialogs(
             confirmButton = {
                 Button(
                     onClick = { onEvent(SyncEvent.AcceptFileOffer) },
-                    shape = RoundedCornerShape(12.dp)
+                    shape = RoundedCornerShape(SyncDimens.cornerSmall)
                 ) {
                     Text("Receive & Save", fontWeight = FontWeight.Bold)
                 }

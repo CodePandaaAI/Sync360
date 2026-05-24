@@ -1,23 +1,89 @@
 package com.liftley.sync360.features.sync.presentation.components
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Devices
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Tablet
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
+import com.liftley.sync360.core.designsystem.Spacing
+import com.liftley.sync360.core.designsystem.SyncDimens
+import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.SyncUiState
+
+private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Boolean {
+    if (uiState.connectionStatus != ConnectionStatus.CONNECTED) return false
+    if (device.id == uiState.activeDeviceId) return true
+    val activeId = uiState.activeDeviceId ?: return false
+    val activeDevice = uiState.connectedDevices.firstOrNull { it.id == activeId }
+        ?: uiState.nearbyDevices.firstOrNull { it.id == activeId }
+    if (activeDevice == null) return false
+    return device.id == activeDevice.id ||
+        (device.connectionHost.isNotBlank() && device.connectionHost == activeDevice.connectionHost)
+}
+
+private fun isPairedDevice(device: DeviceProfile, uiState: SyncUiState): Boolean {
+    return uiState.connectedDevices.any { it.id == device.id }
+}
+
+private fun mergeDevices(uiState: SyncUiState): List<DeviceProfile> {
+    val merged = linkedMapOf<String, DeviceProfile>()
+    uiState.connectedDevices.forEach { device ->
+        merged[device.id] = device
+    }
+    uiState.nearbyDevices.forEach { nearby ->
+        val existing = merged[nearby.id]
+        merged[nearby.id] = when {
+            existing == null -> nearby
+            existing.hostAddress.isNullOrBlank() && !nearby.hostAddress.isNullOrBlank() ->
+                existing.copy(hostAddress = nearby.hostAddress)
+            else -> existing
+        }
+    }
+    return merged.values.toList()
+}
+
+private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): String {
+    return when {
+        isActivelyConnected(device, uiState) -> "Connected"
+        isPairedDevice(device, uiState) -> "Use"
+        else -> "Connect"
+    }
+}
+
+private fun sortDevices(devices: List<DeviceProfile>, uiState: SyncUiState): List<DeviceProfile> {
+    return devices.sortedWith(
+        compareByDescending<DeviceProfile> { isActivelyConnected(it, uiState) }
+            .thenByDescending { isPairedDevice(it, uiState) }
+            .thenBy { it.name.lowercase() }
+    )
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -27,76 +93,87 @@ fun MobileDevicePickerSheet(
     onSelectPaired: (String) -> Unit,
     onPairNearby: (String) -> Unit
 ) {
+    val allDevices = sortDevices(mergeDevices(uiState), uiState)
+    val connectedDevices = allDevices.filter { isActivelyConnected(it, uiState) || isPairedDevice(it, uiState) }
+    val nearbyOnly = allDevices.filter { device ->
+        !isActivelyConnected(device, uiState) && !isPairedDevice(device, uiState)
+    }
+
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
+        shape = RoundedCornerShape(topStart = SyncDimens.cornerMedium, topEnd = SyncDimens.cornerMedium)
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-                .padding(bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = Spacing.lg)
+                .padding(bottom = Spacing.xl),
+            verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
             Text(
                 text = "Devices",
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
 
-            // Paired Devices Group
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    text = "Paired Devices",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
-                )
-                if (uiState.connectedDevices.isEmpty()) {
+            if (connectedDevices.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
-                        text = "No paired devices yet.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        text = "Paired Devices",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
                     )
-                } else {
-                    uiState.connectedDevices.forEach { device ->
+                    connectedDevices.forEach { device ->
+                        val activelyConnected = isActivelyConnected(device, uiState)
                         DeviceRowItem(
                             device = device,
-                            isSelected = device.id == uiState.activeDeviceId,
-                            actionLabel = if (device.id == uiState.activeDeviceId) "Connected" else "Use",
-                            onClick = { onSelectPaired(device.id) }
+                            isSelected = activelyConnected,
+                            actionLabel = deviceActionLabel(device, uiState),
+                            enabled = !activelyConnected,
+                            onClick = {
+                                if (activelyConnected) return@DeviceRowItem
+                                if (isPairedDevice(device, uiState)) {
+                                    onSelectPaired(device.id)
+                                } else {
+                                    onPairNearby(device.id)
+                                }
+                            }
                         )
                     }
                 }
+            } else {
+                Text(
+                    text = "No paired devices yet.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-            // Nearby Discovered Devices Group
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Text(
                     text = "Nearby on Local Wi-Fi",
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Medium
                 )
-                val nearbyFiltered = uiState.nearbyDevices.filterNot { nearby ->
-                    uiState.connectedDevices.any { it.id == nearby.id }
-                }
-                if (nearbyFiltered.isEmpty()) {
+                if (nearbyOnly.isEmpty()) {
                     Text(
                         text = "Searching for nearby devices…",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    nearbyFiltered.forEach { device ->
+                    nearbyOnly.forEach { device ->
                         DeviceRowItem(
                             device = device,
                             isSelected = false,
                             actionLabel = "Connect",
+                            enabled = true,
                             onClick = { onPairNearby(device.id) }
                         )
                     }
@@ -111,61 +188,81 @@ private fun DeviceRowItem(
     device: DeviceProfile,
     isSelected: Boolean,
     actionLabel: String,
+    enabled: Boolean,
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+            .clip(RoundedCornerShape(SyncDimens.cornerMedium))
+            .then(
+                if (enabled) Modifier.clickable(onClick = onClick)
+                else Modifier
+            ),
+        shape = RoundedCornerShape(SyncDimens.cornerMedium),
         color = if (isSelected) colorScheme.primaryContainer else colorScheme.surfaceContainerHigh
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm + Spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(if (isSelected) colorScheme.primary else colorScheme.surfaceVariant),
-                contentAlignment = Alignment.Center
+            Surface(
+                modifier = Modifier.size(SyncDimens.touchTarget * 0.75f),
+                shape = CircleShape,
+                color = if (isSelected) colorScheme.primary else colorScheme.surfaceVariant
             ) {
-                Text(
-                    text = when (device.type) {
-                        DeviceType.DESKTOP -> "PC"
-                        DeviceType.PHONE -> "PH"
-                        DeviceType.TABLET -> "TB"
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isSelected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold
-                )
+                Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                    Icon(
+                        imageVector = deviceTypeIcon(device.type),
+                        contentDescription = deviceTypeContentDescription(device.type),
+                        tint = if (isSelected) colorScheme.onPrimary else colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(Spacing.lg)
+                    )
+                }
             }
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = device.name,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = if (isSelected) colorScheme.onPrimaryContainer else colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = if (isSelected) "Active Connection" else if (device.isOnline) "Available" else "Offline",
+                    text = when {
+                        isSelected -> "Active connection"
+                        device.isOnline -> "Available"
+                        else -> "Offline"
+                    },
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (isSelected) colorScheme.onPrimaryContainer.copy(alpha = 0.8f) else colorScheme.onSurfaceVariant
+                    color = if (isSelected) {
+                        colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                    } else {
+                        colorScheme.onSurfaceVariant
+                    }
                 )
             }
             Text(
                 text = actionLabel,
                 style = MaterialTheme.typography.labelMedium,
                 color = if (isSelected) colorScheme.primary else colorScheme.primary,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.SemiBold
             )
         }
     }
+}
+
+private fun deviceTypeIcon(type: DeviceType): ImageVector = when (type) {
+    DeviceType.DESKTOP -> Icons.Default.Computer
+    DeviceType.PHONE -> Icons.Default.Smartphone
+    DeviceType.TABLET -> Icons.Default.Tablet
+}
+
+private fun deviceTypeContentDescription(type: DeviceType): String = when (type) {
+    DeviceType.DESKTOP -> "Desktop device"
+    DeviceType.PHONE -> "Phone device"
+    DeviceType.TABLET -> "Tablet device"
 }
