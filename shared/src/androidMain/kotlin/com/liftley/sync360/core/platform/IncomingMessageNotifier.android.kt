@@ -3,7 +3,6 @@ package com.liftley.sync360.core.platform
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.content.Context
-import android.os.Build
 import androidx.core.app.NotificationCompat
 
 class AndroidIncomingMessageNotifier(private val context: Context) : IncomingMessageNotifier {

@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.io.BufferedOutputStream
 import java.io.OutputStream
+import androidx.core.net.toUri
 
 class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
     
@@ -80,7 +81,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         onChunk: suspend (ByteArray) -> Unit
     ): Boolean {
         return try {
-            val uri = android.net.Uri.parse(file.id)
+            val uri = file.id.toUri()
             context.contentResolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(chunkSizeBytes)
                 while (true) {
