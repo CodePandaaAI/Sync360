@@ -3,6 +3,7 @@ package com.liftley.sync360.features.sync.domain.network
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import android.net.wifi.WifiManager
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import kotlinx.coroutines.*
@@ -27,9 +28,21 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
 
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var registrationListener: NsdManager.RegistrationListener? = null
+    private var multicastLock: WifiManager.MulticastLock? = null
 
     override fun startDiscovery() {
         if (discoveryListener != null) return
+
+        try {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            multicastLock = wifiManager.createMulticastLock("Sync360:DiscoveryMulticastLock").apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            println("AndroidDiscoveryService: Failed to acquire MulticastLock - ${e.message}")
+        }
+
         discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {}
             override fun onDiscoveryStopped(serviceType: String) {}
@@ -107,6 +120,17 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
             } catch (_: Exception) {
             }
             discoveryListener = null
+        }
+
+        try {
+            multicastLock?.let {
+                if (it.isHeld) {
+                    it.release()
+                }
+            }
+            multicastLock = null
+        } catch (e: Exception) {
+            println("AndroidDiscoveryService: Failed to release MulticastLock - ${e.message}")
         }
     }
 

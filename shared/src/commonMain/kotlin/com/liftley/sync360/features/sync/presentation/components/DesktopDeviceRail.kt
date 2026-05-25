@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Devices
 import androidx.compose.material.icons.filled.Wifi
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -109,18 +110,44 @@ fun DesktopDeviceRail(
             }
 
             // Discovered
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "NEARBY DISCOVERED",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurfaceVariant
-                )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "NEARBY DISCOVERED",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = colorScheme.onSurfaceVariant
+                    )
+                    if (uiState.isScanningForDevices) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(14.dp),
+                            strokeWidth = 2.dp,
+                            color = colorScheme.primary
+                        )
+                    } else {
+                        IconButton(
+                            onClick = { onEvent(SyncEvent.TriggerScan) },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = "Rescan",
+                                tint = colorScheme.primary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
+                }
+                
                 val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
                 val nearbyFiltered = uiState.nearbyDevices.filter { it.id !in pairedIds }
                 if (nearbyFiltered.isEmpty()) {
                     Text(
-                        text = "Searching local network…",
+                        text = if (uiState.isScanningForDevices) "Searching local network…" else "Scan stopped. Tap refresh.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                     )

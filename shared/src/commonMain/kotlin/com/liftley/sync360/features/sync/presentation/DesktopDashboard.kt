@@ -71,7 +71,8 @@ fun DesktopDashboard(
             ) {
                 if (activeDevice == null) {
                     ReadyToSyncCard(
-                        isDesktop = true
+                        isDesktop = true,
+                        onChooseDevice = { onEvent(SyncEvent.TriggerScan) }
                     )
                 } else {
                     // Header Status Area (Quiet & Premium)

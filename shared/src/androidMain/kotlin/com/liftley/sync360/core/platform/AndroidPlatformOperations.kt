@@ -1,6 +1,7 @@
 package com.liftley.sync360.core.platform
 
 import android.content.Context
+import android.content.Intent
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -13,9 +14,31 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     var onOpenFileCallback: ((path: String) -> Unit)? = null
     var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 
-    override fun startService(hostIp: String) = Unit
+    override fun startService(hostIp: String) {
+        try {
+            val intent = Intent().apply {
+                setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
+            }
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } catch (e: Exception) {
+            println("AndroidPlatformOperations: Failed to start SyncService - ${e.message}")
+        }
+    }
 
-    override fun stopService() = Unit
+    override fun stopService() {
+        try {
+            val intent = Intent().apply {
+                setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
+            }
+            context.stopService(intent)
+        } catch (e: Exception) {
+            println("AndroidPlatformOperations: Failed to stop SyncService - ${e.message}")
+        }
+    }
 
     override fun showOverlay() {
         onShowOverlayCallback?.invoke()

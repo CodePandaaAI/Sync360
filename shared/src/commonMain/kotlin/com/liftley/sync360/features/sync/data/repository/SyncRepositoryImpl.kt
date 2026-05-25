@@ -128,8 +128,10 @@ class SyncRepositoryImpl(
             _activeDeviceId.collect { activeId ->
                 if (activeId == null) {
                     _currentMessagesList.value = emptyList()
+                    platformOperations.stopService()
                 } else {
                     _currentMessagesList.value = conversationMessagesMap[activeId] ?: emptyList()
+                    platformOperations.startService("")
                 }
             }
         }
