@@ -1,12 +1,12 @@
 package com.liftley.sync360.features.sync.domain.model
 
 data class PickedFile(
+    val id: String,
     val name: String,
     val mimeType: String,
-    val content: ByteArray
-) {
-    val sizeBytes: Long get() = content.size.toLong()
-}
+    val sizeBytes: Long,
+    val content: ByteArray? = null
+)
 
 data class TransferFilePreview(
     val name: String,
@@ -26,3 +26,15 @@ data class ReceivedFileBatch(
     val files: List<TransferFilePreview>,
     val savedPaths: List<String>
 )
+
+data class FileTransferProgress(
+    val peerName: String,
+    val files: List<TransferFilePreview>,
+    val percent: Int,
+    val direction: TransferDirection
+)
+
+enum class TransferDirection {
+    SENDING,
+    RECEIVING
+}

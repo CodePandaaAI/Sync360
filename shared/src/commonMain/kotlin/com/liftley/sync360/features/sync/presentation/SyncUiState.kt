@@ -4,6 +4,7 @@ import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceStream
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 
@@ -23,6 +24,7 @@ data class SyncUiState(
     val isScanningForDevices: Boolean = true,
     val selectedFiles: List<PickedFile> = emptyList(),
     val incomingFileOffer: IncomingFileOffer? = null,
+    val fileTransferProgress: FileTransferProgress? = null,
     val receivedFileBatch: ReceivedFileBatch? = null
 ) {
     val activeClientCount: Int get() = connectedDevices.size

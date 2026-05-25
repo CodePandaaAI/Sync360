@@ -23,8 +23,9 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
     private val _discoveredDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
     override val discoveredDevices: StateFlow<List<DeviceProfile>> = _discoveredDevices.asStateFlow()
 
-    private var jmdns: JmDNS? = null
+    private val jmdnsInstances = mutableListOf<JmDNS>()
     private val serviceType = "_sync360._tcp.local."
+    private val discoveryTypes = listOf("_sync360._tcp.local.", "_sync360._tcp")
     private val devicesMap = mutableMapOf<String, DeviceProfile>()
     private val serviceNameToIdMap = mutableMapOf<String, String>()
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
@@ -35,15 +36,21 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         // Clean shutdown hook to unregister and close sockets when JVM exits or reloads
         Runtime.getRuntime().addShutdownHook(Thread {
             try {
-                jmdns?.unregisterAllServices()
-                jmdns?.close()
+                jmdnsInstances.forEach {
+                    it.unregisterAllServices()
+                    it.close()
+                }
             } catch (_: Exception) {}
         })
     }
 
     private val serviceListener = object : ServiceListener {
         override fun serviceAdded(event: ServiceEvent) {
-            jmdns?.requestServiceInfo(event.type, event.name, true)
+            jmdnsInstances.forEach { instance ->
+                try {
+                    instance.requestServiceInfo(event.type, event.name, true)
+                } catch (_: Exception) {}
+            }
         }
 
         override fun serviceRemoved(event: ServiceEvent) {
@@ -89,57 +96,52 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
     }
 
-    private fun getActualLocalAddress(): InetAddress {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) continue
-                
-                // Filter out virtual interfaces (Hyper-V, WSL, VirtualBox, Docker, etc.)
-                val name = networkInterface.name.lowercase()
-                val displayName = networkInterface.displayName.lowercase()
-                if (name.contains("virtual") || displayName.contains("virtual") ||
-                    name.contains("hyper-v") || displayName.contains("hyper-v") ||
-                    name.contains("host-only") || displayName.contains("host-only") ||
-                    name.contains("wsl") || displayName.contains("wsl") ||
-                    name.contains("vmware") || displayName.contains("vmware") ||
-                    name.contains("vbox") || displayName.contains("vbox") ||
-                    name.contains("vpn") || displayName.contains("vpn") ||
-                    name.contains("virtualbox") || displayName.contains("virtualbox") ||
-                    name.contains("zerotier") || displayName.contains("zerotier") ||
-                    name.contains("docker") || displayName.contains("docker") ||
-                    name.contains("vethernet") || displayName.contains("vethernet")) {
-                    continue
+    private fun getActualLocalAddresses(): List<InetAddress> =
+        runCatching {
+            NetworkInterface.getNetworkInterfaces().toList()
+                .filter { it.isUsableInterface() }
+                .flatMap { networkInterface ->
+                    networkInterface.inetAddresses.toList()
+                        .filter { address -> !address.isLoopbackAddress && address is Inet4Address }
                 }
+        }.getOrDefault(emptyList()).ifEmpty {
+            listOf(
+                runCatching { InetAddress.getLocalHost() }
+                    .getOrDefault(InetAddress.getLoopbackAddress())
+            )
+        }
 
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        return address
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return try {
-            InetAddress.getLocalHost()
-        } catch (_: Exception) {
-            InetAddress.getLoopbackAddress()
+    private fun NetworkInterface.isUsableInterface(): Boolean {
+        if (!isUp || isLoopback || isVirtual) return false
+        val id = "$name $displayName".lowercase()
+        val blocked = listOf(
+            "virtual", "hyper-v", "host-only", "wsl", "vmware", "vbox",
+            "vpn", "virtualbox", "zerotier", "docker", "vethernet"
+        )
+        return blocked.none { it in id }
+    }
+
+    private fun ensureJmDnsInstances() {
+        if (jmdnsInstances.isNotEmpty()) return
+        getActualLocalAddresses().forEach { address ->
+            runCatching {
+                jmdnsInstances += JmDNS.create(address)
+            }.onFailure { it.printStackTrace() }
         }
     }
 
     override fun startDiscovery() {
         try {
-            if (jmdns == null) {
-                val localAddress = getActualLocalAddress()
-                jmdns = JmDNS.create(localAddress)
-            }
+            ensureJmDnsInstances()
             // Safely avoid duplicate listener attachments
-            try {
-                jmdns?.removeServiceListener(serviceType, serviceListener)
-            } catch (_: Exception) {}
-            jmdns?.addServiceListener(serviceType, serviceListener)
+            jmdnsInstances.forEach { instance ->
+                discoveryTypes.forEach { type ->
+                    try {
+                        instance.removeServiceListener(type, serviceListener)
+                    } catch (_: Exception) {}
+                    instance.addServiceListener(type, serviceListener)
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -147,7 +149,13 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
 
     override fun stopDiscovery() {
         try {
-            jmdns?.removeServiceListener(serviceType, serviceListener)
+            jmdnsInstances.forEach { instance ->
+                discoveryTypes.forEach { type ->
+                    try {
+                        instance.removeServiceListener(type, serviceListener)
+                    } catch (_: Exception) {}
+                }
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -156,24 +164,25 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
 
     override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {
         try {
-            if (jmdns == null) {
-                val localAddress = getActualLocalAddress()
-                jmdns = JmDNS.create(localAddress)
-            }
+            ensureJmDnsInstances()
             // Clear any stale registrations to prevent conflicts on hot-reload/restart
-            try {
-                jmdns?.unregisterAllServices()
-            } catch (_: Exception) {}
+            jmdnsInstances.forEach { instance ->
+                try {
+                    instance.unregisterAllServices()
+                } catch (_: Exception) {}
+            }
 
             val properties = mapOf("type" to deviceType, "deviceId" to deviceId)
-            val serviceInfo = ServiceInfo.create(
-                serviceType,
-                deviceName,
-                port,
-                0, 0, // weight, priority
-                properties
-            )
-            jmdns?.registerService(serviceInfo)
+            jmdnsInstances.forEachIndexed { index, instance ->
+                val serviceInfo = ServiceInfo.create(
+                    serviceType,
+                    if (index == 0) deviceName else "$deviceName-$index",
+                    port,
+                    0, 0,
+                    properties
+                )
+                instance.registerService(serviceInfo)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

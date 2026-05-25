@@ -3,6 +3,7 @@ package com.liftley.sync360.features.sync.domain.usecase
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
@@ -43,6 +44,10 @@ class ObserveIncomingFileOfferUseCase(private val repository: SyncRepository) {
 
 class ObserveReceivedFileBatchUseCase(private val repository: SyncRepository) {
     operator fun invoke(): Flow<ReceivedFileBatch?> = repository.receivedFileBatch
+}
+
+class ObserveFileTransferProgressUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<FileTransferProgress?> = repository.fileTransferProgress
 }
 
 class StartSyncUseCase(private val repository: SyncRepository) {

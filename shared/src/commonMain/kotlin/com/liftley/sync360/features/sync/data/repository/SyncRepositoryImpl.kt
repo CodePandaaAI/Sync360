@@ -1,36 +1,15 @@
 package com.liftley.sync360.features.sync.data.repository
 
-import com.liftley.sync360.core.network.FilePayload
-import com.liftley.sync360.core.network.FileBatchPayload
-import com.liftley.sync360.core.network.FileOfferPayload
-import com.liftley.sync360.core.network.FilePreviewPayload
-import com.liftley.sync360.core.network.SyncPayload
-import com.liftley.sync360.core.network.SyncPayloadCodec
+import com.liftley.sync360.core.network.*
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
-import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.DeviceType
-import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
-import com.liftley.sync360.features.sync.domain.model.PickedFile
-import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
-import com.liftley.sync360.features.sync.domain.model.SyncMessage
-import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
+import com.liftley.sync360.features.sync.domain.model.*
 import com.liftley.sync360.features.sync.domain.network.NetworkDiscoveryService
+import com.liftley.sync360.features.sync.domain.network.SyncBinaryChunk
 import com.liftley.sync360.features.sync.domain.network.SyncNetworkService
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 import kotlin.time.Clock
@@ -67,8 +46,9 @@ class SyncRepositoryImpl(
     private val _isScanning = MutableStateFlow(false)
     override val isScanning: Flow<Boolean> = _isScanning.asStateFlow()
 
-    private var scanJob: kotlinx.coroutines.Job? = null
+    private var scanJob: Job? = null
     private val pendingOutgoingFileBatches = mutableMapOf<String, List<PickedFile>>()
+    private val incomingAssemblies = mutableMapOf<String, IncomingFileAssembly>()
 
     private val deviceNameById = mutableMapOf<String, String>()
 
@@ -78,6 +58,8 @@ class SyncRepositoryImpl(
     private val conversationMessagesMap = mutableMapOf<String, List<SyncMessage>>()
     private val _incomingFileOffer = MutableStateFlow<IncomingFileOffer?>(null)
     override val incomingFileOffer: Flow<IncomingFileOffer?> = _incomingFileOffer.asStateFlow()
+    private val _fileTransferProgress = MutableStateFlow<FileTransferProgress?>(null)
+    override val fileTransferProgress: Flow<FileTransferProgress?> = _fileTransferProgress.asStateFlow()
     private val _receivedFileBatch = MutableStateFlow<ReceivedFileBatch?>(null)
     override val receivedFileBatch: Flow<ReceivedFileBatch?> = _receivedFileBatch.asStateFlow()
 
@@ -118,6 +100,11 @@ class SyncRepositoryImpl(
                 handleIncomingPayload(json)
             }
         }
+        scope.launch {
+            networkService.incomingBinaryChunks.collect { chunk ->
+                receiveBinaryFileChunk(chunk)
+            }
+        }
 
         scope.launch {
             var wasConnected = false
@@ -131,7 +118,9 @@ class SyncRepositoryImpl(
                     _pairedDevicesList.value = emptyList()
                     conversationMessagesMap.clear()
                     pendingOutgoingFileBatches.clear()
+                    clearIncomingAssemblies()
                     _incomingFileOffer.value = null
+                    _fileTransferProgress.value = null
                     _receivedFileBatch.value = null
                     _currentMessagesList.value = emptyList()
                 }
@@ -175,7 +164,7 @@ class SyncRepositoryImpl(
         _isScanning.value = true
         discoveryService.startDiscovery()
         scanJob = scope.launch {
-            kotlinx.coroutines.delay(10000)
+            delay(10000.milliseconds)
             discoveryService.stopDiscovery()
             _isScanning.value = false
             println("Autodiscovery: Scan automatically stopped after 10 seconds to save battery.")
@@ -260,7 +249,9 @@ class SyncRepositoryImpl(
             _pairedDevicesList.value = _pairedDevicesList.value.filter { it.id != peerId }
         }
         pendingOutgoingFileBatches.clear()
+        clearIncomingAssemblies()
         _incomingFileOffer.value = null
+        _fileTransferProgress.value = null
         _receivedFileBatch.value = null
         _activeDeviceId.value = null
         networkService.disconnectFromPeer()
@@ -274,7 +265,9 @@ class SyncRepositoryImpl(
         _pendingOutgoing.value = null
         _pendingIncoming.value = emptyList()
         pendingOutgoingFileBatches.clear()
+        clearIncomingAssemblies()
         _incomingFileOffer.value = null
+        _fileTransferProgress.value = null
         _receivedFileBatch.value = null
         networkService.disconnectFromPeer()
         stopSync()
@@ -317,6 +310,13 @@ class SyncRepositoryImpl(
     override fun acceptFileOffer(offerId: String) {
         val offer = _incomingFileOffer.value?.takeIf { it.offerId == offerId } ?: return
         _incomingFileOffer.value = null
+        _receivedFileBatch.value = null
+        _fileTransferProgress.value = FileTransferProgress(
+            peerName = offer.senderName,
+            files = offer.files,
+            percent = 0,
+            direction = TransferDirection.RECEIVING
+        )
         sendWirePayload(
             kind = KIND_FILE_ACCEPT,
             content = offerId,
@@ -348,7 +348,9 @@ class SyncRepositoryImpl(
         _pendingOutgoing.value = null
         _pendingIncoming.value = emptyList()
         pendingOutgoingFileBatches.clear()
+        clearIncomingAssemblies()
         _incomingFileOffer.value = null
+        _fileTransferProgress.value = null
         _receivedFileBatch.value = null
         networkService.disconnectFromPeer()
     }
@@ -444,6 +446,8 @@ class SyncRepositoryImpl(
                 val peerId = payload.originDeviceId
                 if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
                 val offer = SyncPayloadCodec.decodeFileOfferOrNull(payload.content) ?: return
+                _receivedFileBatch.value = null
+                _fileTransferProgress.value = null
                 _incomingFileOffer.value = IncomingFileOffer(
                     offerId = offer.offerId,
                     senderDeviceId = peerId,
@@ -465,6 +469,12 @@ class SyncRepositoryImpl(
             KIND_FILE_ACCEPT -> {
                 if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
                 val files = pendingOutgoingFileBatches.remove(payload.content) ?: return
+                _fileTransferProgress.value = FileTransferProgress(
+                    peerName = payload.originDeviceName,
+                    files = files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) },
+                    percent = 0,
+                    direction = TransferDirection.SENDING
+                )
                 sendFileBatch(
                     offerId = payload.content,
                     files = files,
@@ -477,37 +487,83 @@ class SyncRepositoryImpl(
             KIND_FILE_BATCH -> {
                 if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
                 val batch = SyncPayloadCodec.decodeFileBatchOrNull(payload.content) ?: return
+                _receivedFileBatch.value = null
                 saveIncomingFileBatch(
                     senderName = payload.originDeviceName,
                     files = batch.files
                 )
             }
+            KIND_FILE_TRANSFER_START -> {
+                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                val start = SyncPayloadCodec.decodeFileTransferStartOrNull(payload.content) ?: return
+                startIncomingChunkedTransfer(payload.originDeviceName, start)
+            }
+            KIND_FILE_CHUNK -> {
+                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                val chunk = SyncPayloadCodec.decodeFileChunkOrNull(payload.content) ?: return
+                receiveFileChunk(chunk)
+            }
         }
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
     private fun sendFileBatch(
         offerId: String,
         files: List<PickedFile>,
         targetDeviceId: String
     ) {
-        val batch = FileBatchPayload(
+        val start = FileTransferStartPayload(
             offerId = offerId,
             files = files.map {
-                FilePayload(
+                FileTransferStartItem(
                     fileName = it.name,
                     mimeType = it.mimeType,
                     fileSize = it.sizeBytes,
-                    base64Data = Base64.encode(it.content)
+                    totalChunks = chunkCount(it.sizeBytes)
                 )
             }
         )
         sendWirePayload(
-            kind = KIND_FILE_BATCH,
-            content = SyncPayloadCodec.encodeFileBatch(batch),
+            kind = KIND_FILE_TRANSFER_START,
+            content = SyncPayloadCodec.encodeFileTransferStart(start),
             targetDeviceId = targetDeviceId,
             peerDeviceId = targetDeviceId
         )
+
+        val totalChunks = files.sumOf { chunkCount(it.sizeBytes) }.coerceAtLeast(1)
+        var sentChunks = 0
+        files.forEachIndexed { fileIndex, file ->
+            var chunkIndex = 0
+            val streamed = platformOperations.readFileChunks(file, FILE_CHUNK_SIZE_BYTES) { bytes ->
+                val chunk = SyncBinaryChunk(
+                    offerId = offerId,
+                    fileIndex = fileIndex,
+                    chunkIndex = chunkIndex,
+                    bytes = bytes
+                )
+                networkService.sendChunkToPeer(chunk)
+                networkService.broadcastChunkToClients(chunk)
+                sentChunks += 1
+                updateSendProgress(sentChunks, totalChunks)
+                chunkIndex += 1
+                runBlocking { delay(1.milliseconds) }
+            }
+            if (!streamed) {
+                updateSendProgress(sentChunks, totalChunks)
+            }
+        }
+
+        scope.launch {
+            delay(1200.milliseconds)
+            _fileTransferProgress.value = null
+        }
+    }
+
+    private fun chunkCount(size: Long): Int =
+        (((size + FILE_CHUNK_SIZE_BYTES - 1) / FILE_CHUNK_SIZE_BYTES).toInt()).coerceAtLeast(1)
+
+    private fun updateSendProgress(sentChunks: Int, totalChunks: Int) {
+        val percent = ((sentChunks.toFloat() / totalChunks.toFloat()) * 100).toInt().coerceIn(1, 100)
+        _fileTransferProgress.update { current -> current?.copy(percent = percent) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
@@ -522,8 +578,14 @@ class SyncRepositoryImpl(
         val savedPaths = mutableListOf<String>()
         var remaining = files.size
         if (remaining == 0) return
+        _fileTransferProgress.value = (_fileTransferProgress.value ?: FileTransferProgress(
+            peerName = senderName,
+            files = previews,
+            percent = 0,
+            direction = TransferDirection.RECEIVING
+        )).copy(percent = 10)
 
-        files.forEach { file ->
+        files.forEachIndexed { index, file ->
             val bytes = try {
                 Base64.decode(file.base64Data)
             } catch (_: Exception) {
@@ -531,21 +593,158 @@ class SyncRepositoryImpl(
             }
             if (bytes == null) {
                 remaining -= 1
-                return@forEach
+                updateReceiveProgress(files.size, index + 1)
+                if (remaining == 0) {
+                    completeReceivedTransfer(senderName, previews, savedPaths.toList())
+                }
+                return@forEachIndexed
+            }
+            _fileTransferProgress.update { current ->
+                current?.copy(percent = ((index.toFloat() / files.size.toFloat()) * 80).toInt().coerceAtLeast(10))
             }
             platformOperations.saveFile(file.fileName, bytes) { success, savedPath ->
                 if (success && savedPath != null) {
                     savedPaths += savedPath
                 }
                 remaining -= 1
+                updateReceiveProgress(files.size, files.size - remaining)
                 if (remaining == 0) {
-                    _receivedFileBatch.value = ReceivedFileBatch(
-                        senderName = senderName,
-                        files = previews,
-                        savedPaths = savedPaths
-                    )
+                    completeReceivedTransfer(senderName, previews, savedPaths.toList())
                 }
             }
+        }
+    }
+
+    private fun completeReceivedTransfer(
+        senderName: String,
+        previews: List<TransferFilePreview>,
+        savedPaths: List<String>
+    ) {
+        _fileTransferProgress.update { current -> current?.copy(percent = 100) }
+        scope.launch {
+            delay(900.milliseconds)
+            _fileTransferProgress.value = null
+            _receivedFileBatch.value = ReceivedFileBatch(
+                senderName = senderName,
+                files = previews,
+                savedPaths = savedPaths
+            )
+        }
+    }
+
+    private fun startIncomingChunkedTransfer(
+        senderName: String,
+        start: FileTransferStartPayload
+    ) {
+        val previews = start.files.map {
+            TransferFilePreview(
+                name = it.fileName,
+                mimeType = it.mimeType,
+                sizeBytes = it.fileSize
+            )
+        }
+        _receivedFileBatch.value = null
+        _fileTransferProgress.value = FileTransferProgress(
+            peerName = senderName,
+            files = previews,
+            percent = 1,
+            direction = TransferDirection.RECEIVING
+        )
+        incomingAssemblies[start.offerId] = IncomingFileAssembly(
+            senderName = senderName,
+            files = start.files,
+            writeHandles = start.files.map { platformOperations.beginFileWrite(it.fileName) }.toMutableList(),
+            nextChunkIndexes = MutableList(start.files.size) { 0 },
+            savedPaths = MutableList(start.files.size) { null },
+            totalChunks = start.files.sumOf { it.totalChunks }.coerceAtLeast(1)
+        )
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun receiveFileChunk(chunk: FileChunkPayload) {
+        receiveBinaryFileChunk(
+            SyncBinaryChunk(
+                offerId = chunk.offerId,
+                fileIndex = chunk.fileIndex,
+                chunkIndex = chunk.chunkIndex,
+                bytes = try {
+                    Base64.decode(chunk.base64Data)
+                } catch (_: Exception) {
+                    return
+                }
+            )
+        )
+    }
+
+    private fun receiveBinaryFileChunk(chunk: SyncBinaryChunk) {
+        val assembly = incomingAssemblies[chunk.offerId] ?: return
+        val file = assembly.files.getOrNull(chunk.fileIndex) ?: return
+        val handle = assembly.writeHandles.getOrNull(chunk.fileIndex) ?: run {
+            incomingAssemblies.remove(chunk.offerId)
+            cancelAssemblyWrites(assembly)
+            _fileTransferProgress.value = null
+            return
+        }
+        val nextChunkIndex = assembly.nextChunkIndexes.getOrNull(chunk.fileIndex) ?: return
+        if (chunk.chunkIndex != nextChunkIndex || chunk.chunkIndex >= file.totalChunks) return
+        if (!platformOperations.writeFileChunk(handle, chunk.bytes)) {
+            incomingAssemblies.remove(chunk.offerId)
+            cancelAssemblyWrites(assembly)
+            _fileTransferProgress.value = null
+            return
+        }
+        assembly.nextChunkIndexes[chunk.fileIndex] = nextChunkIndex + 1
+        assembly.receivedChunks += 1
+        val percent = ((assembly.receivedChunks.toFloat() / assembly.totalChunks.toFloat()) * 95)
+            .toInt()
+            .coerceIn(1, 95)
+        _fileTransferProgress.update { current -> current?.copy(percent = percent) }
+
+        if (assembly.nextChunkIndexes[chunk.fileIndex] >= file.totalChunks) {
+            assembly.savedPaths[chunk.fileIndex] = platformOperations.finishFileWrite(handle)
+            assembly.writeHandles[chunk.fileIndex] = null
+        }
+
+        if (assembly.receivedChunks >= assembly.totalChunks) {
+            incomingAssemblies.remove(chunk.offerId)
+            completeIncomingChunkedTransfer(assembly)
+        }
+    }
+
+    private fun completeIncomingChunkedTransfer(assembly: IncomingFileAssembly) {
+        val previews = assembly.files.map {
+            TransferFilePreview(
+                name = it.fileName,
+                mimeType = it.mimeType,
+                sizeBytes = it.fileSize
+            )
+        }
+        completeReceivedTransfer(
+            senderName = assembly.senderName,
+            previews = previews,
+            savedPaths = assembly.savedPaths.mapNotNull { it }
+        )
+    }
+
+    private fun cancelAssemblyWrites(assembly: IncomingFileAssembly) {
+        assembly.writeHandles.filterNotNull().forEach { handle ->
+            platformOperations.cancelFileWrite(handle)
+        }
+        assembly.writeHandles.indices.forEach { index ->
+            assembly.writeHandles[index] = null
+        }
+    }
+
+    private fun clearIncomingAssemblies() {
+        incomingAssemblies.values.forEach(::cancelAssemblyWrites)
+        incomingAssemblies.clear()
+    }
+
+    private fun updateReceiveProgress(total: Int, completed: Int) {
+        if (total <= 0) return
+        val percent = ((completed.toFloat() / total.toFloat()) * 100).toInt().coerceIn(10, 100)
+        _fileTransferProgress.update { current ->
+            current?.copy(percent = percent)
         }
     }
 
@@ -635,5 +834,18 @@ class SyncRepositoryImpl(
         const val KIND_FILE_ACCEPT = "file_accept"
         const val KIND_FILE_REJECT = "file_reject"
         const val KIND_FILE_BATCH = "file_batch"
+        const val KIND_FILE_TRANSFER_START = "file_transfer_start"
+        const val KIND_FILE_CHUNK = "file_chunk"
+        private const val FILE_CHUNK_SIZE_BYTES = 16 * 1024
     }
 }
+
+private data class IncomingFileAssembly(
+    val senderName: String,
+    val files: List<FileTransferStartItem>,
+    val writeHandles: MutableList<String?>,
+    val nextChunkIndexes: MutableList<Int>,
+    val savedPaths: MutableList<String?>,
+    val totalChunks: Int,
+    var receivedChunks: Int = 0
+)

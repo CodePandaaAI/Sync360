@@ -72,6 +72,9 @@ class MainActivity : ComponentActivity() {
             androidOps.onSaveFileCallback = { name, bytes, onResult ->
                 saveFileToDownloads(name, bytes, onResult)
             }
+            androidOps.onSaveFileChunksCallback = { name, chunks, onResult ->
+                saveFileChunksToDownloads(name, chunks, onResult)
+            }
         }
 
         setContent {
@@ -96,7 +99,6 @@ class MainActivity : ComponentActivity() {
             try {
                 val contentResolver = applicationContext.contentResolver
                 val picked = mutableListOf<PickedFile>()
-                var skippedLargeFile = false
                 uris.forEachIndexed { index, uri ->
                     var fileName = "file_${System.currentTimeMillis()}_$index"
                     contentResolver.query(uri, null, null, null, null)?.use { cursor ->
@@ -106,27 +108,18 @@ class MainActivity : ComponentActivity() {
                             if (nameIndex != -1) fileName = cursor.getString(nameIndex)
                             if (sizeIndex != -1) {
                                 val size = cursor.getLong(sizeIndex)
-                                if (size > 50 * 1024 * 1024) {
-                                    skippedLargeFile = true
-                                    return@forEachIndexed
-                                }
+                                if (size <= 0L) return@forEachIndexed
                             }
                         }
                     }
                     val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                    if (bytes != null) {
-                        picked += PickedFile(fileName, mimeType, bytes)
-                    }
+                    val size = contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (cursor.moveToFirst() && sizeIndex != -1) cursor.getLong(sizeIndex) else 0L
+                    } ?: 0L
+                    picked += PickedFile(uri.toString(), fileName, mimeType, size)
                 }
                 launch(Dispatchers.Main) {
-                    if (skippedLargeFile) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "Skipped files over 50MB",
-                            Toast.LENGTH_LONG
-                        ).show()
-                    }
                     if (picked.isNotEmpty()) {
                         callback(picked)
                     }
@@ -173,6 +166,14 @@ class MainActivity : ComponentActivity() {
         content: ByteArray,
         onResult: (success: Boolean, path: String?) -> Unit
     ) {
+        saveFileChunksToDownloads(name, listOf(content), onResult)
+    }
+
+    private fun saveFileChunksToDownloads(
+        name: String,
+        chunks: List<ByteArray>,
+        onResult: (success: Boolean, path: String?) -> Unit
+    ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val resolver = applicationContext.contentResolver
@@ -186,7 +187,9 @@ class MainActivity : ComponentActivity() {
                 }
                 val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
                 if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { it.write(content) }
+                    resolver.openOutputStream(uri)?.use { output ->
+                        chunks.forEach { output.write(it) }
+                    }
                     contentValues.clear()
                     contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
                     resolver.update(uri, contentValues, null, null)

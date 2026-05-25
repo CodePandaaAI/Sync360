@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -18,6 +19,7 @@ import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
@@ -77,7 +79,8 @@ fun MobileDevicePickerSheet(
     uiState: SyncUiState,
     onDismiss: () -> Unit,
     onSelectPaired: (String) -> Unit,
-    onPairNearby: (String) -> Unit
+    onPairNearby: (String) -> Unit,
+    onDisconnect: () -> Unit
 ) {
     val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
     val connectedDevices = uiState.connectedDevices
@@ -97,7 +100,7 @@ fun MobileDevicePickerSheet(
             verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
             Text(
-                text = "Devices",
+                text = if (uiState.activeDeviceId == null) "Nearby devices" else "Connected device",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
@@ -128,9 +131,20 @@ fun MobileDevicePickerSheet(
                         )
                     }
                 }
+                OutlinedButton(
+                    onClick = {
+                        onDisconnect()
+                        onDismiss()
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(SyncDimens.cornerSmall),
+                    contentPadding = PaddingValues(vertical = Spacing.sm + Spacing.xs)
+                ) {
+                    Text("Disconnect", fontWeight = FontWeight.SemiBold)
+                }
             } else {
                 Text(
-                    text = "No paired devices yet.",
+                    text = "Open Sync360 on another device connected to the same Wi-Fi.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

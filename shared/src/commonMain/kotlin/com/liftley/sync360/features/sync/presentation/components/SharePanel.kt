@@ -76,10 +76,10 @@ fun SharePanel(
                 )
             )
 
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
                 OutlinedButton(
                     onClick = { onEvent(SyncEvent.PasteFromClipboard) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
@@ -90,7 +90,7 @@ fun SharePanel(
                 Button(
                     onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
                     enabled = uiState.outgoingText.isNotBlank(),
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
@@ -119,18 +119,18 @@ fun SharePanel(
 
 @Composable
 private fun FilePickerActions(onEvent: (SyncEvent) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         FileAction(
             label = "Images / videos",
             icon = Icons.Default.PermMedia,
             onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Media)) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxWidth()
         )
         FileAction(
             label = "Files",
             icon = Icons.Default.Folder,
             onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.fillMaxWidth()
         )
     }
 }
@@ -182,17 +182,23 @@ private fun SelectedFilesPanel(
                 subtitle = formatBytes(files.sumOf { it.sizeBytes }),
                 files = files
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = onAddMedia, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                FilledTonalButton(onClick = onAddMedia, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.PermMedia, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add images / videos")
                 }
-                FilledTonalButton(onClick = onAddFiles, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                FilledTonalButton(onClick = onAddFiles, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Add files")
                 }
-                OutlinedButton(onClick = onClear, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f)) {
+                OutlinedButton(onClick = onClear, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Clear files")
                 }
-                Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1.4f)) {
+                Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Text("Send", fontWeight = FontWeight.Bold)
                 }
             }

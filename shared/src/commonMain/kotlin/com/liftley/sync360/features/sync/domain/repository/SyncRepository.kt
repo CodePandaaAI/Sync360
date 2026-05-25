@@ -3,6 +3,7 @@ package com.liftley.sync360.features.sync.domain.repository
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
@@ -18,6 +19,7 @@ interface SyncRepository {
     val conversationMessages: Flow<List<SyncMessage>>
     val isScanning: Flow<Boolean>
     val incomingFileOffer: Flow<IncomingFileOffer?>
+    val fileTransferProgress: Flow<FileTransferProgress?>
     val receivedFileBatch: Flow<ReceivedFileBatch?>
 
     fun startSync()

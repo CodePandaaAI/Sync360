@@ -136,12 +136,8 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
             println("AndroidDiscoveryService: Failed to release MulticastLock - ${e.message}")
         }
 
-        registrationListener?.let {
-            try {
-                nsdManager.unregisterService(it)
-            } catch (_: Exception) {}
-            registrationListener = null
-        }
+        // Discovery and advertisement have different lifetimes. Keep the host
+        // registered so desktops can still find this phone after scan auto-stop.
     }
 
     override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {

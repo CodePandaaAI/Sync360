@@ -1,6 +1,7 @@
 package com.liftley.sync360.features.sync.data.network
 
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
+import com.liftley.sync360.features.sync.domain.network.SyncBinaryChunk
 import com.liftley.sync360.features.sync.domain.network.SyncNetworkService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -29,6 +30,9 @@ class KtorSyncNetworkService : SyncNetworkService {
     private val _incomingPayloads = MutableSharedFlow<String>(extraBufferCapacity = 128)
     override val incomingPayloads: Flow<String> = _incomingPayloads.asSharedFlow()
 
+    private val _incomingBinaryChunks = MutableSharedFlow<SyncBinaryChunk>(extraBufferCapacity = 256)
+    override val incomingBinaryChunks: Flow<SyncBinaryChunk> = _incomingBinaryChunks.asSharedFlow()
+
     // --- Server State ---
     private var serverEngine: ApplicationEngine? = null
     // Keep track of active server WebSocket sessions by deviceId
@@ -39,6 +43,8 @@ class KtorSyncNetworkService : SyncNetworkService {
     private var clientSession: DefaultClientWebSocketSession? = null
     private var clientJob: Job? = null
     private var userDisconnected = false
+    private val clientSendMutex = Mutex()
+    private val serverSendMutex = Mutex()
     private val httpClient = HttpClient(io.ktor.client.engine.cio.CIO) {
         install(io.ktor.client.plugins.websocket.WebSockets) {
             pingInterval = 10_000
@@ -81,8 +87,12 @@ class KtorSyncNetworkService : SyncNetworkService {
 
                         try {
                             for (frame in incoming) {
-                                if (frame is Frame.Text) {
-                                    _incomingPayloads.emit(frame.readText())
+                                when (frame) {
+                                    is Frame.Text -> _incomingPayloads.emit(frame.readText())
+                                    is Frame.Binary -> decodeBinaryFrame(frame.readBytes())?.let {
+                                        _incomingBinaryChunks.emit(it)
+                                    }
+                                    else -> Unit
                                 }
                             }
                         } catch (e: Exception) {
@@ -139,8 +149,12 @@ class KtorSyncNetworkService : SyncNetworkService {
                         updateConnectionStatus()
 
                         for (frame in incoming) {
-                            if (frame is Frame.Text) {
-                                _incomingPayloads.emit(frame.readText())
+                            when (frame) {
+                                is Frame.Text -> _incomingPayloads.emit(frame.readText())
+                                is Frame.Binary -> decodeBinaryFrame(frame.readBytes())?.let {
+                                    _incomingBinaryChunks.emit(it)
+                                }
+                                else -> Unit
                             }
                         }
                     }
@@ -194,7 +208,9 @@ class KtorSyncNetworkService : SyncNetworkService {
             val session = clientSession
             if (session != null && _connectionStatus.value == ConnectionStatus.CONNECTED) {
                 try {
-                    session.send(Frame.Text(payloadJson))
+                    clientSendMutex.withLock {
+                        session.send(Frame.Text(payloadJson))
+                    }
                 } catch (e: Exception) {
                     println("Client: Failed to send - ${e.message}")
                 }
@@ -211,7 +227,9 @@ class KtorSyncNetworkService : SyncNetworkService {
             }
             sessions.forEach { session ->
                 try {
-                    session.send(Frame.Text(payloadJson))
+                    serverSendMutex.withLock {
+                        session.send(Frame.Text(payloadJson))
+                    }
                 } catch (e: Exception) {
                     println("Server: Failed to broadcast - ${e.message}")
                 }
@@ -219,7 +237,55 @@ class KtorSyncNetworkService : SyncNetworkService {
         }
     }
 
+    override fun sendChunkToPeer(chunk: SyncBinaryChunk) {
+        scope.launch {
+            val session = clientSession
+            if (session != null && _connectionStatus.value == ConnectionStatus.CONNECTED) {
+                try {
+                    clientSendMutex.withLock {
+                        session.send(Frame.Binary(true, encodeBinaryFrame(chunk)))
+                    }
+                } catch (e: Exception) {
+                    println("Client: Failed to send chunk - ${e.message}")
+                }
+            }
+        }
+    }
+
+    override fun broadcastChunkToClients(chunk: SyncBinaryChunk) {
+        scope.launch {
+            val sessions = serverSessionsMutex.withLock { activeServerSessions.values.toList() }
+            sessions.forEach { session ->
+                try {
+                    serverSendMutex.withLock {
+                        session.send(Frame.Binary(true, encodeBinaryFrame(chunk)))
+                    }
+                } catch (e: Exception) {
+                    println("Server: Failed to broadcast chunk - ${e.message}")
+                }
+            }
+        }
+    }
+
+    private fun encodeBinaryFrame(chunk: SyncBinaryChunk): ByteArray {
+        val header = "${chunk.offerId}|${chunk.fileIndex}|${chunk.chunkIndex}\n".encodeToByteArray()
+        return header + chunk.bytes
+    }
+
+    private fun decodeBinaryFrame(bytes: ByteArray): SyncBinaryChunk? {
+        val split = bytes.indexOf('\n'.code.toByte())
+        if (split <= 0) return null
+        val header = bytes.copyOfRange(0, split).decodeToString().split('|')
+        if (header.size != 3) return null
+        return SyncBinaryChunk(
+            offerId = header[0],
+            fileIndex = header[1].toIntOrNull() ?: return null,
+            chunkIndex = header[2].toIntOrNull() ?: return null,
+            bytes = bytes.copyOfRange(split + 1, bytes.size)
+        )
+    }
+
     companion object {
-        private const val MAX_FRAME_SIZE_BYTES = 80L * 1024 * 1024
+        private const val MAX_FRAME_SIZE_BYTES = 2L * 1024 * 1024
     }
 }

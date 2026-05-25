@@ -29,6 +29,7 @@ class SyncViewModel(
     private val observeActiveDeviceIdUseCase: ObserveActiveDeviceIdUseCase,
     private val observeConversationMessagesUseCase: ObserveConversationMessagesUseCase,
     private val observeIncomingFileOfferUseCase: ObserveIncomingFileOfferUseCase,
+    private val observeFileTransferProgressUseCase: ObserveFileTransferProgressUseCase,
     private val observeReceivedFileBatchUseCase: ObserveReceivedFileBatchUseCase,
     private val observeIsScanningUseCase: ObserveIsScanningUseCase,
     private val triggerManualScanUseCase: TriggerManualScanUseCase,
@@ -95,6 +96,11 @@ class SyncViewModel(
         viewModelScope.launch {
             observeIncomingFileOfferUseCase().collect { offer ->
                 _uiState.update { it.copy(incomingFileOffer = offer) }
+            }
+        }
+        viewModelScope.launch {
+            observeFileTransferProgressUseCase().collect { progress ->
+                _uiState.update { it.copy(fileTransferProgress = progress) }
             }
         }
         viewModelScope.launch {

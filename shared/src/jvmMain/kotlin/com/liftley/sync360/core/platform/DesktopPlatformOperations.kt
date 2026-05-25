@@ -7,11 +7,13 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
 
 class DesktopPlatformOperations : PlatformOperations {
+    private val activeFileWrites = mutableMapOf<String, DesktopFileWrite>()
 
     override fun startService(hostIp: String) {}
     override fun stopService() {}
@@ -55,9 +57,10 @@ class DesktopPlatformOperations : PlatformOperations {
             val picked = files.mapNotNull { selectedFile ->
                 runCatching {
                     PickedFile(
+                        id = selectedFile.absolutePath,
                         name = selectedFile.name,
                         mimeType = java.nio.file.Files.probeContentType(selectedFile.toPath()) ?: "application/octet-stream",
-                        content = selectedFile.readBytes()
+                        sizeBytes = selectedFile.length()
                     )
                 }.getOrNull()
             }
@@ -84,6 +87,97 @@ class DesktopPlatformOperations : PlatformOperations {
         } catch (e: Exception) {
             e.printStackTrace()
             onResult(false, null)
+        }
+    }
+
+    override fun readFileChunks(
+        file: PickedFile,
+        chunkSizeBytes: Int,
+        onChunk: (ByteArray) -> Unit
+    ): Boolean {
+        return try {
+            File(file.id).inputStream().use { input ->
+                val buffer = ByteArray(chunkSizeBytes)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    onChunk(buffer.copyOf(read))
+                }
+            }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun saveFileChunks(
+        name: String,
+        chunks: List<ByteArray>,
+        onResult: (success: Boolean, path: String?) -> Unit
+    ) {
+        try {
+            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
+            val syncDir = File(downloadsDir, "Sync360")
+            syncDir.mkdirs()
+            val selectedFile = File(syncDir, name)
+            selectedFile.outputStream().use { output ->
+                chunks.forEach { output.write(it) }
+            }
+            onResult(true, selectedFile.absolutePath)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            onResult(false, null)
+        }
+    }
+
+    override fun beginFileWrite(name: String): String? {
+        return try {
+            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
+            val syncDir = File(downloadsDir, "Sync360")
+            syncDir.mkdirs()
+            val selectedFile = File(syncDir, name)
+            val output = selectedFile.outputStream()
+            val handle = selectedFile.absolutePath
+            synchronized(activeFileWrites) {
+                activeFileWrites[handle] = DesktopFileWrite(selectedFile, output)
+            }
+            handle
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override fun writeFileChunk(handle: String, bytes: ByteArray): Boolean {
+        return try {
+            val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output } ?: return false
+            output.write(bytes)
+            true
+        } catch (_: Exception) {
+            cancelFileWrite(handle)
+            false
+        }
+    }
+
+    override fun finishFileWrite(handle: String): String? {
+        return try {
+            val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return null
+            write.output.flush()
+            write.output.close()
+            write.file.absolutePath
+        } catch (_: Exception) {
+            cancelFileWrite(handle)
+            null
+        }
+    }
+
+    override fun cancelFileWrite(handle: String) {
+        val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return
+        try {
+            write.output.close()
+        } catch (_: Exception) {
+        }
+        runCatching {
+            write.file.delete()
         }
     }
 
@@ -148,3 +242,8 @@ class DesktopPlatformOperations : PlatformOperations {
         return emptyFlow()
     }
 }
+
+private data class DesktopFileWrite(
+    val file: File,
+    val output: OutputStream
+)

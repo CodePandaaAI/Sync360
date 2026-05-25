@@ -1,11 +1,14 @@
 package com.liftley.sync360.core.platform
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
-import com.liftley.sync360.core.platform.FilePickerKind
+import android.net.Uri
+import android.provider.MediaStore
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import java.io.OutputStream
 
 class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
     
@@ -14,6 +17,8 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     var onOpenFilePickerCallback: ((kind: FilePickerKind, onFilesSelected: (files: List<PickedFile>) -> Unit) -> Unit)? = null
     var onOpenFileCallback: ((path: String) -> Unit)? = null
     var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
+    var onSaveFileChunksCallback: ((name: String, chunks: List<ByteArray>, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
+    private val activeFileWrites = mutableMapOf<String, AndroidFileWrite>()
 
     override fun startService(hostIp: String) {
         try {
@@ -68,12 +73,107 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         onOpenFilePickerCallback?.invoke(kind, onFilesSelected)
     }
 
+    override fun readFileChunks(
+        file: PickedFile,
+        chunkSizeBytes: Int,
+        onChunk: (ByteArray) -> Unit
+    ): Boolean {
+        return try {
+            val uri = android.net.Uri.parse(file.id)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                val buffer = ByteArray(chunkSizeBytes)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read <= 0) break
+                    onChunk(buffer.copyOf(read))
+                }
+            } ?: return false
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     override fun saveFile(
         name: String,
         content: ByteArray,
         onResult: (success: Boolean, path: String?) -> Unit
     ) {
         onSaveFileCallback?.invoke(name, content, onResult)
+    }
+
+    override fun saveFileChunks(
+        name: String,
+        chunks: List<ByteArray>,
+        onResult: (success: Boolean, path: String?) -> Unit
+    ) {
+        onSaveFileChunksCallback?.invoke(name, chunks, onResult)
+            ?: onResult(false, null)
+    }
+
+    override fun beginFileWrite(name: String): String? {
+        return try {
+            val resolver = context.contentResolver
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                put(
+                    MediaStore.MediaColumns.RELATIVE_PATH,
+                    android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360"
+                )
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
+            val output = resolver.openOutputStream(uri)
+            if (output == null) {
+                resolver.delete(uri, null, null)
+                return null
+            }
+            val handle = uri.toString()
+            synchronized(activeFileWrites) {
+                activeFileWrites[handle] = AndroidFileWrite(uri, output)
+            }
+            handle
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    override fun writeFileChunk(handle: String, bytes: ByteArray): Boolean {
+        return try {
+            val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output } ?: return false
+            output.write(bytes)
+            true
+        } catch (_: Exception) {
+            cancelFileWrite(handle)
+            false
+        }
+    }
+
+    override fun finishFileWrite(handle: String): String? {
+        return try {
+            val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return null
+            write.output.flush()
+            write.output.close()
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.IS_PENDING, 0)
+            }
+            context.contentResolver.update(write.uri, values, null, null)
+            write.uri.toString()
+        } catch (_: Exception) {
+            cancelFileWrite(handle)
+            null
+        }
+    }
+
+    override fun cancelFileWrite(handle: String) {
+        val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return
+        try {
+            write.output.close()
+        } catch (_: Exception) {
+        }
+        runCatching {
+            context.contentResolver.delete(write.uri, null, null)
+        }
     }
 
     override fun openFile(path: String) {
@@ -114,3 +214,8 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         return emptyFlow()
     }
 }
+
+private data class AndroidFileWrite(
+    val uri: Uri,
+    val output: OutputStream
+)

@@ -36,6 +36,7 @@ val commonModule = module {
     factory { ObserveActiveDeviceIdUseCase(get()) }
     factory { ObserveConversationMessagesUseCase(get()) }
     factory { ObserveIncomingFileOfferUseCase(get()) }
+    factory { ObserveFileTransferProgressUseCase(get()) }
     factory { ObserveReceivedFileBatchUseCase(get()) }
     factory { RequestConnectUseCase(get()) }
     factory { ConfirmOutgoingConnectUseCase(get()) }
@@ -68,6 +69,7 @@ val commonModule = module {
             observeActiveDeviceIdUseCase = get(),
             observeConversationMessagesUseCase = get(),
             observeIncomingFileOfferUseCase = get(),
+            observeFileTransferProgressUseCase = get(),
             observeReceivedFileBatchUseCase = get(),
             observeIsScanningUseCase = get(),
             triggerManualScanUseCase = get(),

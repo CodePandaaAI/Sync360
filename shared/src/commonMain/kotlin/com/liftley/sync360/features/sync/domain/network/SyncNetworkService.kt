@@ -3,6 +3,13 @@ package com.liftley.sync360.features.sync.domain.network
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import kotlinx.coroutines.flow.Flow
 
+data class SyncBinaryChunk(
+    val offerId: String,
+    val fileIndex: Int,
+    val chunkIndex: Int,
+    val bytes: ByteArray
+)
+
 /**
  * Pure domain interface for the WebSocket networking service.
  * Represents symmetric capabilities: it can start a local server and connect as a client to a remote server.
@@ -16,6 +23,8 @@ interface SyncNetworkService {
     
     /** Flow of raw JSON payloads received from peers (both Client and Server sides) */
     val incomingPayloads: Flow<String>
+
+    val incomingBinaryChunks: Flow<SyncBinaryChunk>
 
     /**
      * Start the local embedded server to accept incoming connections.
@@ -50,4 +59,8 @@ interface SyncNetworkService {
      * Broadcast a JSON payload to all connected clients via the server socket.
      */
     fun broadcastToClients(payloadJson: String)
+
+    fun sendChunkToPeer(chunk: SyncBinaryChunk)
+
+    fun broadcastChunkToClients(chunk: SyncBinaryChunk)
 }

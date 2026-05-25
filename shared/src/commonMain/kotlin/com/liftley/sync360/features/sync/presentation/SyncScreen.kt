@@ -1,14 +1,13 @@
 package com.liftley.sync360.features.sync.presentation
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material.icons.filled.Wifi
@@ -16,10 +15,13 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.Spacing
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.components.*
 
@@ -35,6 +37,12 @@ fun SyncScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
     val visibleNearby = uiState.nearbyDevices.filter { it.id !in pairedIds }
+
+    LaunchedEffect(uiState.activeDeviceId) {
+        if (uiState.activeDeviceId == null) {
+            showDevicePicker = true
+        }
+    }
 
     var copiedFeedbackTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     LaunchedEffect(copiedFeedbackTrigger) {
@@ -54,9 +62,14 @@ fun SyncScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             SyncTopBar(
+                uiState = uiState,
+                activeDevice = activeDevice,
                 nearbyCount = visibleNearby.size,
                 isScanning = uiState.isScanningForDevices,
-                onRefreshScan = { onEvent(SyncEvent.TriggerScan) }
+                onOpenDevices = {
+                    if (!uiState.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
+                    showDevicePicker = true
+                }
             )
         },
         snackbarHost = { SnackbarHost(snackbarHostState) }
@@ -72,106 +85,42 @@ fun SyncScreen(
             verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
             item {
-                NearbyDevicesSection(
-                    title = "Nearby devices",
-                    nearbyDevices = uiState.nearbyDevices,
-                    pairedDeviceIds = pairedIds,
-                    isScanning = uiState.isScanningForDevices,
-                    localIp = uiState.serverIp,
-                    onConnect = { onEvent(SyncEvent.RequestConnect(it)) },
-                    onRefresh = { onEvent(SyncEvent.TriggerScan) }
+                Text(
+                    text = "Sync360",
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
             }
 
-            if (uiState.connectedDevices.isNotEmpty()) {
-                item {
-                    Text(
-                        text = "Paired this session",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onBackground,
-                        modifier = Modifier.padding(top = Spacing.sm, bottom = Spacing.xs)
-                    )
-                }
-                items(uiState.connectedDevices, key = { it.id }) { device ->
-                    val isActive = device.id == uiState.activeDeviceId
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onEvent(SyncEvent.SwitchDevice(device.id)) },
-                        shape = RoundedCornerShape(20.dp),
-                        color = if (isActive) {
-                            MaterialTheme.colorScheme.primaryContainer
-                        } else {
-                            MaterialTheme.colorScheme.surfaceContainerHigh
-                        },
-                        border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)) else null,
-                        tonalElevation = if (isActive) 2.dp else 1.dp
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                        ) {
-                            Surface(
-                                modifier = Modifier.size(36.dp),
-                                shape = RoundedCornerShape(10.dp),
-                                color = if (isActive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = deviceIcon(device.type),
-                                        contentDescription = null,
-                                        tint = if (isActive) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = device.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = if (isActive) "Active session partner" else "Standby pairing",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isActive) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            if (isActive) {
-                                Surface(
-                                    shape = CircleShape,
-                                    color = MaterialTheme.colorScheme.primary
-                                ) {
-                                    Box(
-                                        modifier = Modifier.size(8.dp)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+            item {
+                Text(
+                    text = "You'll appear as",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                LocalDeviceCard(serverIp = uiState.serverIp)
+            }
+
+            item {
+                Text(
+                    text = if (activeDevice == null) "Ready to receive" else "Sharing with you",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
 
             if (activeDevice == null) {
                 item {
-                    ReadyToSyncCard(
-                        isDesktop = false,
-                        onChooseDevice = { showDevicePicker = true }
+                    ReadyReceiveSurface(
+                        isScanning = uiState.isScanningForDevices,
+                        onOpenDevices = { showDevicePicker = true }
                     )
                 }
             } else {
-                item {
-                    SharePanel(
-                        isDesktop = false,
-                        uiState = uiState,
-                        activeDevice = activeDevice,
-                        onEvent = onEvent
-                    )
-                }
-
                 uiState.incomingFileOffer?.let { offer ->
                     item {
                         IncomingFileOfferCard(
@@ -190,6 +139,21 @@ fun SyncScreen(
                     }
                 }
 
+                uiState.fileTransferProgress?.let { progress ->
+                    item {
+                        FileTransferProgressCard(progress = progress)
+                    }
+                }
+
+                item {
+                    SharePanel(
+                        isDesktop = false,
+                        uiState = uiState,
+                        activeDevice = activeDevice,
+                        onEvent = onEvent
+                    )
+                }
+
                 item {
                     ClipboardHistorySection(
                         textsList = activeStream?.latestTexts ?: emptyList(),
@@ -198,58 +162,6 @@ fun SyncScreen(
                             copiedFeedbackTrigger++
                         }
                     )
-                }
-
-                // Disconnect Controls placed perfectly at the very bottom
-                item {
-                    val isConnected = uiState.connectionStatus == ConnectionStatus.CONNECTED
-                    Surface(
-                        modifier = Modifier.fillMaxWidth().padding(top = Spacing.md),
-                        shape = RoundedCornerShape(24.dp),
-                        color = if (isConnected) MaterialTheme.colorScheme.surfaceContainerHigh else MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.15f),
-                        border = BorderStroke(1.dp, if (isConnected) MaterialTheme.colorScheme.outlineVariant else MaterialTheme.colorScheme.error.copy(alpha = 0.3f)),
-                        tonalElevation = 1.dp
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(18.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Wifi,
-                                    contentDescription = null,
-                                    tint = if (isConnected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Text(
-                                    text = if (isConnected) "Connected with ${activeDevice.name}" else "Standby - waiting for ${activeDevice.name}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isConnected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error
-                                )
-                            }
-                            
-                            Button(
-                                onClick = { onEvent(SyncEvent.Disconnect) },
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = if (isConnected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.error,
-                                    contentColor = if (isConnected) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onError
-                                ),
-                                shape = RoundedCornerShape(16.dp),
-                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 6.dp)
-                            ) {
-                                Text(
-                                    text = if (isConnected) "Disconnect" else "Cancel Standby",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -266,7 +178,8 @@ fun SyncScreen(
             onPairNearby = {
                 onEvent(SyncEvent.RequestConnect(it))
                 showDevicePicker = false
-            }
+            },
+            onDisconnect = { onEvent(SyncEvent.Disconnect) }
         )
     }
 
@@ -276,26 +189,22 @@ fun SyncScreen(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SyncTopBar(
+    uiState: SyncUiState,
+    activeDevice: DeviceProfile?,
     nearbyCount: Int,
     isScanning: Boolean,
-    onRefreshScan: () -> Unit
+    onOpenDevices: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
-    TopAppBar(
+    CenterAlignedTopAppBar(
         title = {
-            Text(
-                text = "Sync360",
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Black
-            )
-        },
-        actions = {
-            ScanningStatusChip(
+            DevicePill(
+                uiState = uiState,
+                activeDevice = activeDevice,
                 nearbyCount = nearbyCount,
                 isScanning = isScanning,
-                onRefresh = onRefreshScan,
-                modifier = Modifier.padding(end = Spacing.md)
+                onClick = onOpenDevices
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(
@@ -303,6 +212,145 @@ private fun SyncTopBar(
             titleContentColor = colorScheme.onBackground
         )
     )
+}
+
+@Composable
+private fun DevicePill(
+    uiState: SyncUiState,
+    activeDevice: DeviceProfile?,
+    nearbyCount: Int,
+    isScanning: Boolean,
+    onClick: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val label = when {
+        activeDevice != null -> activeDevice.name
+        isScanning -> "Scanning"
+        nearbyCount > 0 -> "$nearbyCount nearby"
+        else -> "Nearby devices"
+    }
+    Surface(
+        modifier = Modifier
+            .clip(CircleShape)
+            .clickable(onClick = onClick),
+        shape = CircleShape,
+        color = colorScheme.surface,
+        tonalElevation = 1.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (isScanning && activeDevice == null) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(14.dp),
+                    strokeWidth = 2.dp,
+                    color = colorScheme.primary
+                )
+            } else {
+                Icon(
+                    imageVector = activeDevice?.type?.let { deviceIcon(it) } ?: Icons.Default.Wifi,
+                    contentDescription = null,
+                    tint = colorScheme.primary,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.widthIn(max = 180.dp)
+            )
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun LocalDeviceCard(serverIp: String) {
+    val colorScheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Surface(modifier = Modifier.size(54.dp), shape = CircleShape, color = colorScheme.primaryContainer) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.Smartphone, contentDescription = null, tint = colorScheme.onPrimaryContainer)
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text("This device", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    text = serverIp,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReadyReceiveSurface(
+    isScanning: Boolean,
+    onOpenDevices: () -> Unit
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onOpenDevices),
+        shape = RoundedCornerShape(28.dp),
+        color = colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier.padding(vertical = 44.dp, horizontal = 18.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            if (isScanning) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(42.dp),
+                    strokeWidth = 3.dp,
+                    color = colorScheme.primary
+                )
+            } else {
+                Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(58.dp)) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(Icons.Default.Wifi, contentDescription = null, tint = colorScheme.primary)
+                    }
+                }
+            }
+            Text(
+                text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = colorScheme.onSurface
+            )
+            Text(
+                text = "Tap the device pill to choose who to connect with.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = colorScheme.onSurfaceVariant
+            )
+        }
+    }
 }
 
 private fun deviceIcon(type: DeviceType): androidx.compose.ui.graphics.vector.ImageVector = when (type) {

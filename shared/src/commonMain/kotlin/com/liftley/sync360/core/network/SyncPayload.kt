@@ -42,6 +42,28 @@ data class FileBatchPayload(
     val files: List<FilePayload>
 )
 
+@Serializable
+data class FileTransferStartPayload(
+    val offerId: String,
+    val files: List<FileTransferStartItem>
+)
+
+@Serializable
+data class FileTransferStartItem(
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Long,
+    val totalChunks: Int
+)
+
+@Serializable
+data class FileChunkPayload(
+    val offerId: String,
+    val fileIndex: Int,
+    val chunkIndex: Int,
+    val base64Data: String
+)
+
 object SyncPayloadCodec {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -85,6 +107,28 @@ object SyncPayloadCodec {
     fun decodeFileBatchOrNull(jsonStr: String): FileBatchPayload? {
         return try {
             json.decodeFromString(FileBatchPayload.serializer(), jsonStr)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun encodeFileTransferStart(start: FileTransferStartPayload): String =
+        json.encodeToString(FileTransferStartPayload.serializer(), start)
+
+    fun decodeFileTransferStartOrNull(jsonStr: String): FileTransferStartPayload? {
+        return try {
+            json.decodeFromString(FileTransferStartPayload.serializer(), jsonStr)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun encodeFileChunk(chunk: FileChunkPayload): String =
+        json.encodeToString(FileChunkPayload.serializer(), chunk)
+
+    fun decodeFileChunkOrNull(jsonStr: String): FileChunkPayload? {
+        return try {
+            json.decodeFromString(FileChunkPayload.serializer(), jsonStr)
         } catch (_: Exception) {
             null
         }
