@@ -1,32 +1,28 @@
 package com.liftley.sync360
 
 import android.Manifest
-import android.content.ClipDescription
-import android.content.ClipboardManager
+import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.MediaStore
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.core.content.edit
+import androidx.core.net.toUri
+import androidx.lifecycle.lifecycleScope
 import com.liftley.sync360.core.network.SyncPayload
 import com.liftley.sync360.core.network.SyncPayloadCodec
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.overlay.FloatingDockManager
 import com.liftley.sync360.service.SyncForegroundService
-import androidx.core.net.toUri
-import androidx.core.content.edit
-import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import android.content.ContentValues
-import android.provider.MediaStore
 import org.koin.android.ext.android.inject
 
 /**
@@ -215,7 +211,7 @@ class MainActivity : ComponentActivity() {
             androidOps.onOpenFileCallback = { path ->
                 try {
                     val uri = if (path.startsWith("content://")) {
-                        Uri.parse(path)
+                        path.toUri()
                     } else {
                         androidx.core.content.FileProvider.getUriForFile(
                             this@MainActivity,
@@ -232,7 +228,7 @@ class MainActivity : ComponentActivity() {
                 } catch (e: Exception) {
                     e.printStackTrace()
                     try {
-                        val uri = Uri.parse(path)
+                        val uri = path.toUri()
                         val intent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(uri, "*/*")
                             flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK

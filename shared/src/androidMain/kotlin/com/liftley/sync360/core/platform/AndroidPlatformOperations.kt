@@ -1,2 +1,93 @@
-"package com.liftley.sync360.core.platform\n\nimport android.content.Context\nimport android.content.Intent\nimport android.os.Build\nimport com.liftley.sync360.features.sync.presentation.SyncEvent\nimport kotlinx.coroutines.flow.Flow\nimport com.liftley.sync360.core.network.ClientEvent\n\nclass AndroidPlatformOperations(private val context: Context) : PlatformOperations {\n    \n    var onShowOverlayCallback: (() -> Unit)? = null\n    var onHideOverlayCallback: (() -> Unit)? = null\n    var onOpenFilePickerCallback: ((kind: SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null\n    var onOpenFileCallback: ((path: String) -> Unit)? = null\n    var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null\n\n    override fun startService(hostIp: String) {\n        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java).apply {\n            putExtra(com.liftley.sync360.service.SyncForegroundService.EXTRA_HOST_IP, hostIp)\n        }\n        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {\n            context.startForegroundService(intent)\n        } else {\n            context.startService(intent)\n        }\n    }\n\n    override fun stopService() {\n        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java)\n        context.stopService(intent)\n    }\n\n    override fun showOverlay() {\n        onShowOverlayCallback?.invoke()\n    }\n\n    override fun hideOverlay() {\n        onHideOverlayCallback?.invoke()\n    }\n\n    override fun readClipboard(): String? {\n        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager\n        if (!clipboard.hasPrimaryClip()) return null\n        val description = clipboard.primaryClipDescription ?: return null\n        if (!description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN) &&\n       
-<truncated 1596 bytes>
+package com.liftley.sync360.core.platform
+
+import android.content.Context
+import android.content.Intent
+import android.os.Build
+import com.liftley.sync360.features.sync.presentation.SyncEvent
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+
+class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
+    
+    var onShowOverlayCallback: (() -> Unit)? = null
+    var onHideOverlayCallback: (() -> Unit)? = null
+    var onOpenFilePickerCallback: ((kind: SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null
+    var onOpenFileCallback: ((path: String) -> Unit)? = null
+    var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
+
+    override fun startService(hostIp: String) {
+        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java).apply {
+            putExtra(com.liftley.sync360.service.SyncForegroundService.EXTRA_HOST_IP, hostIp)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            context.startForegroundService(intent)
+        } else {
+            context.startService(intent)
+        }
+    }
+
+    override fun stopService() {
+        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java)
+        context.stopService(intent)
+    }
+
+    override fun showOverlay() {
+        onShowOverlayCallback?.invoke()
+    }
+
+    override fun hideOverlay() {
+        onHideOverlayCallback?.invoke()
+    }
+
+    override fun readClipboard(): String? {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        if (!clipboard.hasPrimaryClip()) return null
+        val description = clipboard.primaryClipDescription ?: return null
+        if (!description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN) &&
+            !description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_HTML)) return null
+            
+        return clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
+    }
+
+    override fun writeClipboard(text: String) {
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clip = android.content.ClipData.newPlainText("Copied Text", text)
+        clipboard.setPrimaryClip(clip)
+    }
+
+    override fun openFilePicker(
+        kind: SyncEvent.FilePickerKind,
+        onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
+    ) {
+        onOpenFilePickerCallback?.invoke(kind, onFileSelected)
+    }
+
+    override fun saveFile(
+        name: String,
+        content: ByteArray,
+        onResult: (success: Boolean, path: String?) -> Unit
+    ) {
+        onSaveFileCallback?.invoke(name, content, onResult)
+    }
+
+    override fun openFile(path: String) {
+        onOpenFileCallback?.invoke(path)
+    }
+
+    // Android is mostly a client, so Server operations are largely no-ops if not supported
+    override fun startServer(port: Int) {}
+    
+    override fun stopServer() {}
+    
+    override fun broadcastToServer(text: String) {}
+    
+    override fun disconnectServerClient(deviceId: String) {}
+
+    override fun getLocalIpAddress(): String {
+        return "127.0.0.1" // Simplified for Android client
+    }
+
+    override fun getIncomingMessagesFlow(): Flow<String>? {
+        return emptyFlow()
+    }
+}

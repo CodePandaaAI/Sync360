@@ -95,9 +95,7 @@ class SyncViewModel(
                     connectToDeviceUseCase(device)
                 }
             }
-            is SyncEvent.ConnectManualIp -> {
-                // Not supported yet in thin view model, but can be added
-            }
+            // Removed ConnectManualIp to match clean rewrite
             else -> Unit // Ignored unused events for now in the simple rewrite
         }
     }

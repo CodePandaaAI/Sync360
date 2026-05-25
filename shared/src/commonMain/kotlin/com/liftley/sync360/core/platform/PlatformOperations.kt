@@ -2,7 +2,6 @@ package com.liftley.sync360.core.platform
 
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import kotlinx.coroutines.flow.Flow
-import com.liftley.sync360.core.network.ClientEvent
 
 interface PlatformOperations {
     // Client & General system operations
@@ -23,6 +22,4 @@ interface PlatformOperations {
     fun disconnectServerClient(deviceId: String)
     fun getLocalIpAddress(): String
     fun getIncomingMessagesFlow(): Flow<String>?
-    fun getClientEventsFlow(): Flow<ClientEvent>?
-    fun getActiveClientCountFlow(): Flow<Int>?
 }

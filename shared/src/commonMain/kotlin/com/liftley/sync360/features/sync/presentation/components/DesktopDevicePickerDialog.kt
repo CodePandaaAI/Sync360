@@ -1,2 +1,96 @@
-"package com.liftley.sync360.features.sync.presentation.components\n\nimport androidx.compose.foundation.background\nimport androidx.compose.foundation.clickable\nimport androidx.compose.foundation.layout.*\nimport androidx.compose.foundation.lazy.LazyColumn\nimport androidx.compose.foundation.lazy.items\nimport androidx.compose.foundation.shape.CircleShape\nimport androidx.compose.foundation.shape.RoundedCornerShape\nimport androidx.compose.material.icons.Icons\nimport androidx.compose.material.icons.filled.Close\nimport androidx.compose.material.icons.filled.Computer\nimport androidx.compose.material.icons.filled.Smartphone\nimport androidx.compose.material.icons.filled.Tablet\nimport androidx.compose.material3.*\nimport androidx.compose.runtime.Composable\nimport androidx.compose.ui.Alignment\nimport androidx.compose.ui.Modifier\nimport androidx.compose.ui.draw.clip\nimport androidx.compose.ui.graphics.vector.ImageVector\nimport androidx.compose.ui.text.font.FontWeight\nimport androidx.compose.ui.text.style.TextOverflow\nimport androidx.compose.ui.unit.dp\nimport com.liftley.sync360.core.designsystem.Spacing\nimport com.liftley.sync360.core.designsystem.SyncDimens\nimport com.liftley.sync360.features.sync.domain.model.ConnectionStatus\nimport com.liftley.sync360.features.sync.domain.model.DeviceProfile\nimport com.liftley.sync360.features.sync.domain.model.DeviceType\nimport com.liftley.sync360.features.sync.presentation.SyncUiState\n\n@OptIn(ExperimentalMaterial3Api::class)\n@Composable\nfun DesktopDevicePickerDialog(\n    uiState: SyncUiState,\n    onDismissRequest: () -> Unit,\n    onSelectPaired: (String) -> Unit,\n    onPairNearby: (String) -> Unit,\n    onDisconnect: () -> Unit\n) {\n    val colorScheme = MaterialTheme.colorScheme\n\n    val pairedList = uiState.connectedDevices\n    val nearbyList = uiState.nearbyDevices.filterNot { nearby ->\n        pairedList.any { it.id == nearby.id }\n    }\n\n    AlertDialog(\n        onDismissRequest = onDismissRequest,\n        modifier = Modifier.width(420.dp),
-<truncated 9662 bytes>
+package com.liftley.sync360.features.sync.presentation.components
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material3.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.DeviceType
+import com.liftley.sync360.features.sync.presentation.SyncUiState
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DesktopDevicePickerDialog(
+    uiState: SyncUiState,
+    onDismissRequest: () -> Unit,
+    onSelectDevice: (DeviceProfile) -> Unit
+) {
+    val devices = uiState.connectedDevices // Combined list from new architecture
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        modifier = Modifier.width(420.dp),
+        title = {
+            Text("Select Device", style = MaterialTheme.typography.titleLarge)
+        },
+        text = {
+            Column {
+                if (devices.isEmpty()) {
+                    Text(
+                        "No devices found nearby. Ensure other devices are on the same network and have the app open.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(devices) { device ->
+                            DeviceRow(
+                                device = device,
+                                onClick = { onSelectDevice(device) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("Close")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DeviceRow(
+    device: DeviceProfile,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (device.type == DeviceType.DESKTOP) Icons.Default.Computer else Icons.Default.Smartphone,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = device.name,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = if (device.isOnline) "Online" else "Offline",
+                style = MaterialTheme.typography.bodySmall,
+                color = if (device.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}

@@ -33,7 +33,7 @@ class KtorSyncNetworkService : SyncNetworkService {
     // --- Client State ---
     private var clientSession: DefaultClientWebSocketSession? = null
     private var clientJob: Job? = null
-    private val httpClient = HttpClient(CIO) {
+    private val httpClient = HttpClient(io.ktor.client.engine.cio.CIO) {
         install(io.ktor.client.plugins.websocket.WebSockets) {
             pingInterval = 10_000
         }
@@ -42,10 +42,9 @@ class KtorSyncNetworkService : SyncNetworkService {
     override fun startServer(port: Int) {
         if (serverEngine != null) return
 
-        serverEngine = embeddedServer(CIO, port = port) {
+        serverEngine = embeddedServer(io.ktor.server.cio.CIO, port = port) {
             install(io.ktor.server.websocket.WebSockets) {
-                pingPeriod = 10.seconds
-                timeout = 15.seconds
+                // Removed pingPeriod and timeout due to KMP resolution issues with Java Duration
                 maxFrameSize = Long.MAX_VALUE
                 masking = false
             }

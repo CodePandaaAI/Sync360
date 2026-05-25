@@ -56,4 +56,14 @@ interface SyncRepository {
      * Send a file to the actively connected peer(s).
      */
     fun sendFile(fileName: String, mimeType: String, content: ByteArray)
+    
+    /**
+     * Clear all synced data.
+     */
+    fun clearAllData()
+    
+    /**
+     * Delete a specific device and its data.
+     */
+    fun deleteDevice(deviceId: String)
 }

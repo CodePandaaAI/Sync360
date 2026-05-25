@@ -6,10 +6,8 @@ import com.liftley.sync360.core.database.DatabaseDriverFactory
 import com.liftley.sync360.core.database.createDatabaseDriverFactory
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.DesktopPlatformOperations
-import com.liftley.sync360.network.SyncServer
 
 actual val platformModule: Module = module {
     single<DatabaseDriverFactory> { createDatabaseDriverFactory(null) }
-    single { SyncServer() }
-    single<PlatformOperations> { DesktopPlatformOperations(get()) }
+    single<PlatformOperations> { DesktopPlatformOperations() }
 }

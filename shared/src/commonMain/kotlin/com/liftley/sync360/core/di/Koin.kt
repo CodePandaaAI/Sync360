@@ -37,8 +37,10 @@ val commonModule = module {
     // Dummy discovery service until implemented
     single<NetworkDiscoveryService> { 
         object : NetworkDiscoveryService {
+            override val discoveredDevices = kotlinx.coroutines.flow.MutableStateFlow(emptyList<DeviceProfile>())
             override fun startDiscovery() {}
             override fun stopDiscovery() {}
+            override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {}
         }
     }
     
