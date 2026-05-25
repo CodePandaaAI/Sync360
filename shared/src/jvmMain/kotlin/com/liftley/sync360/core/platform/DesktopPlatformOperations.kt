@@ -3,6 +3,8 @@ package com.liftley.sync360.core.platform
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
@@ -94,8 +96,8 @@ class DesktopPlatformOperations : PlatformOperations {
         file: PickedFile,
         chunkSizeBytes: Int,
         onChunk: suspend (ByteArray) -> Unit
-    ): Boolean {
-        return try {
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
             File(file.id).inputStream().use { input ->
                 val buffer = ByteArray(chunkSizeBytes)
                 while (true) {

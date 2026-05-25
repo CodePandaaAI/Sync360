@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.emptyFlow
 import java.io.BufferedOutputStream
 import java.io.OutputStream
 import androidx.core.net.toUri
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 
 class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
     
@@ -79,8 +81,8 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         file: PickedFile,
         chunkSizeBytes: Int,
         onChunk: suspend (ByteArray) -> Unit
-    ): Boolean {
-        return try {
+    ): Boolean = withContext(Dispatchers.IO) {
+        try {
             val uri = file.id.toUri()
             context.contentResolver.openInputStream(uri)?.use { input ->
                 val buffer = ByteArray(chunkSizeBytes)
@@ -89,7 +91,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
                     if (read <= 0) break
                     onChunk(buffer.copyOf(read))
                 }
-            } ?: return false
+            } ?: return@withContext false
             true
         } catch (_: Exception) {
             false
@@ -144,7 +146,6 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         return try {
             val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output } ?: return false
             output.write(bytes)
-            output.flush()
             true
         } catch (e: Exception) {
             println("AndroidPlatformOperations: writeFileChunk failed - ${e.message}")

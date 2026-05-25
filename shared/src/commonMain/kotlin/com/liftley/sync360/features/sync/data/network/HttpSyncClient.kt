@@ -104,7 +104,7 @@ class HttpSyncClient(private val port: Int = 8080) {
                     override val contentLength = file.sizeBytes
 
                     override suspend fun writeTo(channel: ByteWriteChannel) {
-                        platformOperations.readFileChunks(file, 256 * 1024) { bytes ->
+                        platformOperations.readFileChunks(file, 1024 * 1024) { bytes ->
                             channel.writeFully(bytes)
                             onProgress(bytes.size)
                         }

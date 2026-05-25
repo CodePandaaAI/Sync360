@@ -109,7 +109,7 @@ class HttpSyncServer(private val port: Int = 8080) {
 
                         // Read the incoming binary stream from Ktor's ByteReadChannel
                         val channel = call.receiveChannel()
-                        val buffer = ByteArray(256 * 1024)
+                        val buffer = ByteArray(1024 * 1024)
                         var totalRead = 0L
 
                         try {
