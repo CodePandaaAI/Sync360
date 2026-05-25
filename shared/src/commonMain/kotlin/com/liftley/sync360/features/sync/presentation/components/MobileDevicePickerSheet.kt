@@ -46,7 +46,7 @@ private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Bo
         ?: uiState.nearbyDevices.firstOrNull { it.id == activeId }
     if (activeDevice == null) return false
     return device.id == activeDevice.id ||
-        (device.connectionHost.isNotBlank() && device.connectionHost == activeDevice.connectionHost)
+        (!device.connectionHost.isNullOrBlank() && device.connectionHost == activeDevice.connectionHost)
 }
 
 private fun isPairedDevice(device: DeviceProfile, uiState: SyncUiState): Boolean {

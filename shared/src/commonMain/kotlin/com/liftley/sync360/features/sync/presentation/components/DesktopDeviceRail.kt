@@ -176,7 +176,7 @@ fun DesktopDeviceRail(
             ) {
                 Text("IP Address", style = MaterialTheme.typography.labelSmall, color = colorScheme.onSurfaceVariant, fontWeight = FontWeight.Bold)
                 Text(uiState.serverIp, style = MaterialTheme.typography.titleMedium, color = colorScheme.primary, fontWeight = FontWeight.Bold)
-                Text("${uiState.clientCount} clients connected", style = MaterialTheme.typography.bodySmall, color = colorScheme.onSurfaceVariant)
+                Text("${uiState.activeClientCount} clients connected", style = MaterialTheme.typography.bodySmall, color = colorScheme.onSurfaceVariant)
             }
         }
     }

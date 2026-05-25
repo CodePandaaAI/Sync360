@@ -2,7 +2,7 @@ package com.liftley.sync360.core.platform
 
 import android.content.Context
 import android.content.Intent
-import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.core.platform.FilePickerKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -10,7 +10,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     
     var onShowOverlayCallback: (() -> Unit)? = null
     var onHideOverlayCallback: (() -> Unit)? = null
-    var onOpenFilePickerCallback: ((kind: SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null
+    var onOpenFilePickerCallback: ((kind: FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null
     var onOpenFileCallback: ((path: String) -> Unit)? = null
     var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 
@@ -19,11 +19,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
             val intent = Intent().apply {
                 setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
             }
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            context.startForegroundService(intent)
         } catch (e: Exception) {
             println("AndroidPlatformOperations: Failed to start SyncService - ${e.message}")
         }
@@ -65,7 +61,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     }
 
     override fun openFilePicker(
-        kind: SyncEvent.FilePickerKind,
+        kind: FilePickerKind,
         onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
     ) {
         onOpenFilePickerCallback?.invoke(kind, onFileSelected)

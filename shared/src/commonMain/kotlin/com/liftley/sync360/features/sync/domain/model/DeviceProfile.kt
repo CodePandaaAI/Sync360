@@ -7,9 +7,9 @@ data class DeviceProfile(
     val hostAddress: String? = null,
     val isOnline: Boolean = true
 ) {
-    /** IP or hostname used for WebSocket connections. */
-    val connectionHost: String
-        get() = hostAddress?.takeIf { it.isNotBlank() } ?: id
+    /** IP or hostname used for WebSocket connections. Null if no valid address. */
+    val connectionHost: String?
+        get() = hostAddress?.takeIf { it.isNotBlank() }
 }
 
 enum class DeviceType {

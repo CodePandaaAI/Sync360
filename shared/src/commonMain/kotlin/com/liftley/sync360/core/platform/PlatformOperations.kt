@@ -1,6 +1,5 @@
 package com.liftley.sync360.core.platform
 
-import com.liftley.sync360.features.sync.presentation.SyncEvent
 import kotlinx.coroutines.flow.Flow
 
 interface PlatformOperations {
@@ -11,7 +10,7 @@ interface PlatformOperations {
     fun hideOverlay()
     fun readClipboard(): String?
     fun writeClipboard(text: String)
-    fun openFilePicker(kind: SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit)
+    fun openFilePicker(kind: FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit)
     fun saveFile(name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit)
     fun openFile(path: String)
 

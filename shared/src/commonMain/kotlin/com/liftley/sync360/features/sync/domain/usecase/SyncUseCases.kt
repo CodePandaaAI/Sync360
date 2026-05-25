@@ -34,6 +34,7 @@ class ObserveConversationMessagesUseCase(private val repository: SyncRepository)
     operator fun invoke(): Flow<List<SyncMessage>> = repository.conversationMessages
 }
 
+
 class StartSyncUseCase(private val repository: SyncRepository) {
     operator fun invoke() = repository.startSync()
 }
@@ -60,10 +61,6 @@ class DeclineIncomingConnectUseCase(private val repository: SyncRepository) {
 
 class SwitchActiveDeviceUseCase(private val repository: SyncRepository) {
     operator fun invoke(deviceId: String) = repository.switchActiveDevice(deviceId)
-}
-
-class ConnectToDeviceUseCase(private val repository: SyncRepository) {
-    operator fun invoke(device: DeviceProfile) = repository.switchActiveDevice(device.id)
 }
 
 class SendTextUseCase(private val repository: SyncRepository) {

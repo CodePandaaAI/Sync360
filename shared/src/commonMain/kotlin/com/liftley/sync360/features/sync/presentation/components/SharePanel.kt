@@ -20,6 +20,7 @@ import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.core.platform.FilePickerKind
 
 @Composable
 fun SharePanel(
@@ -110,7 +111,7 @@ fun SharePanel(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Media)) },
+                                .clickable { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Media)) },
                             shape = RoundedCornerShape(14.dp),
                             color = colorScheme.surface
                         ) {
@@ -134,7 +135,7 @@ fun SharePanel(
                             modifier = Modifier
                                 .weight(1f)
                                 .clip(RoundedCornerShape(14.dp))
-                                .clickable { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Any)) },
+                                .clickable { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
                             shape = RoundedCornerShape(14.dp),
                             color = colorScheme.surface
                         ) {
@@ -241,14 +242,14 @@ fun SharePanel(
                             icon = Icons.Default.PermMedia,
                             label = "Image / Video",
                             contentDescription = "Pick image or video",
-                            onClick = { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Media)) },
+                            onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Media)) },
                             modifier = Modifier.weight(1f)
                         )
                         FilePickerTile(
                             icon = Icons.Default.Folder,
                             label = "Any File",
                             contentDescription = "Pick any file",
-                            onClick = { onEvent(SyncEvent.OpenFilePicker(SyncEvent.FilePickerKind.Any)) },
+                            onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
                             modifier = Modifier.weight(1f)
                         )
                     }

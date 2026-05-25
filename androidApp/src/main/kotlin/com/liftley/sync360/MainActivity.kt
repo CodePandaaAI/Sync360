@@ -16,14 +16,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.liftley.sync360.core.platform.AndroidPlatformOperations
-import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.FilePickerKind
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
+import org.koin.android.ext.android.inject
+import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
+import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
+
 class MainActivity : ComponentActivity() {
 
-    private lateinit var appContainer: com.liftley.sync360.core.di.AppContainer
+    private val platformOps: PlatformOperations by inject()
+    private val disconnectAllUseCase: DisconnectAllUseCase by inject()
+    private val clearAllDataUseCase: ClearAllDataUseCase by inject()
     private var onFilePickedCallback: ((name: String, mimeType: String, content: ByteArray) -> Unit)? = null
 
     private val filePickerLauncher =
@@ -43,32 +50,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        appContainer = (application as SyncApplication).appContainer
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES) !=
-                android.content.pm.PackageManager.PERMISSION_GRANTED
-            ) {
-                requestPermissions(arrayOf(Manifest.permission.NEARBY_WIFI_DEVICES), 1002)
-            }
-        }
 
-        val androidOps = appContainer.platformOperations as? AndroidPlatformOperations
+        val androidOps = platformOps as? AndroidPlatformOperations
         if (androidOps != null) {
             androidOps.onOpenFilePickerCallback = { kind, callback ->
                 onFilePickedCallback = callback
                 when (kind) {
-                    SyncEvent.FilePickerKind.Media -> {
+                    FilePickerKind.Media -> {
                         pickVisualMediaLauncher.launch(
                             androidx.activity.result.PickVisualMediaRequest(
                                 ActivityResultContracts.PickVisualMedia.ImageAndVideo
                             )
                         )
                     }
-                    SyncEvent.FilePickerKind.Any -> filePickerLauncher.launch("*/*")
+                    FilePickerKind.Any -> filePickerLauncher.launch("*/*")
                 }
             }
             androidOps.onOpenFileCallback = { path -> openFile(path) }
@@ -78,14 +75,15 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            App(isDesktop = false, container = appContainer)
+            App(isDesktop = false)
         }
     }
 
     override fun onDestroy() {
         if (isFinishing) {
             runBlocking {
-                appContainer.onAppExit()
+                disconnectAllUseCase.invoke()
+                clearAllDataUseCase.invoke()
             }
         }
         super.onDestroy()
@@ -168,40 +166,27 @@ class MainActivity : ComponentActivity() {
     ) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val resolver = applicationContext.contentResolver
-                    val contentValues = ContentValues().apply {
-                        put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-                        put(
-                            MediaStore.MediaColumns.RELATIVE_PATH,
-                            android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360"
-                        )
-                        put(MediaStore.MediaColumns.IS_PENDING, 1)
-                    }
-                    val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                    if (uri != null) {
-                        resolver.openOutputStream(uri)?.use { it.write(content) }
-                        contentValues.clear()
-                        contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                        resolver.update(uri, contentValues, null, null)
-                        launch(Dispatchers.Main) {
-                            Toast.makeText(this@MainActivity, "Saved: $name", Toast.LENGTH_LONG).show()
-                            onResult(true, uri.toString())
-                        }
-                        return@launch
-                    }
-                }
-                val downloadsDir =
-                    android.os.Environment.getExternalStoragePublicDirectory(
-                        android.os.Environment.DIRECTORY_DOWNLOADS
+                val resolver = applicationContext.contentResolver
+                val contentValues = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
+                    put(
+                        MediaStore.MediaColumns.RELATIVE_PATH,
+                        android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360"
                     )
-                val syncDir = java.io.File(downloadsDir, "Sync360")
-                if (!syncDir.exists()) syncDir.mkdirs()
-                val file = java.io.File(syncDir, name)
-                file.writeBytes(content)
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Saved: ${file.name}", Toast.LENGTH_LONG).show()
-                    onResult(true, file.absolutePath)
+                    put(MediaStore.MediaColumns.IS_PENDING, 1)
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+                if (uri != null) {
+                    resolver.openOutputStream(uri)?.use { it.write(content) }
+                    contentValues.clear()
+                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
+                    resolver.update(uri, contentValues, null, null)
+                    launch(Dispatchers.Main) {
+                        Toast.makeText(this@MainActivity, "Saved: $name", Toast.LENGTH_LONG).show()
+                        onResult(true, uri.toString())
+                    }
+                } else {
+                    throw java.io.IOException("Failed to create MediaStore entry")
                 }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {

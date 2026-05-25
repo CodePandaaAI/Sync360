@@ -160,10 +160,10 @@ class SyncRepositoryImpl(
         _isScanning.value = true
         discoveryService.startDiscovery()
         scanJob = scope.launch {
-            kotlinx.coroutines.delay(7000)
+            kotlinx.coroutines.delay(10000)
             discoveryService.stopDiscovery()
             _isScanning.value = false
-            println("Autodiscovery: Scan automatically stopped after 7 seconds to save battery.")
+            println("Autodiscovery: Scan automatically stopped after 10 seconds to save battery.")
         }
     }
 
@@ -177,7 +177,13 @@ class SyncRepositoryImpl(
         
         // We DO NOT set activeDeviceId or pairedDevicesList here.
         // The screen transition will strictly wait until the other device accepts the request.
-        networkService.connectToPeer(device.connectionHost, syncPort, localDevice.id)
+        val host = device.connectionHost
+        if (host == null) {
+            println("Client: Cannot connect - device has no valid host address")
+            _pendingOutgoing.value = null
+            return
+        }
+        networkService.connectToPeer(host, syncPort, localDevice.id)
         
         scope.launch {
             try {

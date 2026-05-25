@@ -1,34 +1,22 @@
 package com.liftley.sync360.features.sync.presentation
 
-import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.core.platform.FilePickerKind
 
 sealed interface SyncEvent {
-    data class OnIpChange(val ip: String) : SyncEvent
-    object Connect : SyncEvent
     object Disconnect : SyncEvent
     data class SendMessage(val text: String) : SyncEvent
-    object SendCurrentClipboard : SyncEvent
-    data class ReceiveMessage(val text: String, val isFromMe: Boolean) : SyncEvent
     data class SwitchDevice(val deviceId: String) : SyncEvent
-    data class PairWithDevice(val deviceId: String) : SyncEvent
     data class AcceptPairing(val deviceId: String) : SyncEvent
     data class DeclinePairing(val deviceId: String) : SyncEvent
     data class CopyClipboard(val deviceId: String) : SyncEvent
-    data class RequestDownload(val assetId: String) : SyncEvent
-    data class SetOverlayEnabled(val enabled: Boolean) : SyncEvent
-    data class SetBackgroundMonitoringEnabled(val enabled: Boolean) : SyncEvent
     data class UpdateOutgoingText(val text: String) : SyncEvent
     data class RequestConnect(val deviceId: String) : SyncEvent
     object ConfirmConnect : SyncEvent
     object DismissConnectRequest : SyncEvent
     object PasteFromClipboard : SyncEvent
-    enum class FilePickerKind { Media, Any }
     data class OpenFilePicker(val kind: FilePickerKind) : SyncEvent
     data class SendFile(val name: String, val mimeType: String, val content: ByteArray) : SyncEvent
-    object AcceptFileOffer : SyncEvent
-    object DeclineFileOffer : SyncEvent
     object ClearUserMessage : SyncEvent
     data class OpenFile(val path: String) : SyncEvent
     object TriggerScan : SyncEvent
 }
-

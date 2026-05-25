@@ -117,7 +117,7 @@ fun DeviceConnectionsSheet(
                         color = colorScheme.primary
                     )
                     Text(
-                        text = "$clientCount device(s) connected",
+                        text = "${connectedDevices.size} device(s) connected",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colorScheme.onSurface
                     )

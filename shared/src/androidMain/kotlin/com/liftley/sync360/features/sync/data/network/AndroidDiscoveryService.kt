@@ -69,7 +69,9 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                                 })
                             }
                             if (resolved != null) {
-                                val ip = resolved.host?.hostAddress ?: return@withLock
+                                val ip = resolved.host?.hostAddress
+                                ?.takeIf { '.' in it && ':' !in it }
+                                ?: return@withLock
                                 val typeAttr = resolved.attributes["type"]?.let { String(it) }
 
                                 val resolvedType = when (typeAttr) {
@@ -97,17 +99,18 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                 }
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                val resolvedId = serviceNameToIdMap.remove(serviceInfo.serviceName)
-                if (resolvedId != null) {
-                    devicesMap.remove(resolvedId)
+                scope.launch {
+                    resolveMutex.withLock {
+                        val resolvedId = serviceNameToIdMap.remove(serviceInfo.serviceName)
+                        if (resolvedId != null) {
+                            devicesMap.remove(resolvedId)
+                        }
+                        val lostName = serviceInfo.serviceName.replace('-', ' ')
+                        val toRemove = devicesMap.filter { it.value.name == lostName }.keys
+                        toRemove.forEach { devicesMap.remove(it) }
+                        _discoveredDevices.value = devicesMap.values.toList()
+                    }
                 }
-                
-                // Fallback cleanup using name comparison
-                val lostName = serviceInfo.serviceName.replace('-', ' ')
-                val toRemove = devicesMap.filter { it.value.name == lostName }.keys
-                toRemove.forEach { devicesMap.remove(it) }
-                
-                _discoveredDevices.value = devicesMap.values.toList()
             }
         }
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
@@ -131,6 +134,13 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
             multicastLock = null
         } catch (e: Exception) {
             println("AndroidDiscoveryService: Failed to release MulticastLock - ${e.message}")
+        }
+
+        registrationListener?.let {
+            try {
+                nsdManager.unregisterService(it)
+            } catch (_: Exception) {}
+            registrationListener = null
         }
     }
 

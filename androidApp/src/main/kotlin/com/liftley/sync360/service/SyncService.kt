@@ -61,17 +61,15 @@ class SyncService : Service() {
     }
 
     private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID,
-                "Sync360 Connection Service",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply {
-                description = "Keeps connection active during background sync sessions."
-            }
-            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            manager.createNotificationChannel(channel)
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            "Sync360 Connection Service",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Keeps connection active during background sync sessions."
         }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.createNotificationChannel(channel)
     }
 
     private fun createNotification(): Notification {

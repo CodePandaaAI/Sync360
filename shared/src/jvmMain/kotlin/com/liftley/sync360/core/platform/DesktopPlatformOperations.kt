@@ -1,6 +1,6 @@
 package com.liftley.sync360.core.platform
 
-import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.core.platform.FilePickerKind
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.awt.Toolkit
@@ -39,7 +39,7 @@ class DesktopPlatformOperations : PlatformOperations {
     }
 
     override fun openFilePicker(
-        kind: SyncEvent.FilePickerKind,
+        kind: FilePickerKind,
         onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
     ) {
         try {

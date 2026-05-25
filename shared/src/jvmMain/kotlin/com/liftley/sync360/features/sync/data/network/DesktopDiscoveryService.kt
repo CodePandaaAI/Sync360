@@ -12,6 +12,12 @@ import javax.jmdns.JmDNS
 import javax.jmdns.ServiceEvent
 import javax.jmdns.ServiceInfo
 import javax.jmdns.ServiceListener
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 class DesktopDiscoveryService : NetworkDiscoveryService {
     private val _discoveredDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
@@ -21,6 +27,8 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
     private val serviceType = "_sync360._tcp.local."
     private val devicesMap = mutableMapOf<String, DeviceProfile>()
     private val serviceNameToIdMap = mutableMapOf<String, String>()
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val mapMutex = Mutex()
 
     init {
         // Clean shutdown hook to unregister and close sockets when JVM exits or reloads
@@ -38,40 +46,45 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
 
         override fun serviceRemoved(event: ServiceEvent) {
-            val id = serviceNameToIdMap.remove(event.name)
-            if (id != null) {
-                devicesMap.remove(id)
+            scope.launch {
+                mapMutex.withLock {
+                    val id = serviceNameToIdMap.remove(event.name)
+                    if (id != null) {
+                        devicesMap.remove(id)
+                    }
+                    val lostName = event.name.replace('-', ' ')
+                    val toRemove = devicesMap.filter { it.value.name == lostName }.keys
+                    toRemove.forEach { devicesMap.remove(it) }
+                    _discoveredDevices.value = devicesMap.values.toList()
+                }
             }
-            
-            // Fallback using name comparison
-            val lostName = event.name.replace('-', ' ')
-            val toRemove = devicesMap.filter { it.value.name == lostName }.keys
-            toRemove.forEach { devicesMap.remove(it) }
-            
-            _discoveredDevices.value = devicesMap.values.toList()
         }
 
         override fun serviceResolved(event: ServiceEvent) {
-            val ip = event.info.hostAddresses.firstOrNull { it.contains('.') } ?: return
-            val typeAttr = event.info.getPropertyString("type")
-            val resolvedType = when (typeAttr) {
-                "DESKTOP" -> DeviceType.DESKTOP
-                "PHONE" -> DeviceType.PHONE
-                "TABLET" -> DeviceType.TABLET
-                else -> DeviceType.PHONE
+            scope.launch {
+                mapMutex.withLock {
+                    val ip = event.info.hostAddresses.firstOrNull { it.contains('.') } ?: return@withLock
+                    val typeAttr = event.info.getPropertyString("type")
+                    val resolvedType = when (typeAttr) {
+                        "DESKTOP" -> DeviceType.DESKTOP
+                        "PHONE" -> DeviceType.PHONE
+                        "TABLET" -> DeviceType.TABLET
+                        else -> DeviceType.PHONE
+                    }
+                    val advertisedId = event.info.getPropertyString("deviceId")
+                    val deviceId = advertisedId?.takeIf { it.isNotBlank() } ?: ip
+                    val device = DeviceProfile(
+                        id = deviceId,
+                        name = event.name.replace('-', ' '),
+                        type = resolvedType,
+                        hostAddress = ip,
+                        isOnline = true
+                    )
+                    devicesMap[deviceId] = device
+                    serviceNameToIdMap[event.name] = deviceId
+                    _discoveredDevices.value = devicesMap.values.toList()
+                }
             }
-            val advertisedId = event.info.getPropertyString("deviceId")
-            val deviceId = advertisedId?.takeIf { it.isNotBlank() } ?: ip
-            val device = DeviceProfile(
-                id = deviceId,
-                name = event.name.replace('-', ' '),
-                type = resolvedType,
-                hostAddress = ip,
-                isOnline = true
-            )
-            devicesMap[deviceId] = device
-            serviceNameToIdMap[event.name] = deviceId
-            _discoveredDevices.value = devicesMap.values.toList()
         }
     }
 

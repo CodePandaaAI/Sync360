@@ -39,7 +39,7 @@ class SyncViewModel(
     private val sendTextUseCase: SendTextUseCase,
     private val sendFileUseCase: SendFileUseCase,
     private val disconnectActivePeerUseCase: DisconnectActivePeerUseCase,
-    private val disconnectAllUseCase: DisconnectAllUseCase,
+    private val startSyncUseCase: StartSyncUseCase,
     private val localIpAddress: String
 ) : ViewModel() {
 
@@ -54,6 +54,9 @@ class SyncViewModel(
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
 
     init {
+        // Bootstrap: register as NSD service, start WebSocket server, begin initial scan
+        startSyncUseCase()
+
         viewModelScope.launch {
             observePairedDevicesUseCase().collect { paired ->
                 _uiState.update { it.copy(connectedDevices = paired) }
@@ -85,21 +88,20 @@ class SyncViewModel(
             }
         }
         viewModelScope.launch {
-            observeActiveDeviceIdUseCase().collect { activeId ->
-                _uiState.update { it.copy(activeDeviceId = activeId) }
-            }
-        }
-        viewModelScope.launch {
-            observeConversationMessagesUseCase().collect { messages ->
-                val activeId = _uiState.value.activeDeviceId
+            combine(
+                observeActiveDeviceIdUseCase(),
+                observeConversationMessagesUseCase()
+            ) { activeId, messages ->
                 val streams = if (activeId != null) {
                     mapOf(activeId to messages.toDeviceStream(activeId))
                 } else {
                     emptyMap()
                 }
+                activeId to streams
+            }.collect { (activeId, streams) ->
                 _uiState.update {
                     it.copy(
-                        messages = messages,
+                        activeDeviceId = activeId,
                         deviceStreams = streams
                     )
                 }
@@ -114,7 +116,10 @@ class SyncViewModel(
 
     fun onEvent(event: SyncEvent) {
         when (event) {
-            is SyncEvent.Disconnect -> disconnectActivePeerUseCase()
+            is SyncEvent.Disconnect -> {
+                disconnectActivePeerUseCase()
+                _uiState.update { it.copy(outgoingText = "") }
+            }
             is SyncEvent.SendMessage -> {
                 sendTextUseCase(event.text)
                 _uiState.update { it.copy(outgoingText = "") }
@@ -128,20 +133,21 @@ class SyncViewModel(
             }
             is SyncEvent.ConfirmConnect -> confirmOutgoingConnectUseCase()
             is SyncEvent.DismissConnectRequest -> dismissOutgoingConnectUseCase()
-            is SyncEvent.PairWithDevice -> {
-                val device = findDevice(event.deviceId) ?: return
-                requestConnectUseCase(device)
-            }
             is SyncEvent.AcceptPairing -> acceptIncomingConnectUseCase(event.deviceId)
             is SyncEvent.DeclinePairing -> declineIncomingConnectUseCase(event.deviceId)
             is SyncEvent.SwitchDevice -> switchActiveDeviceUseCase(event.deviceId)
             is SyncEvent.CopyClipboard -> {
                 val stream = _uiState.value.deviceStreams[event.deviceId]
                 val latest = stream?.latestTexts?.firstOrNull()?.text
-                    ?: _uiState.value.messages.lastOrNull { !it.isFromMe }?.text
                 if (!latest.isNullOrBlank()) {
                     platformOperations.writeClipboard(latest)
                     _uiState.update { it.copy(userMessage = "Copied to clipboard") }
+                }
+            }
+            is SyncEvent.PasteFromClipboard -> {
+                val clipText = platformOperations.readClipboard()
+                if (!clipText.isNullOrBlank()) {
+                    _uiState.update { it.copy(outgoingText = clipText) }
                 }
             }
             is SyncEvent.SendFile -> {
@@ -165,34 +171,11 @@ class SyncViewModel(
             SyncEvent.TriggerScan -> {
                 triggerManualScanUseCase()
             }
-            SyncEvent.AcceptFileOffer,
-            SyncEvent.DeclineFileOffer,
-            SyncEvent.SendCurrentClipboard,
-            SyncEvent.PasteFromClipboard,
-            is SyncEvent.SetOverlayEnabled,
-            is SyncEvent.SetBackgroundMonitoringEnabled,
-            is SyncEvent.OnIpChange,
-            SyncEvent.Connect,
-            is SyncEvent.ReceiveMessage,
-            is SyncEvent.RequestDownload -> Unit
         }
     }
 
     private fun findDevice(deviceId: String): DeviceProfile? =
-        allKnownDevices().firstOrNull { it.id == deviceId }
-
-    private fun allKnownDevices(): List<DeviceProfile> {
-        val state = _uiState.value
-        val merged = linkedMapOf<String, DeviceProfile>()
-        state.connectedDevices.forEach { merged[it.id] = it }
-        state.nearbyDevices.forEach { nearby ->
-            merged[nearby.id] = nearby.copy(
-                name = merged[nearby.id]?.name ?: nearby.name,
-                hostAddress = nearby.hostAddress ?: merged[nearby.id]?.hostAddress
-            )
-        }
-        return merged.values.toList()
-    }
+        _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
 
     private fun List<SyncMessage>.toDeviceStream(peerId: String): DeviceStream {
         val texts = filter { !it.isFile }.map { msg ->

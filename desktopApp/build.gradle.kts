@@ -13,7 +13,9 @@ dependencies {
     implementation(libs.kotlinx.coroutinesSwing)
 
     implementation(libs.compose.uiToolingPreview)
-
+    
+    // Koin Dependency Injection
+    implementation(libs.koin.core)
 }
 
 compose.desktop {

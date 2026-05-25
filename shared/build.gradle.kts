@@ -40,6 +40,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.core.ktx)
+            implementation(libs.koin.android)
         }
         jvmMain.dependencies {
             implementation(libs.jmdns)
@@ -69,6 +70,10 @@ kotlin {
             implementation(libs.ktor.server.cio)
             implementation(libs.ktor.server.websockets)
             implementation(libs.ktor.server.content.negotiation)
+            
+            // Koin Dependency Injection
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose)
             
         }
         commonTest.dependencies {
