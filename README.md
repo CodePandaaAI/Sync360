@@ -1,5 +1,31 @@
 # Sync360
 
+## Current Implementation Snapshot
+
+This README preserves the original product vision below, but this section is the current handoff for agents and tools working on the live codebase.
+
+Current Sync360 is an Android + JVM Desktop Kotlin Multiplatform / Compose Multiplatform app. The UI should be preserved unless a change fixes a clear bug. The current refactor goal is to modularize, remove duplicate logic, keep layers clean, and fix transfer/connection issues without redesigning the app.
+
+Current local-network architecture:
+
+* **Discovery:** Android uses `NsdManager`; Desktop uses `JmDNS`. Devices advertise and discover Sync360 peers on the same LAN.
+* **Control channel:** Ktor WebSocket remains the live bidirectional lane for pairing, connect/disconnect, clipboard/control payloads, file offers, accept/reject messages, transfer-start, transfer-complete, and status/reconnect signals.
+* **File byte channel:** Large file bytes should move over raw HTTP streaming, not WebSocket chunks. The sender exposes `GET /files/{offerId}/{fileIndex}` from the embedded Ktor server. The receiver downloads bytes with Ktor Client and writes them directly to platform storage.
+* **Android storage:** Android receives files through `MediaStore.Downloads`, targeting `Downloads/Sync360`, using `IS_PENDING = 1` during writes and `IS_PENDING = 0` after finalization.
+* **Progress semantics:** Receiving progress should mean bytes successfully written to the destination output. Do not show successful completion until platform storage finalization returns a saved path.
+* **Legacy fallback:** Older WebSocket chunk receive paths may still exist as fallback while HTTP streaming is stabilized. Do not expand WebSocket file chunking as the primary file transport.
+
+If both sender and receiver stay at `1%`, WebSocket control likely worked but HTTP file streaming did not start. Check the reachable LAN host in the download URL, the sender's `/files/{offerId}/{fileIndex}` route, Android cleartext/network permissions, and whether the sender still has the matching `offerId`/`fileIndex` in memory.
+
+Recommended architecture going forward:
+
+```text
+NSD/JmDNS discovery
+WebSocket + small serialized control messages
+HTTP raw streaming for file bytes
+Android MediaStore / Desktop filesystem for final writes
+```
+
 Sync360 is a lightweight, cloud-free, multiplatform ecosystem designed to solve the clunky friction of moving clipboards, media, and files across multiple personal devices. Built using Kotlin Multiplatform (KMP) and Compose Multiplatform (CMP), it bridges Android, iOS, and Desktop (Windows, Mac, Linux) into a single, cohesive, ultra-fast environment.
 
 ---

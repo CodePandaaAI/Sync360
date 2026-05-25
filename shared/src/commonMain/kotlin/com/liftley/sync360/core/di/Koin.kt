@@ -1,8 +1,6 @@
 package com.liftley.sync360.core.di
 
-import com.liftley.sync360.features.sync.data.network.KtorSyncNetworkService
 import com.liftley.sync360.features.sync.data.repository.SyncRepositoryImpl
-import com.liftley.sync360.features.sync.domain.network.SyncNetworkService
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.usecase.*
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
@@ -14,11 +12,8 @@ import org.koin.dsl.module
 expect fun platformModule(): Module
 
 val commonModule = module {
-    single<SyncNetworkService> { KtorSyncNetworkService() }
-    
     single<SyncRepository> {
         SyncRepositoryImpl(
-            networkService = get(),
             discoveryService = get(),
             localDevice = get(),
             incomingNotifier = get(),

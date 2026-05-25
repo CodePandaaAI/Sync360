@@ -51,7 +51,7 @@ class SyncViewModel(
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
 
     init {
-        // Bootstrap: register as NSD service, start WebSocket server, begin initial scan
+        // Bootstrap: register as NSD service, start HTTP server, begin initial scan
         startSyncUseCase()
 
         viewModelScope.launch {
@@ -119,11 +119,6 @@ class SyncViewModel(
                 }
             }
         }
-    }
-
-    override fun onCleared() {
-        super.onCleared()
-        disconnectActivePeerUseCase()
     }
 
     fun onEvent(event: SyncEvent) {

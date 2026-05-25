@@ -90,10 +90,10 @@ class DesktopPlatformOperations : PlatformOperations {
         }
     }
 
-    override fun readFileChunks(
+    override suspend fun readFileChunks(
         file: PickedFile,
         chunkSizeBytes: Int,
-        onChunk: (ByteArray) -> Unit
+        onChunk: suspend (ByteArray) -> Unit
     ): Boolean {
         return try {
             File(file.id).inputStream().use { input ->

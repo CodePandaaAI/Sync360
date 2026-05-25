@@ -1,5 +1,52 @@
 # Sync360 - Complete Project Context & Handover Guide
 
+## Current State First - Read This Before Editing
+
+The older sections below still describe the product vision and many important platform quirks, but this section reflects the current implementation direction.
+
+Sync360 is currently an Android + JVM Desktop KMP/CMP app. The current engineering goal is to preserve the existing UI/behavior while debugging, modularizing, removing duplicate logic, and separating responsibilities cleanly across presentation/domain/data/platform layers.
+
+### Current Network Model
+
+The app is being moved to a hybrid local LAN model:
+
+* **Discovery:** Android uses `NsdManager`; Desktop uses `JmDNS`.
+* **Control channel:** Ktor WebSocket is still the live bidirectional control lane. Keep it for pairing/connect, disconnect/status, clipboard/control messages, file offer, file accept/reject, transfer-start, transfer-complete, and reconnect/status signals.
+* **File byte channel:** Do not use WebSocket as the primary large-file pipe. File bytes should stream over raw HTTP from the sender's embedded Ktor server route `GET /files/{offerId}/{fileIndex}`. The receiver downloads with Ktor Client and writes directly to platform storage.
+* **Serialization:** Small control payloads can be JSON/protobuf. This is not where performance matters. The large file bytes should not be JSON/base64/protobuf payloads; they should be raw HTTP bytes.
+
+### Current File Transfer Flow
+
+1. Sender stores selected `PickedFile` entries in memory under an `offerId`.
+2. Sender sends a WebSocket `file_offer`.
+3. Receiver accepts over WebSocket.
+4. Sender replies with WebSocket `file_transfer_start`, containing file metadata and a per-file HTTP `downloadUrl`.
+5. Receiver downloads each file URL with Ktor Client.
+6. Sender serves bytes from `/files/{offerId}/{fileIndex}` using its platform `readFileChunks`.
+7. Receiver writes bytes directly:
+   * Android: `MediaStore.Downloads`, `Downloads/Sync360`, `IS_PENDING = 1` during write, `IS_PENDING = 0` after finalization.
+   * Desktop: `Downloads/Sync360` in the user filesystem.
+8. Receiver sends WebSocket `file_transfer_complete` only after the file is finalized and a saved path exists.
+
+Progress must be byte-based for HTTP transfers: bytes successfully written divided by total bytes. Do not report `100%` just because all chunks/messages were seen; final storage write/finalization must succeed.
+
+### Known Current Pitfalls
+
+* If both sides stay at `1%`, the WebSocket control message worked but the HTTP byte stream did not start. Check the reachable host in `downloadUrl`, sender route `/files/{offerId}/{fileIndex}`, and whether `pendingOutgoingFileBatches` still contains that `offerId`.
+* The sender's self-reported local IP can be wrong or unreachable from the receiver. Receiver-side URL resolution should prefer the peer host learned from discovery/pairing.
+* Android files may not appear in Downloads if `finishFileWrite()` fails or `IS_PENDING` is not cleared. Treat `finishFileWrite() == null` as transfer failure.
+* Do not disconnect peers from `SyncViewModel.onCleared()`. Android can recreate UI under memory/config pressure; disconnect should be explicit user/app shutdown behavior.
+* Avoid repeated Gradle/build runs during AI edits unless the user explicitly asks. The user prefers to run builds and paste errors.
+
+### Current Preferred Architecture
+
+```text
+NSD/JmDNS discovery
+WebSocket for live control
+HTTP raw streaming for file bytes
+Android MediaStore / Desktop filesystem for final storage
+```
+
 Welcome to **Sync360**! This document serves as a comprehensive system summary, design record, and architectural guide. It captures the entire context of the project so that any new developer or AI assistant can immediately assume command, understand what has been built, and continue the implementation seamlessly.
 
 ---

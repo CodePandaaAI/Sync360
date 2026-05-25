@@ -74,10 +74,10 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         onOpenFilePickerCallback?.invoke(kind, onFilesSelected)
     }
 
-    override fun readFileChunks(
+    override suspend fun readFileChunks(
         file: PickedFile,
         chunkSizeBytes: Int,
-        onChunk: (ByteArray) -> Unit
+        onChunk: suspend (ByteArray) -> Unit
     ): Boolean {
         return try {
             val uri = android.net.Uri.parse(file.id)
@@ -143,8 +143,10 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         return try {
             val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output } ?: return false
             output.write(bytes)
+            output.flush()
             true
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            println("AndroidPlatformOperations: writeFileChunk failed - ${e.message}")
             cancelFileWrite(handle)
             false
         }
