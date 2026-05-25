@@ -8,6 +8,7 @@ import android.provider.MediaStore
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import java.io.BufferedOutputStream
 import java.io.OutputStream
 
 class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
@@ -123,7 +124,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return null
-            val output = resolver.openOutputStream(uri)
+            val output = resolver.openOutputStream(uri)?.let(::BufferedOutputStream)
             if (output == null) {
                 resolver.delete(uri, null, null)
                 return null

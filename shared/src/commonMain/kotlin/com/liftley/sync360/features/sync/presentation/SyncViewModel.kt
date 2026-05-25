@@ -3,20 +3,11 @@ package com.liftley.sync360.features.sync.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.DeviceStream
-import com.liftley.sync360.features.sync.domain.model.SyncAsset
-import com.liftley.sync360.features.sync.domain.model.SyncAssetType
-import com.liftley.sync360.features.sync.domain.model.SyncMessage
-import com.liftley.sync360.features.sync.domain.model.SyncTransferState
 import com.liftley.sync360.features.sync.domain.usecase.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 class SyncViewModel(
     val isDesktop: Boolean,
@@ -212,33 +203,6 @@ class SyncViewModel(
 
     private fun findDevice(deviceId: String): DeviceProfile? =
         _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
-
-    private fun List<SyncMessage>.toDeviceStream(peerId: String): DeviceStream {
-        val texts = filter { !it.isFile && !msgIsFromMe(it) }.takeLast(3).asReversed().map { msg ->
-            ClipboardEntry(
-                text = msg.text,
-                updatedLabel = formatTime(msg.timestamp),
-                sourceApp = "Peer",
-                isFromMe = msg.isFromMe
-            )
-        }
-        return DeviceStream(
-            deviceId = peerId,
-            clipboard = texts.firstOrNull() ?: ClipboardEntry("", "", ""),
-            media = emptyList(),
-            documents = emptyList(),
-            storageUsedPercent = 0,
-            lastSeenLabel = "Now",
-            latestTexts = texts
-        )
-    }
-
-    private fun msgIsFromMe(message: SyncMessage): Boolean = message.isFromMe
-
-    private fun formatTime(timestamp: Long): String {
-        if (timestamp <= 0L) return ""
-        return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
-    }
 
     companion object {
         private const val MAX_SELECTED_FILES = 12

@@ -13,6 +13,7 @@ import io.ktor.server.routing.*
 import io.ktor.server.websocket.*
 import io.ktor.websocket.*
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -43,11 +44,25 @@ class KtorSyncNetworkService : SyncNetworkService {
     private var clientSession: DefaultClientWebSocketSession? = null
     private var clientJob: Job? = null
     private var userDisconnected = false
-    private val clientSendMutex = Mutex()
-    private val serverSendMutex = Mutex()
+    private val clientOutboundFrames = Channel<OutboundFrame>(Channel.UNLIMITED)
+    private val serverOutboundFrames = Channel<OutboundFrame>(Channel.UNLIMITED)
     private val httpClient = HttpClient(io.ktor.client.engine.cio.CIO) {
         install(io.ktor.client.plugins.websocket.WebSockets) {
+            maxFrameSize = MAX_FRAME_SIZE_BYTES
             pingInterval = 10_000
+        }
+    }
+
+    init {
+        scope.launch {
+            for (frame in clientOutboundFrames) {
+                sendClientFrame(frame)
+            }
+        }
+        scope.launch {
+            for (frame in serverOutboundFrames) {
+                sendServerFrame(frame)
+            }
         }
     }
 
@@ -204,67 +219,53 @@ class KtorSyncNetworkService : SyncNetworkService {
     }
 
     override fun sendToPeer(payloadJson: String) {
-        scope.launch {
-            val session = clientSession
-            if (session != null && _connectionStatus.value == ConnectionStatus.CONNECTED) {
-                try {
-                    clientSendMutex.withLock {
-                        session.send(Frame.Text(payloadJson))
-                    }
-                } catch (e: Exception) {
-                    println("Client: Failed to send - ${e.message}")
-                }
-            } else {
-                println("Client: Cannot send, not connected to peer.")
-            }
-        }
+        clientOutboundFrames.trySend(OutboundFrame.Text(payloadJson))
     }
 
     override fun broadcastToClients(payloadJson: String) {
-        scope.launch {
-            val sessions = serverSessionsMutex.withLock {
-                activeServerSessions.values.toList()
-            }
-            sessions.forEach { session ->
-                try {
-                    serverSendMutex.withLock {
-                        session.send(Frame.Text(payloadJson))
-                    }
-                } catch (e: Exception) {
-                    println("Server: Failed to broadcast - ${e.message}")
-                }
-            }
-        }
+        serverOutboundFrames.trySend(OutboundFrame.Text(payloadJson))
     }
 
     override fun sendChunkToPeer(chunk: SyncBinaryChunk) {
-        scope.launch {
-            val session = clientSession
-            if (session != null && _connectionStatus.value == ConnectionStatus.CONNECTED) {
-                try {
-                    clientSendMutex.withLock {
-                        session.send(Frame.Binary(true, encodeBinaryFrame(chunk)))
-                    }
-                } catch (e: Exception) {
-                    println("Client: Failed to send chunk - ${e.message}")
-                }
+        clientOutboundFrames.trySend(OutboundFrame.Binary(chunk))
+    }
+
+    override fun broadcastChunkToClients(chunk: SyncBinaryChunk) {
+        serverOutboundFrames.trySend(OutboundFrame.Binary(chunk))
+    }
+
+    private suspend fun sendClientFrame(outboundFrame: OutboundFrame) {
+        val session = clientSession
+        if (session == null || _connectionStatus.value != ConnectionStatus.CONNECTED) {
+            if (outboundFrame is OutboundFrame.Text) {
+                println("Client: Cannot send, not connected to peer.")
+            }
+            return
+        }
+
+        try {
+            session.send(outboundFrame.toKtorFrame())
+        } catch (e: Exception) {
+            val frameType = if (outboundFrame is OutboundFrame.Binary) "chunk" else "payload"
+            println("Client: Failed to send $frameType - ${e.message}")
+        }
+    }
+
+    private suspend fun sendServerFrame(outboundFrame: OutboundFrame) {
+        val sessions = serverSessionsMutex.withLock { activeServerSessions.values.toList() }
+        sessions.forEach { session ->
+            try {
+                session.send(outboundFrame.toKtorFrame())
+            } catch (e: Exception) {
+                val frameType = if (outboundFrame is OutboundFrame.Binary) "chunk" else "payload"
+                println("Server: Failed to broadcast $frameType - ${e.message}")
             }
         }
     }
 
-    override fun broadcastChunkToClients(chunk: SyncBinaryChunk) {
-        scope.launch {
-            val sessions = serverSessionsMutex.withLock { activeServerSessions.values.toList() }
-            sessions.forEach { session ->
-                try {
-                    serverSendMutex.withLock {
-                        session.send(Frame.Binary(true, encodeBinaryFrame(chunk)))
-                    }
-                } catch (e: Exception) {
-                    println("Server: Failed to broadcast chunk - ${e.message}")
-                }
-            }
-        }
+    private fun OutboundFrame.toKtorFrame(): Frame = when (this) {
+        is OutboundFrame.Text -> Frame.Text(payloadJson)
+        is OutboundFrame.Binary -> Frame.Binary(true, encodeBinaryFrame(chunk))
     }
 
     private fun encodeBinaryFrame(chunk: SyncBinaryChunk): ByteArray {
@@ -286,6 +287,11 @@ class KtorSyncNetworkService : SyncNetworkService {
     }
 
     companion object {
-        private const val MAX_FRAME_SIZE_BYTES = 2L * 1024 * 1024
+        private const val MAX_FRAME_SIZE_BYTES = 8L * 1024 * 1024
     }
+}
+
+private sealed class OutboundFrame {
+    data class Text(val payloadJson: String) : OutboundFrame()
+    data class Binary(val chunk: SyncBinaryChunk) : OutboundFrame()
 }

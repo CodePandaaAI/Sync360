@@ -114,15 +114,7 @@ class SyncRepositoryImpl(
                 } else if (status == ConnectionStatus.DISCONNECTED && wasConnected) {
                     wasConnected = false
                     println("Sudden network connection drop detected. Clearing active device.")
-                    _activeDeviceId.value = null
-                    _pairedDevicesList.value = emptyList()
-                    conversationMessagesMap.clear()
-                    pendingOutgoingFileBatches.clear()
-                    clearIncomingAssemblies()
-                    _incomingFileOffer.value = null
-                    _fileTransferProgress.value = null
-                    _receivedFileBatch.value = null
-                    _currentMessagesList.value = emptyList()
+                    clearConnectedSession()
                 }
             }
         }
@@ -248,27 +240,13 @@ class SyncRepositoryImpl(
             conversationMessagesMap.remove(peerId)
             _pairedDevicesList.value = _pairedDevicesList.value.filter { it.id != peerId }
         }
-        pendingOutgoingFileBatches.clear()
-        clearIncomingAssemblies()
-        _incomingFileOffer.value = null
-        _fileTransferProgress.value = null
-        _receivedFileBatch.value = null
+        clearFileTransferState()
         _activeDeviceId.value = null
         networkService.disconnectFromPeer()
     }
 
     override fun disconnectAll() {
-        conversationMessagesMap.clear()
-        _currentMessagesList.value = emptyList()
-        _pairedDevicesList.value = emptyList()
-        _activeDeviceId.value = null
-        _pendingOutgoing.value = null
-        _pendingIncoming.value = emptyList()
-        pendingOutgoingFileBatches.clear()
-        clearIncomingAssemblies()
-        _incomingFileOffer.value = null
-        _fileTransferProgress.value = null
-        _receivedFileBatch.value = null
+        clearConnectedSession(clearPairingRequests = true)
         networkService.disconnectFromPeer()
         stopSync()
     }
@@ -341,17 +319,7 @@ class SyncRepositoryImpl(
     }
 
     override suspend fun clearAllData() {
-        conversationMessagesMap.clear()
-        _currentMessagesList.value = emptyList()
-        _pairedDevicesList.value = emptyList()
-        _activeDeviceId.value = null
-        _pendingOutgoing.value = null
-        _pendingIncoming.value = emptyList()
-        pendingOutgoingFileBatches.clear()
-        clearIncomingAssemblies()
-        _incomingFileOffer.value = null
-        _fileTransferProgress.value = null
-        _receivedFileBatch.value = null
+        clearConnectedSession(clearPairingRequests = true)
         networkService.disconnectFromPeer()
     }
 
@@ -415,7 +383,7 @@ class SyncRepositoryImpl(
             }
             KIND_TEXT, "clipboard" -> {
                 val peerId = payload.originDeviceId
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                if (!payload.isForLocalDevice()) return
                 persistMessage(
                     itemId = payload.messageId ?: generateUniqueId(),
                     peerDeviceId = peerId,
@@ -444,7 +412,7 @@ class SyncRepositoryImpl(
             }
             KIND_FILE_OFFER -> {
                 val peerId = payload.originDeviceId
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                if (!payload.isForLocalDevice()) return
                 val offer = SyncPayloadCodec.decodeFileOfferOrNull(payload.content) ?: return
                 _receivedFileBatch.value = null
                 _fileTransferProgress.value = null
@@ -467,7 +435,7 @@ class SyncRepositoryImpl(
                 )
             }
             KIND_FILE_ACCEPT -> {
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                if (!payload.isForLocalDevice()) return
                 val files = pendingOutgoingFileBatches.remove(payload.content) ?: return
                 _fileTransferProgress.value = FileTransferProgress(
                     peerName = payload.originDeviceName,
@@ -485,7 +453,7 @@ class SyncRepositoryImpl(
                 pendingOutgoingFileBatches.remove(payload.content)
             }
             KIND_FILE_BATCH -> {
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                if (!payload.isForLocalDevice()) return
                 val batch = SyncPayloadCodec.decodeFileBatchOrNull(payload.content) ?: return
                 _receivedFileBatch.value = null
                 saveIncomingFileBatch(
@@ -494,16 +462,42 @@ class SyncRepositoryImpl(
                 )
             }
             KIND_FILE_TRANSFER_START -> {
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                if (!payload.isForLocalDevice()) return
                 val start = SyncPayloadCodec.decodeFileTransferStartOrNull(payload.content) ?: return
                 startIncomingChunkedTransfer(payload.originDeviceName, start)
             }
             KIND_FILE_CHUNK -> {
-                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
-                val chunk = SyncPayloadCodec.decodeFileChunkOrNull(payload.content) ?: return
+                if (!payload.isForLocalDevice()) return
+                val chunk = payload.decodeProtobufFileChunk()
+                    ?: decodeCompactFileChunk(payload.content)
+                    ?: SyncPayloadCodec.decodeFileChunkOrNull(payload.content)
+                    ?: return
                 receiveFileChunk(chunk)
             }
         }
+    }
+
+    private fun SyncPayload.isForLocalDevice(): Boolean =
+        targetDeviceId == null || targetDeviceId == localDevice.id
+
+    private fun clearConnectedSession(clearPairingRequests: Boolean = false) {
+        _activeDeviceId.value = null
+        _pairedDevicesList.value = emptyList()
+        conversationMessagesMap.clear()
+        _currentMessagesList.value = emptyList()
+        if (clearPairingRequests) {
+            _pendingOutgoing.value = null
+            _pendingIncoming.value = emptyList()
+        }
+        clearFileTransferState()
+    }
+
+    private fun clearFileTransferState() {
+        pendingOutgoingFileBatches.clear()
+        clearIncomingAssemblies()
+        _incomingFileOffer.value = null
+        _fileTransferProgress.value = null
+        _receivedFileBatch.value = null
     }
 
     private fun sendFileBatch(
@@ -533,6 +527,7 @@ class SyncRepositoryImpl(
         var sentChunks = 0
         files.forEachIndexed { fileIndex, file ->
             var chunkIndex = 0
+            var chunksSentForFile = 0
             val streamed = platformOperations.readFileChunks(file, FILE_CHUNK_SIZE_BYTES) { bytes ->
                 val chunk = SyncBinaryChunk(
                     offerId = offerId,
@@ -540,12 +535,22 @@ class SyncRepositoryImpl(
                     chunkIndex = chunkIndex,
                     bytes = bytes
                 )
-                networkService.sendChunkToPeer(chunk)
-                networkService.broadcastChunkToClients(chunk)
+                sendFileChunk(chunk, targetDeviceId)
                 sentChunks += 1
+                chunksSentForFile += 1
                 updateSendProgress(sentChunks, totalChunks)
                 chunkIndex += 1
-                runBlocking { delay(1.milliseconds) }
+            }
+            if (streamed && chunksSentForFile == 0 && file.sizeBytes == 0L) {
+                val emptyFileChunk = SyncBinaryChunk(
+                    offerId = offerId,
+                    fileIndex = fileIndex,
+                    chunkIndex = 0,
+                    bytes = ByteArray(0)
+                )
+                sendFileChunk(emptyFileChunk, targetDeviceId)
+                sentChunks += 1
+                updateSendProgress(sentChunks, totalChunks)
             }
             if (!streamed) {
                 updateSendProgress(sentChunks, totalChunks)
@@ -556,6 +561,53 @@ class SyncRepositoryImpl(
             delay(1200.milliseconds)
             _fileTransferProgress.value = null
         }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun sendFileChunk(
+        chunk: SyncBinaryChunk,
+        targetDeviceId: String
+    ) {
+        sendWirePayload(
+            kind = KIND_FILE_CHUNK,
+            content = encodeFileChunkMetadata(chunk),
+            targetDeviceId = targetDeviceId,
+            peerDeviceId = targetDeviceId,
+            binaryContent = chunk.bytes
+        )
+    }
+
+    private fun encodeFileChunkMetadata(chunk: SyncBinaryChunk): String =
+        "${chunk.offerId}|${chunk.fileIndex}|${chunk.chunkIndex}"
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun SyncPayload.decodeProtobufFileChunk(): FileChunkPayload? {
+        if (content.count { it == '|' } != 2) return null
+        val first = content.indexOf('|')
+        if (first <= 0) return null
+        val second = content.indexOf('|', first + 1)
+        if (second <= first) return null
+        return FileChunkPayload(
+            offerId = content.substring(0, first),
+            fileIndex = content.substring(first + 1, second).toIntOrNull() ?: return null,
+            chunkIndex = content.substring(second + 1).toIntOrNull() ?: return null,
+            base64Data = Base64.encode(binaryContent)
+        )
+    }
+
+    private fun decodeCompactFileChunk(content: String): FileChunkPayload? {
+        val first = content.indexOf('|')
+        if (first <= 0) return null
+        val second = content.indexOf('|', first + 1)
+        if (second <= first) return null
+        val third = content.indexOf('|', second + 1)
+        if (third <= second) return null
+        return FileChunkPayload(
+            offerId = content.substring(0, first),
+            fileIndex = content.substring(first + 1, second).toIntOrNull() ?: return null,
+            chunkIndex = content.substring(second + 1, third).toIntOrNull() ?: return null,
+            base64Data = content.substring(third + 1)
+        )
     }
 
     private fun chunkCount(size: Long): Int =
@@ -756,7 +808,8 @@ class SyncRepositoryImpl(
         peerDeviceId: String,
         persistSent: Boolean = false,
         mimeType: String = "text/plain",
-        displayContent: String = content
+        displayContent: String = content,
+        binaryContent: ByteArray = ByteArray(0)
     ) {
         val payload = SyncPayload(
             kind = kind,
@@ -766,7 +819,8 @@ class SyncRepositoryImpl(
             content = content,
             timestamp = Clock.System.now().toEpochMilliseconds(),
             targetDeviceId = targetDeviceId,
-            messageId = generateUniqueId()
+            messageId = generateUniqueId(),
+            binaryContent = binaryContent
         )
         val json = SyncPayloadCodec.encode(payload)
         networkService.sendToPeer(json)
@@ -836,7 +890,7 @@ class SyncRepositoryImpl(
         const val KIND_FILE_BATCH = "file_batch"
         const val KIND_FILE_TRANSFER_START = "file_transfer_start"
         const val KIND_FILE_CHUNK = "file_chunk"
-        private const val FILE_CHUNK_SIZE_BYTES = 16 * 1024
+        private const val FILE_CHUNK_SIZE_BYTES = 1024 * 1024
     }
 }
 
