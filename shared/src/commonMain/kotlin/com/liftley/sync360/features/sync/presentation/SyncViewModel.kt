@@ -5,38 +5,14 @@ import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.usecase.*
+import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class SyncViewModel(
     val isDesktop: Boolean,
+    private val repository: SyncRepository,
     private val platformOperations: PlatformOperations,
-    private val observePairedDevicesUseCase: ObservePairedDevicesUseCase,
-    private val observeNearbyDevicesUseCase: ObserveNearbyDevicesUseCase,
-    private val observePendingIncomingConnectUseCase: ObservePendingIncomingConnectUseCase,
-    private val observePendingOutgoingConnectUseCase: ObservePendingOutgoingConnectUseCase,
-    private val observeConnectionStatusUseCase: ObserveConnectionStatusUseCase,
-    private val observeActiveDeviceIdUseCase: ObserveActiveDeviceIdUseCase,
-    private val observeConversationMessagesUseCase: ObserveConversationMessagesUseCase,
-    private val observeIncomingFileOfferUseCase: ObserveIncomingFileOfferUseCase,
-    private val observeFileTransferProgressUseCase: ObserveFileTransferProgressUseCase,
-    private val observeReceivedFileBatchUseCase: ObserveReceivedFileBatchUseCase,
-    private val observeIsScanningUseCase: ObserveIsScanningUseCase,
-    private val triggerManualScanUseCase: TriggerManualScanUseCase,
-    private val requestConnectUseCase: RequestConnectUseCase,
-    private val confirmOutgoingConnectUseCase: ConfirmOutgoingConnectUseCase,
-    private val dismissOutgoingConnectUseCase: DismissOutgoingConnectUseCase,
-    private val acceptIncomingConnectUseCase: AcceptIncomingConnectUseCase,
-    private val declineIncomingConnectUseCase: DeclineIncomingConnectUseCase,
-    private val switchActiveDeviceUseCase: SwitchActiveDeviceUseCase,
-    private val sendTextUseCase: SendTextUseCase,
-    private val offerFilesUseCase: OfferFilesUseCase,
-    private val acceptFileOfferUseCase: AcceptFileOfferUseCase,
-    private val declineFileOfferUseCase: DeclineFileOfferUseCase,
-    private val dismissReceivedFilesUseCase: DismissReceivedFilesUseCase,
-    private val disconnectActivePeerUseCase: DisconnectActivePeerUseCase,
-    private val startSyncUseCase: StartSyncUseCase,
     private val localIpAddress: String
 ) : ViewModel() {
 
@@ -51,58 +27,57 @@ class SyncViewModel(
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
 
     init {
-        // Bootstrap: register as NSD service, start HTTP server, begin initial scan
-        startSyncUseCase()
+        repository.startSync()
 
         viewModelScope.launch {
-            observePairedDevicesUseCase().collect { paired ->
+            repository.pairedDevices.collect { paired ->
                 _uiState.update { it.copy(connectedDevices = paired) }
             }
         }
         viewModelScope.launch {
-            observeNearbyDevicesUseCase().collect { nearby ->
+            repository.nearbyDevices.collect { nearby ->
                 _uiState.update { it.copy(nearbyDevices = nearby) }
             }
         }
         viewModelScope.launch {
-            observeIsScanningUseCase().collect { scanning ->
+            repository.isScanning.collect { scanning ->
                 _uiState.update { it.copy(isScanningForDevices = scanning) }
             }
         }
         viewModelScope.launch {
-            observePendingIncomingConnectUseCase().collect { pending ->
+            repository.pendingIncomingConnectRequests.collect { pending ->
                 _uiState.update { it.copy(pendingPairingRequests = pending) }
             }
         }
         viewModelScope.launch {
-            observePendingOutgoingConnectUseCase().collect { pending ->
+            repository.pendingOutgoingConnectDevice.collect { pending ->
                 _uiState.update { it.copy(pendingConnectDevice = pending) }
             }
         }
         viewModelScope.launch {
-            observeConnectionStatusUseCase().collect { status ->
+            repository.connectionStatus.collect { status ->
                 _uiState.update { it.copy(connectionStatus = status) }
             }
         }
         viewModelScope.launch {
-            observeIncomingFileOfferUseCase().collect { offer ->
+            repository.incomingFileOffer.collect { offer ->
                 _uiState.update { it.copy(incomingFileOffer = offer) }
             }
         }
         viewModelScope.launch {
-            observeFileTransferProgressUseCase().collect { progress ->
+            repository.fileTransferProgress.collect { progress ->
                 _uiState.update { it.copy(fileTransferProgress = progress) }
             }
         }
         viewModelScope.launch {
-            observeReceivedFileBatchUseCase().collect { batch ->
+            repository.receivedFileBatch.collect { batch ->
                 _uiState.update { it.copy(receivedFileBatch = batch) }
             }
         }
         viewModelScope.launch {
             combine(
-                observeActiveDeviceIdUseCase(),
-                observeConversationMessagesUseCase()
+                repository.activeDeviceId,
+                repository.conversationMessages
             ) { activeId, messages ->
                 val streams = if (activeId != null) {
                     mapOf(activeId to messages.toDeviceStream(activeId))
@@ -124,11 +99,13 @@ class SyncViewModel(
     fun onEvent(event: SyncEvent) {
         when (event) {
             is SyncEvent.Disconnect -> {
-                disconnectActivePeerUseCase()
+                repository.disconnectActivePeer()
                 _uiState.update { it.copy(outgoingText = "") }
             }
             is SyncEvent.SendMessage -> {
-                sendTextUseCase(event.text)
+                if (event.text.isNotBlank()) {
+                    repository.sendText(event.text)
+                }
                 _uiState.update { it.copy(outgoingText = "") }
             }
             is SyncEvent.UpdateOutgoingText -> {
@@ -136,13 +113,13 @@ class SyncViewModel(
             }
             is SyncEvent.RequestConnect -> {
                 val device = findDevice(event.deviceId) ?: return
-                requestConnectUseCase(device)
+                repository.requestConnect(device)
             }
-            is SyncEvent.ConfirmConnect -> confirmOutgoingConnectUseCase()
-            is SyncEvent.DismissConnectRequest -> dismissOutgoingConnectUseCase()
-            is SyncEvent.AcceptPairing -> acceptIncomingConnectUseCase(event.deviceId)
-            is SyncEvent.DeclinePairing -> declineIncomingConnectUseCase(event.deviceId)
-            is SyncEvent.SwitchDevice -> switchActiveDeviceUseCase(event.deviceId)
+            is SyncEvent.ConfirmConnect -> repository.confirmOutgoingConnect()
+            is SyncEvent.DismissConnectRequest -> repository.dismissOutgoingConnect()
+            is SyncEvent.AcceptPairing -> repository.acceptIncomingConnect(event.deviceId)
+            is SyncEvent.DeclinePairing -> repository.declineIncomingConnect(event.deviceId)
+            is SyncEvent.SwitchDevice -> repository.switchActiveDevice(event.deviceId)
             is SyncEvent.CopyClipboard -> {
                 val stream = _uiState.value.deviceStreams[event.deviceId]
                 val latest = stream?.latestTexts?.firstOrNull()?.text
@@ -168,7 +145,9 @@ class SyncViewModel(
             }
             SyncEvent.SendSelectedFiles -> {
                 val selected = _uiState.value.selectedFiles
-                offerFilesUseCase(selected)
+                if (selected.isNotEmpty()) {
+                    repository.offerFiles(selected)
+                }
                 _uiState.update {
                     it.copy(
                         selectedFiles = emptyList(),
@@ -179,9 +158,9 @@ class SyncViewModel(
             SyncEvent.ClearSelectedFiles -> {
                 _uiState.update { it.copy(selectedFiles = emptyList()) }
             }
-            is SyncEvent.AcceptFileOffer -> acceptFileOfferUseCase(event.offerId)
-            is SyncEvent.DeclineFileOffer -> declineFileOfferUseCase(event.offerId)
-            SyncEvent.DismissReceivedFiles -> dismissReceivedFilesUseCase()
+            is SyncEvent.AcceptFileOffer -> repository.acceptFileOffer(event.offerId)
+            is SyncEvent.DeclineFileOffer -> repository.declineFileOffer(event.offerId)
+            SyncEvent.DismissReceivedFiles -> repository.dismissReceivedFiles()
             is SyncEvent.ClearUserMessage -> {
                 _uiState.update { it.copy(userMessage = null) }
             }
@@ -190,9 +169,7 @@ class SyncViewModel(
                     platformOperations.openFile(event.path)
                 }
             }
-            SyncEvent.TriggerScan -> {
-                triggerManualScanUseCase()
-            }
+            SyncEvent.TriggerScan -> repository.triggerManualScan()
         }
     }
 
