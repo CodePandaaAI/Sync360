@@ -39,28 +39,27 @@ fun ClipboardHistorySection(
     onCopyClick: (ClipboardEntry) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val received = textsList.filter { !it.isFromMe }
-    val sent = textsList.filter { it.isFromMe }
+    val received = textsList.filter { !it.isFromMe }.take(3)
 
     Column(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
         modifier = modifier.fillMaxWidth()
     ) {
         Text(
-            text = "Clipboard History",
+            text = "Recent clipboard",
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onBackground
         )
 
-        if (received.isEmpty() && sent.isEmpty()) {
+        if (received.isEmpty()) {
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(SyncDimens.cornerMedium),
                 color = MaterialTheme.colorScheme.surfaceContainerLow
             ) {
                 Text(
-                    text = "No clipboard history shared yet.",
+                    text = "Received clipboard text will appear here.",
                     modifier = Modifier.padding(Spacing.md),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -68,40 +67,12 @@ fun ClipboardHistorySection(
             }
         } else {
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.md)) {
-                if (received.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        Text(
-                            text = "Received from Peer",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        received.forEach { clipboard ->
-                            ClipboardItemCard(
-                                clipboard = clipboard,
-                                isReceived = true,
-                                onCopyClick = onCopyClick
-                            )
-                        }
-                    }
-                }
-
-                if (sent.isNotEmpty()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
-                        Text(
-                            text = "Sent from this Device",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f)
-                        )
-                        sent.forEach { clipboard ->
-                            ClipboardItemCard(
-                                clipboard = clipboard,
-                                isReceived = false,
-                                onCopyClick = onCopyClick
-                            )
-                        }
-                    }
+                received.forEach { clipboard ->
+                    ClipboardItemCard(
+                        clipboard = clipboard,
+                        isReceived = true,
+                        onCopyClick = onCopyClick
+                    )
                 }
             }
         }

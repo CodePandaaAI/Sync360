@@ -1,6 +1,7 @@
 package com.liftley.sync360.features.sync.presentation
 
 import com.liftley.sync360.core.platform.FilePickerKind
+import com.liftley.sync360.features.sync.domain.model.PickedFile
 
 sealed interface SyncEvent {
     object Disconnect : SyncEvent
@@ -15,7 +16,12 @@ sealed interface SyncEvent {
     object DismissConnectRequest : SyncEvent
     object PasteFromClipboard : SyncEvent
     data class OpenFilePicker(val kind: FilePickerKind) : SyncEvent
-    data class SendFile(val name: String, val mimeType: String, val content: ByteArray) : SyncEvent
+    data class AddSelectedFiles(val files: List<PickedFile>) : SyncEvent
+    object SendSelectedFiles : SyncEvent
+    object ClearSelectedFiles : SyncEvent
+    data class AcceptFileOffer(val offerId: String) : SyncEvent
+    data class DeclineFileOffer(val offerId: String) : SyncEvent
+    object DismissReceivedFiles : SyncEvent
     object ClearUserMessage : SyncEvent
     data class OpenFile(val path: String) : SyncEvent
     object TriggerScan : SyncEvent

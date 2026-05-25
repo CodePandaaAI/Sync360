@@ -1,6 +1,6 @@
 package com.liftley.sync360.core.platform
 
-import com.liftley.sync360.core.platform.FilePickerKind
+import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import java.awt.Toolkit
@@ -40,19 +40,29 @@ class DesktopPlatformOperations : PlatformOperations {
 
     override fun openFilePicker(
         kind: FilePickerKind,
-        onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
+        onFilesSelected: (files: List<PickedFile>) -> Unit
     ) {
         try {
             val mode = java.awt.FileDialog.LOAD
             val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Select File to Share", mode)
+            dialog.isMultipleMode = true
             dialog.isVisible = true
-            val file = dialog.file
-            val directory = dialog.directory
-            if (file != null && directory != null) {
-                val selectedFile = File(directory, file)
-                val bytes = selectedFile.readBytes()
-                val mimeType = java.nio.file.Files.probeContentType(selectedFile.toPath()) ?: "application/octet-stream"
-                onFileSelected(file, mimeType, bytes)
+            val files = dialog.files.toList().ifEmpty {
+                val file = dialog.file
+                val directory = dialog.directory
+                if (file != null && directory != null) listOf(File(directory, file)) else emptyList()
+            }
+            val picked = files.mapNotNull { selectedFile ->
+                runCatching {
+                    PickedFile(
+                        name = selectedFile.name,
+                        mimeType = java.nio.file.Files.probeContentType(selectedFile.toPath()) ?: "application/octet-stream",
+                        content = selectedFile.readBytes()
+                    )
+                }.getOrNull()
+            }
+            if (picked.isNotEmpty()) {
+                onFilesSelected(picked)
             }
         } catch (e: Exception) {
             e.printStackTrace()

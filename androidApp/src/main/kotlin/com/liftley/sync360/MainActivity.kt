@@ -18,29 +18,27 @@ import androidx.lifecycle.lifecycleScope
 import com.liftley.sync360.core.platform.AndroidPlatformOperations
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.FilePickerKind
+import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 import org.koin.android.ext.android.inject
 import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
-import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
 
 class MainActivity : ComponentActivity() {
 
     private val platformOps: PlatformOperations by inject()
     private val disconnectAllUseCase: DisconnectAllUseCase by inject()
-    private val clearAllDataUseCase: ClearAllDataUseCase by inject()
-    private var onFilePickedCallback: ((name: String, mimeType: String, content: ByteArray) -> Unit)? = null
+    private var onFilePickedCallback: ((files: List<PickedFile>) -> Unit)? = null
 
     private val filePickerLauncher =
-        registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-            handleFilePicked(uri)
+        registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
+            handleFilesPicked(uris)
         }
 
     private val pickVisualMediaLauncher =
-        registerForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri: Uri? ->
-            handleFilePicked(uri)
+        registerForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris: List<Uri> ->
+            handleFilesPicked(uris)
         }
 
     private val notificationPermissionLauncher =
@@ -50,7 +48,9 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
 
 
         val androidOps = platformOps as? AndroidPlatformOperations
@@ -81,52 +81,61 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         if (isFinishing) {
-            runBlocking {
-                disconnectAllUseCase.invoke()
-                clearAllDataUseCase.invoke()
-            }
+            disconnectAllUseCase()
         }
         super.onDestroy()
     }
 
-    private fun handleFilePicked(uri: Uri?) {
+    private fun handleFilesPicked(uris: List<Uri>) {
         val callback = onFilePickedCallback ?: return
-        if (uri == null) {
+        if (uris.isEmpty()) {
             onFilePickedCallback = null
             return
         }
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val contentResolver = applicationContext.contentResolver
-                var fileName = "file_${System.currentTimeMillis()}"
-                contentResolver.query(uri, null, null, null, null)?.use { cursor ->
-                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-                    val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
-                    if (cursor.moveToFirst()) {
-                        if (nameIndex != -1) fileName = cursor.getString(nameIndex)
-                        if (sizeIndex != -1) {
-                            val size = cursor.getLong(sizeIndex)
-                            if (size > 50 * 1024 * 1024) {
-                                launch(Dispatchers.Main) {
-                                    Toast.makeText(
-                                        this@MainActivity,
-                                        "File exceeds 50MB limit",
-                                        Toast.LENGTH_LONG
-                                    ).show()
+                val picked = mutableListOf<PickedFile>()
+                var skippedLargeFile = false
+                uris.forEachIndexed { index, uri ->
+                    var fileName = "file_${System.currentTimeMillis()}_$index"
+                    contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                        if (cursor.moveToFirst()) {
+                            if (nameIndex != -1) fileName = cursor.getString(nameIndex)
+                            if (sizeIndex != -1) {
+                                val size = cursor.getLong(sizeIndex)
+                                if (size > 50 * 1024 * 1024) {
+                                    skippedLargeFile = true
+                                    return@forEachIndexed
                                 }
-                                return@launch
                             }
                         }
                     }
+                    val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
+                    val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
+                    if (bytes != null) {
+                        picked += PickedFile(fileName, mimeType, bytes)
+                    }
                 }
-                val mimeType = contentResolver.getType(uri) ?: "application/octet-stream"
-                val bytes = contentResolver.openInputStream(uri)?.use { it.readBytes() }
-                if (bytes != null) callback(fileName, mimeType, bytes)
+                launch(Dispatchers.Main) {
+                    if (skippedLargeFile) {
+                        Toast.makeText(
+                            this@MainActivity,
+                            "Skipped files over 50MB",
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    if (picked.isNotEmpty()) {
+                        callback(picked)
+                    }
+                }
             } catch (e: Exception) {
                 launch(Dispatchers.Main) {
                     Toast.makeText(
                         this@MainActivity,
-                        "Failed to read file: ${e.message}",
+                        "Failed to read files: ${e.message}",
                         Toast.LENGTH_SHORT
                     ).show()
                 }

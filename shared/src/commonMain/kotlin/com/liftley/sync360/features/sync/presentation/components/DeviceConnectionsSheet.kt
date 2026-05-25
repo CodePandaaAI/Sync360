@@ -94,7 +94,7 @@ fun DeviceConnectionsSheet(
                 }
             }
             
-            Divider()
+            HorizontalDivider()
 
             if (isDesktop) {
                 // Desktop Host Info

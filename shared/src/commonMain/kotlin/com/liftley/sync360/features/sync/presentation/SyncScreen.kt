@@ -51,7 +51,7 @@ fun SyncScreen(
     }
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
         topBar = {
             SyncTopBar(
                 nearbyCount = visibleNearby.size,
@@ -172,6 +172,24 @@ fun SyncScreen(
                     )
                 }
 
+                uiState.incomingFileOffer?.let { offer ->
+                    item {
+                        IncomingFileOfferCard(
+                            offer = offer,
+                            onEvent = onEvent
+                        )
+                    }
+                }
+
+                uiState.receivedFileBatch?.let { batch ->
+                    item {
+                        ReceivedFileBatchCard(
+                            batch = batch,
+                            onEvent = onEvent
+                        )
+                    }
+                }
+
                 item {
                     ClipboardHistorySection(
                         textsList = activeStream?.latestTexts ?: emptyList(),
@@ -179,18 +197,6 @@ fun SyncScreen(
                             onEvent(SyncEvent.CopyClipboard(activeDevice.id))
                             copiedFeedbackTrigger++
                         }
-                    )
-                }
-
-                item {
-                    val combinedFiles = (activeStream?.media.orEmpty() + activeStream?.documents.orEmpty())
-                        .sortedByDescending { it.id }
-                    TransferredFilesSection(
-                        combinedFiles = combinedFiles,
-                        onFileClick = { asset ->
-                            onEvent(SyncEvent.OpenFile(asset.path))
-                        },
-                        title = "Shared Media & Files"
                     )
                 }
 
@@ -293,7 +299,7 @@ private fun SyncTopBar(
             )
         },
         colors = TopAppBarDefaults.topAppBarColors(
-            containerColor = colorScheme.background,
+            containerColor = colorScheme.surfaceContainer,
             titleContentColor = colorScheme.onBackground
         )
     )

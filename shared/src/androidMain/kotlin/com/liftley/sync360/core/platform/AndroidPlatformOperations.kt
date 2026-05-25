@@ -3,6 +3,7 @@ package com.liftley.sync360.core.platform
 import android.content.Context
 import android.content.Intent
 import com.liftley.sync360.core.platform.FilePickerKind
+import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 
@@ -10,7 +11,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     
     var onShowOverlayCallback: (() -> Unit)? = null
     var onHideOverlayCallback: (() -> Unit)? = null
-    var onOpenFilePickerCallback: ((kind: FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null
+    var onOpenFilePickerCallback: ((kind: FilePickerKind, onFilesSelected: (files: List<PickedFile>) -> Unit) -> Unit)? = null
     var onOpenFileCallback: ((path: String) -> Unit)? = null
     var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 
@@ -62,9 +63,9 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
 
     override fun openFilePicker(
         kind: FilePickerKind,
-        onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit
+        onFilesSelected: (files: List<PickedFile>) -> Unit
     ) {
-        onOpenFilePickerCallback?.invoke(kind, onFileSelected)
+        onOpenFilePickerCallback?.invoke(kind, onFilesSelected)
     }
 
     override fun saveFile(

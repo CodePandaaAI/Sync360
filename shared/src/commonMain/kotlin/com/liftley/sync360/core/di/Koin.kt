@@ -35,6 +35,8 @@ val commonModule = module {
     factory { ObserveConnectionStatusUseCase(get()) }
     factory { ObserveActiveDeviceIdUseCase(get()) }
     factory { ObserveConversationMessagesUseCase(get()) }
+    factory { ObserveIncomingFileOfferUseCase(get()) }
+    factory { ObserveReceivedFileBatchUseCase(get()) }
     factory { RequestConnectUseCase(get()) }
     factory { ConfirmOutgoingConnectUseCase(get()) }
     factory { DismissOutgoingConnectUseCase(get()) }
@@ -42,7 +44,10 @@ val commonModule = module {
     factory { DeclineIncomingConnectUseCase(get()) }
     factory { SwitchActiveDeviceUseCase(get()) }
     factory { SendTextUseCase(get()) }
-    factory { SendFileUseCase(get()) }
+    factory { OfferFilesUseCase(get()) }
+    factory { AcceptFileOfferUseCase(get()) }
+    factory { DeclineFileOfferUseCase(get()) }
+    factory { DismissReceivedFilesUseCase(get()) }
     factory { DisconnectActivePeerUseCase(get()) }
     factory { ClearAllDataUseCase(get()) }
     factory { DisconnectAllUseCase(get()) }
@@ -62,6 +67,8 @@ val commonModule = module {
             observeConnectionStatusUseCase = get(),
             observeActiveDeviceIdUseCase = get(),
             observeConversationMessagesUseCase = get(),
+            observeIncomingFileOfferUseCase = get(),
+            observeReceivedFileBatchUseCase = get(),
             observeIsScanningUseCase = get(),
             triggerManualScanUseCase = get(),
             requestConnectUseCase = get(),
@@ -71,7 +78,10 @@ val commonModule = module {
             declineIncomingConnectUseCase = get(),
             switchActiveDeviceUseCase = get(),
             sendTextUseCase = get(),
-            sendFileUseCase = get(),
+            offerFilesUseCase = get(),
+            acceptFileOfferUseCase = get(),
+            declineFileOfferUseCase = get(),
+            dismissReceivedFilesUseCase = get(),
             disconnectActivePeerUseCase = get(),
             startSyncUseCase = get(),
             localIpAddress = get<PlatformOperations>().getLocalIpAddress()

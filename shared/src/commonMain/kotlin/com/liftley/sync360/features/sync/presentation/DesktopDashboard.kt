@@ -45,7 +45,7 @@ fun DesktopDashboard(
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(colorScheme.background)
+            .background(colorScheme.surfaceContainer)
     ) {
         // Desktop Left Sidebar Rail
         DesktopDeviceRail(
@@ -101,35 +101,27 @@ fun DesktopDashboard(
                         onEvent = onEvent
                     )
 
-                    // Structured History (Text + Files side by side)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(20.dp)
-                    ) {
-                        // 5 Latest Clipboard Texts
-                        ClipboardHistorySection(
-                            textsList = activeStream?.latestTexts ?: emptyList(),
-                            onCopyClick = { clipboard ->
-                                onEvent(SyncEvent.CopyClipboard(activeDevice.id))
-                                copiedFeedbackText = clipboard.text
-                            },
-                            modifier = Modifier.weight(1f)
-                        )
-
-                        // Shared Media & Documents
-                        val mediaList = activeStream?.media.orEmpty()
-                        val docList = activeStream?.documents.orEmpty()
-                        val combinedFiles = (mediaList + docList).sortedByDescending { it.id }
-
-                        TransferredFilesSection(
-                            combinedFiles = combinedFiles,
-                            onFileClick = { asset ->
-                                onEvent(SyncEvent.OpenFile(asset.path))
-                            },
-                            title = "Transferred Files",
-                            modifier = Modifier.weight(1f)
+                    uiState.incomingFileOffer?.let { offer ->
+                        IncomingFileOfferCard(
+                            offer = offer,
+                            onEvent = onEvent
                         )
                     }
+
+                    uiState.receivedFileBatch?.let { batch ->
+                        ReceivedFileBatchCard(
+                            batch = batch,
+                            onEvent = onEvent
+                        )
+                    }
+
+                    ClipboardHistorySection(
+                        textsList = activeStream?.latestTexts ?: emptyList(),
+                        onCopyClick = { clipboard ->
+                            onEvent(SyncEvent.CopyClipboard(activeDevice.id))
+                            copiedFeedbackText = clipboard.text
+                        }
+                    )
 
                     // Quiet Disconnect Button perfectly placed at the very bottom
                     Box(

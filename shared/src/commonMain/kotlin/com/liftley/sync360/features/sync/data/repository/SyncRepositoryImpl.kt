@@ -1,6 +1,9 @@
 package com.liftley.sync360.features.sync.data.repository
 
 import com.liftley.sync360.core.network.FilePayload
+import com.liftley.sync360.core.network.FileBatchPayload
+import com.liftley.sync360.core.network.FileOfferPayload
+import com.liftley.sync360.core.network.FilePreviewPayload
 import com.liftley.sync360.core.network.SyncPayload
 import com.liftley.sync360.core.network.SyncPayloadCodec
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
@@ -8,7 +11,11 @@ import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
+import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
+import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
 import com.liftley.sync360.features.sync.domain.network.NetworkDiscoveryService
 import com.liftley.sync360.features.sync.domain.network.SyncNetworkService
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
@@ -61,6 +68,7 @@ class SyncRepositoryImpl(
     override val isScanning: Flow<Boolean> = _isScanning.asStateFlow()
 
     private var scanJob: kotlinx.coroutines.Job? = null
+    private val pendingOutgoingFileBatches = mutableMapOf<String, List<PickedFile>>()
 
     private val deviceNameById = mutableMapOf<String, String>()
 
@@ -68,6 +76,10 @@ class SyncRepositoryImpl(
     private val _pairedDevicesList = MutableStateFlow<List<DeviceProfile>>(emptyList())
     private val _currentMessagesList = MutableStateFlow<List<SyncMessage>>(emptyList())
     private val conversationMessagesMap = mutableMapOf<String, List<SyncMessage>>()
+    private val _incomingFileOffer = MutableStateFlow<IncomingFileOffer?>(null)
+    override val incomingFileOffer: Flow<IncomingFileOffer?> = _incomingFileOffer.asStateFlow()
+    private val _receivedFileBatch = MutableStateFlow<ReceivedFileBatch?>(null)
+    override val receivedFileBatch: Flow<ReceivedFileBatch?> = _receivedFileBatch.asStateFlow()
 
     override val pairedDevices: Flow<List<DeviceProfile>> = combine(
         _pairedDevicesList,
@@ -118,6 +130,9 @@ class SyncRepositoryImpl(
                     _activeDeviceId.value = null
                     _pairedDevicesList.value = emptyList()
                     conversationMessagesMap.clear()
+                    pendingOutgoingFileBatches.clear()
+                    _incomingFileOffer.value = null
+                    _receivedFileBatch.value = null
                     _currentMessagesList.value = emptyList()
                 }
             }
@@ -244,6 +259,9 @@ class SyncRepositoryImpl(
             conversationMessagesMap.remove(peerId)
             _pairedDevicesList.value = _pairedDevicesList.value.filter { it.id != peerId }
         }
+        pendingOutgoingFileBatches.clear()
+        _incomingFileOffer.value = null
+        _receivedFileBatch.value = null
         _activeDeviceId.value = null
         networkService.disconnectFromPeer()
     }
@@ -255,6 +273,9 @@ class SyncRepositoryImpl(
         _activeDeviceId.value = null
         _pendingOutgoing.value = null
         _pendingIncoming.value = emptyList()
+        pendingOutgoingFileBatches.clear()
+        _incomingFileOffer.value = null
+        _receivedFileBatch.value = null
         networkService.disconnectFromPeer()
         stopSync()
     }
@@ -270,26 +291,53 @@ class SyncRepositoryImpl(
         )
     }
 
-    @OptIn(ExperimentalEncodingApi::class)
-    override fun sendFile(fileName: String, mimeType: String, content: ByteArray) {
+    override fun offerFiles(files: List<PickedFile>) {
         val peerId = _activeDeviceId.value ?: return
-        val encoded = Base64.encode(content)
-        val filePayload = FilePayload(
-            fileName = fileName,
-            mimeType = mimeType,
-            fileSize = content.size.toLong(),
-            base64Data = encoded
+        if (files.isEmpty()) return
+        val offerId = generateUniqueId()
+        pendingOutgoingFileBatches[offerId] = files
+        val offer = FileOfferPayload(
+            offerId = offerId,
+            files = files.map {
+                FilePreviewPayload(
+                    fileName = it.name,
+                    mimeType = it.mimeType,
+                    fileSize = it.sizeBytes
+                )
+            }
         )
-        // Send payload directly and persist locally with original fileName as displayContent
         sendWirePayload(
             kind = KIND_FILE_OFFER,
-            content = SyncPayloadCodec.encodeFile(filePayload),
+            content = SyncPayloadCodec.encodeFileOffer(offer),
             targetDeviceId = peerId,
-            peerDeviceId = peerId,
-            persistSent = true,
-            mimeType = mimeType,
-            displayContent = fileName
+            peerDeviceId = peerId
         )
+    }
+
+    override fun acceptFileOffer(offerId: String) {
+        val offer = _incomingFileOffer.value?.takeIf { it.offerId == offerId } ?: return
+        _incomingFileOffer.value = null
+        sendWirePayload(
+            kind = KIND_FILE_ACCEPT,
+            content = offerId,
+            targetDeviceId = offer.senderDeviceId,
+            peerDeviceId = offer.senderDeviceId
+        )
+    }
+
+    override fun declineFileOffer(offerId: String) {
+        val offer = _incomingFileOffer.value?.takeIf { it.offerId == offerId } ?: return
+        _incomingFileOffer.value = null
+        sendWirePayload(
+            kind = KIND_FILE_REJECT,
+            content = offerId,
+            targetDeviceId = offer.senderDeviceId,
+            peerDeviceId = offer.senderDeviceId
+        )
+    }
+
+    override fun dismissReceivedFiles() {
+        _receivedFileBatch.value = null
     }
 
     override suspend fun clearAllData() {
@@ -299,6 +347,9 @@ class SyncRepositoryImpl(
         _activeDeviceId.value = null
         _pendingOutgoing.value = null
         _pendingIncoming.value = emptyList()
+        pendingOutgoingFileBatches.clear()
+        _incomingFileOffer.value = null
+        _receivedFileBatch.value = null
         networkService.disconnectFromPeer()
     }
 
@@ -391,44 +442,109 @@ class SyncRepositoryImpl(
             }
             KIND_FILE_OFFER -> {
                 val peerId = payload.originDeviceId
-                val file = SyncPayloadCodec.decodeFileOrNull(payload.content)
-                val label = file?.fileName ?: "File"
-                
-                @OptIn(ExperimentalEncodingApi::class)
-                val bytes = file?.base64Data?.let {
-                    try { Base64.decode(it) } catch (_: Exception) { null }
-                }
-
-                if (bytes != null) {
-                    platformOperations.saveFile(label, bytes) { success, savedPath ->
-                        val finalPath = if (success && savedPath != null) savedPath else label
-                        persistMessage(
-                            itemId = payload.messageId ?: generateUniqueId(),
-                            peerDeviceId = peerId,
-                            originDeviceId = payload.originDeviceId,
-                            kind = KIND_FILE_OFFER,
-                            mimeType = label,
-                            content = finalPath,
-                            timestamp = payload.timestamp
+                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                val offer = SyncPayloadCodec.decodeFileOfferOrNull(payload.content) ?: return
+                _incomingFileOffer.value = IncomingFileOffer(
+                    offerId = offer.offerId,
+                    senderDeviceId = peerId,
+                    senderName = payload.originDeviceName,
+                    files = offer.files.map {
+                        TransferFilePreview(
+                            name = it.fileName,
+                            mimeType = it.mimeType,
+                            sizeBytes = it.fileSize
                         )
                     }
-                } else {
-                    persistMessage(
-                        itemId = payload.messageId ?: generateUniqueId(),
-                        peerDeviceId = peerId,
-                        originDeviceId = payload.originDeviceId,
-                        kind = KIND_FILE_OFFER,
-                        mimeType = label,
-                        content = label,
-                        timestamp = payload.timestamp
-                    )
-                }
-
+                )
                 incomingNotifier.notifyIncoming(
                     senderName = payload.originDeviceName,
-                    preview = label,
+                    preview = "${offer.files.size} file(s) waiting for approval",
                     isFile = true
                 )
+            }
+            KIND_FILE_ACCEPT -> {
+                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                val files = pendingOutgoingFileBatches.remove(payload.content) ?: return
+                sendFileBatch(
+                    offerId = payload.content,
+                    files = files,
+                    targetDeviceId = payload.originDeviceId
+                )
+            }
+            KIND_FILE_REJECT -> {
+                pendingOutgoingFileBatches.remove(payload.content)
+            }
+            KIND_FILE_BATCH -> {
+                if (payload.targetDeviceId != null && payload.targetDeviceId != localDevice.id) return
+                val batch = SyncPayloadCodec.decodeFileBatchOrNull(payload.content) ?: return
+                saveIncomingFileBatch(
+                    senderName = payload.originDeviceName,
+                    files = batch.files
+                )
+            }
+        }
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun sendFileBatch(
+        offerId: String,
+        files: List<PickedFile>,
+        targetDeviceId: String
+    ) {
+        val batch = FileBatchPayload(
+            offerId = offerId,
+            files = files.map {
+                FilePayload(
+                    fileName = it.name,
+                    mimeType = it.mimeType,
+                    fileSize = it.sizeBytes,
+                    base64Data = Base64.encode(it.content)
+                )
+            }
+        )
+        sendWirePayload(
+            kind = KIND_FILE_BATCH,
+            content = SyncPayloadCodec.encodeFileBatch(batch),
+            targetDeviceId = targetDeviceId,
+            peerDeviceId = targetDeviceId
+        )
+    }
+
+    @OptIn(ExperimentalEncodingApi::class)
+    private fun saveIncomingFileBatch(senderName: String, files: List<FilePayload>) {
+        val previews = files.map {
+            TransferFilePreview(
+                name = it.fileName,
+                mimeType = it.mimeType,
+                sizeBytes = it.fileSize
+            )
+        }
+        val savedPaths = mutableListOf<String>()
+        var remaining = files.size
+        if (remaining == 0) return
+
+        files.forEach { file ->
+            val bytes = try {
+                Base64.decode(file.base64Data)
+            } catch (_: Exception) {
+                null
+            }
+            if (bytes == null) {
+                remaining -= 1
+                return@forEach
+            }
+            platformOperations.saveFile(file.fileName, bytes) { success, savedPath ->
+                if (success && savedPath != null) {
+                    savedPaths += savedPath
+                }
+                remaining -= 1
+                if (remaining == 0) {
+                    _receivedFileBatch.value = ReceivedFileBatch(
+                        senderName = senderName,
+                        files = previews,
+                        savedPaths = savedPaths
+                    )
+                }
             }
         }
     }
@@ -516,5 +632,8 @@ class SyncRepositoryImpl(
         const val KIND_CONNECT_REJECT = "connect_reject"
         const val KIND_TEXT = "text"
         const val KIND_FILE_OFFER = "file_offer"
+        const val KIND_FILE_ACCEPT = "file_accept"
+        const val KIND_FILE_REJECT = "file_reject"
+        const val KIND_FILE_BATCH = "file_batch"
     }
 }

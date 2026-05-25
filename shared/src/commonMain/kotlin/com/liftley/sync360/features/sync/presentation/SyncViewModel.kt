@@ -28,6 +28,8 @@ class SyncViewModel(
     private val observeConnectionStatusUseCase: ObserveConnectionStatusUseCase,
     private val observeActiveDeviceIdUseCase: ObserveActiveDeviceIdUseCase,
     private val observeConversationMessagesUseCase: ObserveConversationMessagesUseCase,
+    private val observeIncomingFileOfferUseCase: ObserveIncomingFileOfferUseCase,
+    private val observeReceivedFileBatchUseCase: ObserveReceivedFileBatchUseCase,
     private val observeIsScanningUseCase: ObserveIsScanningUseCase,
     private val triggerManualScanUseCase: TriggerManualScanUseCase,
     private val requestConnectUseCase: RequestConnectUseCase,
@@ -37,7 +39,10 @@ class SyncViewModel(
     private val declineIncomingConnectUseCase: DeclineIncomingConnectUseCase,
     private val switchActiveDeviceUseCase: SwitchActiveDeviceUseCase,
     private val sendTextUseCase: SendTextUseCase,
-    private val sendFileUseCase: SendFileUseCase,
+    private val offerFilesUseCase: OfferFilesUseCase,
+    private val acceptFileOfferUseCase: AcceptFileOfferUseCase,
+    private val declineFileOfferUseCase: DeclineFileOfferUseCase,
+    private val dismissReceivedFilesUseCase: DismissReceivedFilesUseCase,
     private val disconnectActivePeerUseCase: DisconnectActivePeerUseCase,
     private val startSyncUseCase: StartSyncUseCase,
     private val localIpAddress: String
@@ -85,6 +90,16 @@ class SyncViewModel(
         viewModelScope.launch {
             observeConnectionStatusUseCase().collect { status ->
                 _uiState.update { it.copy(connectionStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            observeIncomingFileOfferUseCase().collect { offer ->
+                _uiState.update { it.copy(incomingFileOffer = offer) }
+            }
+        }
+        viewModelScope.launch {
+            observeReceivedFileBatchUseCase().collect { batch ->
+                _uiState.update { it.copy(receivedFileBatch = batch) }
             }
         }
         viewModelScope.launch {
@@ -150,16 +165,31 @@ class SyncViewModel(
                     _uiState.update { it.copy(outgoingText = clipText) }
                 }
             }
-            is SyncEvent.SendFile -> {
-                sendFileUseCase(event.name, event.mimeType, event.content)
-                _uiState.update { it.copy(userMessage = "Sent ${event.name}") }
-            }
             is SyncEvent.OpenFilePicker -> {
-                platformOperations.openFilePicker(event.kind) { name, mime, bytes ->
-                    sendFileUseCase(name, mime, bytes)
-                    _uiState.update { it.copy(userMessage = "Sent $name") }
+                platformOperations.openFilePicker(event.kind) { files ->
+                    onEvent(SyncEvent.AddSelectedFiles(files))
                 }
             }
+            is SyncEvent.AddSelectedFiles -> {
+                val merged = (_uiState.value.selectedFiles + event.files).take(MAX_SELECTED_FILES)
+                _uiState.update { it.copy(selectedFiles = merged) }
+            }
+            SyncEvent.SendSelectedFiles -> {
+                val selected = _uiState.value.selectedFiles
+                offerFilesUseCase(selected)
+                _uiState.update {
+                    it.copy(
+                        selectedFiles = emptyList(),
+                        userMessage = if (selected.isEmpty()) null else "Request sent"
+                    )
+                }
+            }
+            SyncEvent.ClearSelectedFiles -> {
+                _uiState.update { it.copy(selectedFiles = emptyList()) }
+            }
+            is SyncEvent.AcceptFileOffer -> acceptFileOfferUseCase(event.offerId)
+            is SyncEvent.DeclineFileOffer -> declineFileOfferUseCase(event.offerId)
+            SyncEvent.DismissReceivedFiles -> dismissReceivedFilesUseCase()
             is SyncEvent.ClearUserMessage -> {
                 _uiState.update { it.copy(userMessage = null) }
             }
@@ -178,22 +208,11 @@ class SyncViewModel(
         _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
 
     private fun List<SyncMessage>.toDeviceStream(peerId: String): DeviceStream {
-        val texts = filter { !it.isFile }.map { msg ->
+        val texts = filter { !it.isFile && !msgIsFromMe(it) }.takeLast(3).asReversed().map { msg ->
             ClipboardEntry(
                 text = msg.text,
                 updatedLabel = formatTime(msg.timestamp),
-                sourceApp = if (msg.isFromMe) "You" else "Peer",
-                isFromMe = msg.isFromMe
-            )
-        }
-        val files = filter { it.isFile }.map { msg ->
-            SyncAsset(
-                id = msg.id,
-                title = msg.fileName ?: msg.text,
-                subtitle = formatTime(msg.timestamp),
-                type = SyncAssetType.DOCUMENT,
-                syncState = SyncTransferState.FULLY_DOWNLOADED,
-                path = msg.text,
+                sourceApp = "Peer",
                 isFromMe = msg.isFromMe
             )
         }
@@ -201,15 +220,21 @@ class SyncViewModel(
             deviceId = peerId,
             clipboard = texts.firstOrNull() ?: ClipboardEntry("", "", ""),
             media = emptyList(),
-            documents = files,
+            documents = emptyList(),
             storageUsedPercent = 0,
             lastSeenLabel = "Now",
             latestTexts = texts
         )
     }
 
+    private fun msgIsFromMe(message: SyncMessage): Boolean = message.isFromMe
+
     private fun formatTime(timestamp: Long): String {
         if (timestamp <= 0L) return ""
         return SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(timestamp))
+    }
+
+    companion object {
+        private const val MAX_SELECTED_FILES = 12
     }
 }

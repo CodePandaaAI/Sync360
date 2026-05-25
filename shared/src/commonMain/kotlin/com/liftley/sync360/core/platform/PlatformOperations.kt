@@ -10,7 +10,7 @@ interface PlatformOperations {
     fun hideOverlay()
     fun readClipboard(): String?
     fun writeClipboard(text: String)
-    fun openFilePicker(kind: FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit)
+    fun openFilePicker(kind: FilePickerKind, onFilesSelected: (files: List<com.liftley.sync360.features.sync.domain.model.PickedFile>) -> Unit)
     fun saveFile(name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit)
     fun openFile(path: String)
 

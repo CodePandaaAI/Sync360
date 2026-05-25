@@ -2,6 +2,9 @@ package com.liftley.sync360.features.sync.domain.usecase
 
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import kotlinx.coroutines.flow.Flow
@@ -34,6 +37,13 @@ class ObserveConversationMessagesUseCase(private val repository: SyncRepository)
     operator fun invoke(): Flow<List<SyncMessage>> = repository.conversationMessages
 }
 
+class ObserveIncomingFileOfferUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<IncomingFileOffer?> = repository.incomingFileOffer
+}
+
+class ObserveReceivedFileBatchUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<ReceivedFileBatch?> = repository.receivedFileBatch
+}
 
 class StartSyncUseCase(private val repository: SyncRepository) {
     operator fun invoke() = repository.startSync()
@@ -69,10 +79,22 @@ class SendTextUseCase(private val repository: SyncRepository) {
     }
 }
 
-class SendFileUseCase(private val repository: SyncRepository) {
-    operator fun invoke(fileName: String, mimeType: String, content: ByteArray) {
-        repository.sendFile(fileName, mimeType, content)
+class OfferFilesUseCase(private val repository: SyncRepository) {
+    operator fun invoke(files: List<PickedFile>) {
+        if (files.isNotEmpty()) repository.offerFiles(files)
     }
+}
+
+class AcceptFileOfferUseCase(private val repository: SyncRepository) {
+    operator fun invoke(offerId: String) = repository.acceptFileOffer(offerId)
+}
+
+class DeclineFileOfferUseCase(private val repository: SyncRepository) {
+    operator fun invoke(offerId: String) = repository.declineFileOffer(offerId)
+}
+
+class DismissReceivedFilesUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.dismissReceivedFiles()
 }
 
 class DisconnectActivePeerUseCase(private val repository: SyncRepository) {

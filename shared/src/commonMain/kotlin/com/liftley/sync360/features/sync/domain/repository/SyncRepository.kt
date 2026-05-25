@@ -2,6 +2,9 @@ package com.liftley.sync360.features.sync.domain.repository
 
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
+import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import kotlinx.coroutines.flow.Flow
 
@@ -14,6 +17,8 @@ interface SyncRepository {
     val activeDeviceId: Flow<String?>
     val conversationMessages: Flow<List<SyncMessage>>
     val isScanning: Flow<Boolean>
+    val incomingFileOffer: Flow<IncomingFileOffer?>
+    val receivedFileBatch: Flow<ReceivedFileBatch?>
 
     fun startSync()
     fun stopSync()
@@ -30,7 +35,10 @@ interface SyncRepository {
     fun disconnectAll()
 
     fun sendText(text: String)
-    fun sendFile(fileName: String, mimeType: String, content: ByteArray)
+    fun offerFiles(files: List<PickedFile>)
+    fun acceptFileOffer(offerId: String)
+    fun declineFileOffer(offerId: String)
+    fun dismissReceivedFiles()
 
     suspend fun clearAllData()
     fun deleteDevice(deviceId: String)

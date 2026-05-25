@@ -23,6 +23,25 @@ data class FilePayload(
     val base64Data: String
 )
 
+@Serializable
+data class FileOfferPayload(
+    val offerId: String,
+    val files: List<FilePreviewPayload>
+)
+
+@Serializable
+data class FilePreviewPayload(
+    val fileName: String,
+    val mimeType: String,
+    val fileSize: Long
+)
+
+@Serializable
+data class FileBatchPayload(
+    val offerId: String,
+    val files: List<FilePayload>
+)
+
 object SyncPayloadCodec {
     private val json = Json {
         ignoreUnknownKeys = true
@@ -48,5 +67,26 @@ object SyncPayloadCodec {
             null
         }
     }
-}
 
+    fun encodeFileOffer(offer: FileOfferPayload): String =
+        json.encodeToString(FileOfferPayload.serializer(), offer)
+
+    fun decodeFileOfferOrNull(jsonStr: String): FileOfferPayload? {
+        return try {
+            json.decodeFromString(FileOfferPayload.serializer(), jsonStr)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    fun encodeFileBatch(batch: FileBatchPayload): String =
+        json.encodeToString(FileBatchPayload.serializer(), batch)
+
+    fun decodeFileBatchOrNull(jsonStr: String): FileBatchPayload? {
+        return try {
+            json.decodeFromString(FileBatchPayload.serializer(), jsonStr)
+        } catch (_: Exception) {
+            null
+        }
+    }
+}

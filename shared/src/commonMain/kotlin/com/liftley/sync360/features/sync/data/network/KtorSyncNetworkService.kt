@@ -66,7 +66,7 @@ class KtorSyncNetworkService : SyncNetworkService {
         try {
             serverEngine = embeddedServer(io.ktor.server.cio.CIO, port = port) {
                 install(io.ktor.server.websocket.WebSockets) {
-                    maxFrameSize = Long.MAX_VALUE
+                    maxFrameSize = MAX_FRAME_SIZE_BYTES
                     masking = false
                 }
                 routing {
@@ -117,7 +117,16 @@ class KtorSyncNetworkService : SyncNetworkService {
     }
 
     override fun connectToPeer(host: String, port: Int, localDeviceId: String) {
-        disconnectFromPeer()
+        userDisconnected = true
+        clientJob?.cancel()
+        clientJob = null
+        val previousSession = clientSession
+        clientSession = null
+        scope.launch {
+            try {
+                previousSession?.close(CloseReason(CloseReason.Codes.NORMAL, "Reconnecting"))
+            } catch (_: Exception) {}
+        }
         userDisconnected = false
 
         _connectionStatus.value = ConnectionStatus.CONNECTING
@@ -158,11 +167,12 @@ class KtorSyncNetworkService : SyncNetworkService {
         userDisconnected = true
         clientJob?.cancel()
         clientJob = null
+        val sessionToClose = clientSession
+        clientSession = null
         scope.launch {
             try {
-                clientSession?.close(CloseReason(CloseReason.Codes.NORMAL, "User disconnected"))
+                sessionToClose?.close(CloseReason(CloseReason.Codes.NORMAL, "User disconnected"))
             } catch (_: Exception) {}
-            clientSession = null
 
             // Disconnect all accepted server sessions too!
             val sessionsToClose = serverSessionsMutex.withLock {
@@ -207,5 +217,9 @@ class KtorSyncNetworkService : SyncNetworkService {
                 }
             }
         }
+    }
+
+    companion object {
+        private const val MAX_FRAME_SIZE_BYTES = 80L * 1024 * 1024
     }
 }
