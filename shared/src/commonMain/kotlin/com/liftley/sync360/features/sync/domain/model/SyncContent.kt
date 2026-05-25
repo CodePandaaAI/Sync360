@@ -14,7 +14,8 @@ data class DeviceStream(
 data class ClipboardEntry(
     val text: String,
     val updatedLabel: String,
-    val sourceApp: String
+    val sourceApp: String,
+    val isFromMe: Boolean = false
 )
 
 data class SyncAsset(
@@ -23,7 +24,9 @@ data class SyncAsset(
     val subtitle: String,
     val type: SyncAssetType,
     val syncState: SyncTransferState,
-    val progressPercent: Int = 0
+    val progressPercent: Int = 0,
+    val path: String = "",
+    val isFromMe: Boolean = false
 )
 
 enum class SyncAssetType {

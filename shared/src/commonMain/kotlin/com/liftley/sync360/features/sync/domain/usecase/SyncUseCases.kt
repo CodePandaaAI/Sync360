@@ -1,13 +1,25 @@
 package com.liftley.sync360.features.sync.domain.usecase
 
-import com.liftley.sync360.core.network.SyncPayload
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import kotlinx.coroutines.flow.Flow
 
-class ObserveDevicesUseCase(private val repository: SyncRepository) {
-    operator fun invoke(): Flow<List<DeviceProfile>> = repository.devices
+class ObservePairedDevicesUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<List<DeviceProfile>> = repository.pairedDevices
+}
+
+class ObserveNearbyDevicesUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<List<DeviceProfile>> = repository.nearbyDevices
+}
+
+class ObservePendingIncomingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<List<DeviceProfile>> = repository.pendingIncomingConnectRequests
+}
+
+class ObservePendingOutgoingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<DeviceProfile?> = repository.pendingOutgoingConnectDevice
 }
 
 class ObserveConnectionStatusUseCase(private val repository: SyncRepository) {
@@ -18,29 +30,66 @@ class ObserveActiveDeviceIdUseCase(private val repository: SyncRepository) {
     operator fun invoke(): Flow<String?> = repository.activeDeviceId
 }
 
-class ObserveRecentPayloadsUseCase(private val repository: SyncRepository) {
-    operator fun invoke(): Flow<List<SyncPayload>> = repository.recentPayloads
+class ObserveConversationMessagesUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<List<SyncMessage>> = repository.conversationMessages
 }
 
-class StartDiscoveryUseCase(private val repository: SyncRepository) {
-    operator fun invoke() {
-        repository.startDiscovery()
-        repository.startServer()
-    }
+class StartSyncUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.startSync()
+}
+
+class RequestConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke(device: DeviceProfile) = repository.requestConnect(device)
+}
+
+class ConfirmOutgoingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.confirmOutgoingConnect()
+}
+
+class DismissOutgoingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.dismissOutgoingConnect()
+}
+
+class AcceptIncomingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke(deviceId: String) = repository.acceptIncomingConnect(deviceId)
+}
+
+class DeclineIncomingConnectUseCase(private val repository: SyncRepository) {
+    operator fun invoke(deviceId: String) = repository.declineIncomingConnect(deviceId)
+}
+
+class SwitchActiveDeviceUseCase(private val repository: SyncRepository) {
+    operator fun invoke(deviceId: String) = repository.switchActiveDevice(deviceId)
 }
 
 class ConnectToDeviceUseCase(private val repository: SyncRepository) {
-    operator fun invoke(device: DeviceProfile) = repository.connectToDevice(device)
+    operator fun invoke(device: DeviceProfile) = repository.switchActiveDevice(device.id)
 }
 
 class SendTextUseCase(private val repository: SyncRepository) {
     operator fun invoke(text: String) {
-        if (text.isNotBlank()) {
-            repository.sendText(text)
-        }
+        if (text.isNotBlank()) repository.sendText(text)
     }
+}
+
+class SendFileUseCase(private val repository: SyncRepository) {
+    operator fun invoke(fileName: String, mimeType: String, content: ByteArray) {
+        repository.sendFile(fileName, mimeType, content)
+    }
+}
+
+class DisconnectActivePeerUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.disconnectActivePeer()
 }
 
 class DisconnectAllUseCase(private val repository: SyncRepository) {
     operator fun invoke() = repository.disconnectAll()
+}
+
+class ObserveIsScanningUseCase(private val repository: SyncRepository) {
+    operator fun invoke(): Flow<Boolean> = repository.isScanning
+}
+
+class TriggerManualScanUseCase(private val repository: SyncRepository) {
+    operator fun invoke() = repository.triggerManualScan()
 }

@@ -2,25 +2,21 @@ package com.liftley.sync360
 
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
-import org.koin.core.context.startKoin
-import com.liftley.sync360.features.sync.domain.repository.SyncRepository
+import com.liftley.sync360.core.di.AppContainer
+import kotlinx.coroutines.runBlocking
 
 fun main() {
-    val koinApp = startKoin {
-        modules(com.liftley.sync360.core.di.platformModule, com.liftley.sync360.core.di.commonModule)
-    }
-    
-    val repository: SyncRepository = koinApp.koin.get()
+    val container = AppContainer(context = null, isDesktopPlatform = true)
 
     application {
         Window(
             onCloseRequest = {
-                repository.disconnectAll()
+                runBlocking { container.onAppExit() }
                 exitApplication()
             },
-            title = "Sync360 Desktop Console",
+            title = "Sync360",
         ) {
-            App(isDesktop = true)
+            App(isDesktop = true, container = container)
         }
     }
 }

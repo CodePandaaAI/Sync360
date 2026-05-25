@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -23,8 +24,7 @@ fun DesktopDashboard(
     onEvent: (SyncEvent) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val activeDevice = uiState.connectedDevices.firstOrNull { it.id == uiState.activeDeviceId }
-        ?: uiState.nearbyDevices.firstOrNull { it.id == uiState.activeDeviceId }
+    val activeDevice = uiState.activeDevice()
     val activeStream = uiState.activeDeviceId?.let { uiState.deviceStreams[it] }
     var copiedFeedbackText by remember { mutableStateOf<String?>(null) }
 
@@ -67,14 +67,14 @@ fun DesktopDashboard(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 32.dp, vertical = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(24.dp)
             ) {
                 if (activeDevice == null) {
                     ReadyToSyncCard(
                         isDesktop = true
                     )
                 } else {
-                    // Header Status Area
+                    // Header Status Area (Quiet & Premium)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text(
                             text = "Connected with ${activeDevice.name}",
@@ -122,9 +122,32 @@ fun DesktopDashboard(
 
                         TransferredFilesSection(
                             combinedFiles = combinedFiles,
+                            onFileClick = { asset ->
+                                onEvent(SyncEvent.OpenFile(asset.path))
+                            },
                             title = "Transferred Files",
                             modifier = Modifier.weight(1f)
                         )
+                    }
+
+                    // Quiet Disconnect Button perfectly placed at the very bottom
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Button(
+                            onClick = { onEvent(SyncEvent.Disconnect) },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = colorScheme.errorContainer.copy(alpha = 0.8f),
+                                contentColor = colorScheme.onErrorContainer
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp)
+                        ) {
+                            Text("Disconnect Session", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }

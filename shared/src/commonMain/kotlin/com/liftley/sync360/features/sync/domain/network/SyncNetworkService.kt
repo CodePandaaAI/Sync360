@@ -11,6 +11,9 @@ interface SyncNetworkService {
     /** Flow of the current connection status to a remote peer (Client side) */
     val connectionStatus: Flow<ConnectionStatus>
     
+    /** Flow to track specifically whether the client-side socket is connected. */
+    val isClientConnected: Flow<Boolean>
+    
     /** Flow of raw JSON payloads received from peers (both Client and Server sides) */
     val incomingPayloads: Flow<String>
 

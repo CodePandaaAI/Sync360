@@ -6,15 +6,6 @@ plugins {
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
     alias(libs.plugins.kotlin.serialization)
-    alias(libs.plugins.sqldelight)
-}
-
-sqldelight {
-    databases {
-        create("SyncDatabase") {
-            packageName.set("com.liftley.sync360.core.database")
-        }
-    }
 }
 
 kotlin {
@@ -48,12 +39,10 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
-            implementation(libs.sqldelight.android)
-            implementation(libs.koin.android)
+            implementation(libs.androidx.core.ktx)
         }
         jvmMain.dependencies {
             implementation(libs.jmdns)
-            implementation(libs.sqldelight.sqlite)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)
@@ -75,18 +64,12 @@ kotlin {
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.kotlinx.serialization.json)
             
-            // SQLDelight
-            implementation(libs.sqldelight.coroutines)
-            
             // Ktor Server
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
             implementation(libs.ktor.server.websockets)
             implementation(libs.ktor.server.content.negotiation)
             
-            // Koin Dependency Injection
-            implementation(libs.koin.core)
-            implementation(libs.koin.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

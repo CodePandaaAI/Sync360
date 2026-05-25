@@ -1,17 +1,15 @@
 package com.liftley.sync360
 
 import android.app.Application
-import com.liftley.sync360.core.di.commonModule
-import com.liftley.sync360.core.di.platformModule
-import org.koin.android.ext.koin.androidContext
-import org.koin.core.context.startKoin
+import com.liftley.sync360.core.di.AppContainer
 
 class SyncApplication : Application() {
+
+    lateinit var appContainer: AppContainer
+        private set
+
     override fun onCreate() {
         super.onCreate()
-        startKoin {
-            androidContext(this@SyncApplication)
-            modules(platformModule, commonModule)
-        }
+        appContainer = AppContainer(context = this, isDesktopPlatform = false)
     }
 }

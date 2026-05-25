@@ -11,54 +11,45 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.liftley.sync360.core.designsystem.AppTheme
+import com.liftley.sync360.core.di.AppContainer
 import com.liftley.sync360.features.sync.presentation.DesktopDashboard
 import com.liftley.sync360.features.sync.presentation.SyncScreen
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
-import org.koin.compose.KoinContext
-import org.koin.compose.getKoin
-import org.koin.core.parameter.parametersOf
 
 @Composable
 fun App(
-    isDesktop: Boolean
+    isDesktop: Boolean,
+    container: AppContainer
 ) {
     AppTheme {
-        KoinContext {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+        ) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
+                    .then(
+                        if (isDesktop) Modifier.safeContentPadding()
+                        else Modifier
+                    )
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .then(
-                            if (isDesktop) Modifier.safeContentPadding()
-                            else Modifier
-                        )
-                ) {
-                    val koin = getKoin()
+                val viewModel: SyncViewModel = viewModel {
+                    container.syncViewModel(isDesktop)
+                }
+                val uiState by viewModel.uiState.collectAsState()
 
-                    // Instantiate the ViewModel resolving from Koin with only the isDesktop flag
-                    val viewModel = viewModel {
-                        koin.get<SyncViewModel> {
-                            parametersOf(isDesktop)
-                        }
-                    }
-
-                    val uiState by viewModel.uiState.collectAsState()
-
-                    if (isDesktop) {
-                        DesktopDashboard(
-                            uiState = uiState,
-                            onEvent = { viewModel.onEvent(it) }
-                        )
-                    } else {
-                        SyncScreen(
-                            uiState = uiState,
-                            onEvent = { viewModel.onEvent(it) }
-                        )
-                    }
+                if (isDesktop) {
+                    DesktopDashboard(
+                        uiState = uiState,
+                        onEvent = { viewModel.onEvent(it) }
+                    )
+                } else {
+                    SyncScreen(
+                        uiState = uiState,
+                        onEvent = { viewModel.onEvent(it) }
+                    )
                 }
             }
         }

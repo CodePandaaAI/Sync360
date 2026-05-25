@@ -11,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
@@ -23,32 +24,61 @@ fun DesktopDevicePickerDialog(
     onDismissRequest: () -> Unit,
     onSelectDevice: (DeviceProfile) -> Unit
 ) {
-    val devices = uiState.connectedDevices // Combined list from new architecture
+    val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
+    val nearby = uiState.nearbyDevices.filter { it.id !in pairedIds }
 
     AlertDialog(
         onDismissRequest = onDismissRequest,
         modifier = Modifier.width(420.dp),
         title = {
-            Text("Select Device", style = MaterialTheme.typography.titleLarge)
+            Text("Devices on your network", style = MaterialTheme.typography.titleLarge)
         },
         text = {
-            Column {
-                if (devices.isEmpty()) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Your IP: ${uiState.serverIp}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                if (nearby.isEmpty() && uiState.connectedDevices.isEmpty()) {
                     Text(
-                        "No devices found nearby. Ensure other devices are on the same network and have the app open.",
+                        "Searching for nearby devices… Keep Sync360 open on another device on the same Wi‑Fi.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(devices) { device ->
-                            DeviceRow(
-                                device = device,
-                                onClick = { onSelectDevice(device) }
-                            )
+                    if (nearby.isNotEmpty()) {
+                        Text(
+                            "Nearby",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 200.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(nearby, key = { it.id }) { device ->
+                                DeviceRow(device = device, action = "Connect") {
+                                    onSelectDevice(device)
+                                }
+                            }
+                        }
+                    }
+                    if (uiState.connectedDevices.isNotEmpty()) {
+                        Text(
+                            "Paired this session",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                        LazyColumn(
+                            modifier = Modifier.fillMaxWidth().heightIn(max = 160.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(uiState.connectedDevices, key = { it.id }) { device ->
+                                DeviceRow(device = device, action = "Open") {
+                                    onSelectDevice(device)
+                                }
+                            }
                         }
                     }
                 }
@@ -65,6 +95,7 @@ fun DesktopDevicePickerDialog(
 @Composable
 private fun DeviceRow(
     device: DeviceProfile,
+    action: String,
     onClick: () -> Unit
 ) {
     Row(
@@ -82,15 +113,18 @@ private fun DeviceRow(
         )
         Spacer(Modifier.width(16.dp))
         Column(modifier = Modifier.weight(1f)) {
+            Text(text = device.name, style = MaterialTheme.typography.bodyLarge)
             Text(
-                text = device.name,
-                style = MaterialTheme.typography.bodyLarge
-            )
-            Text(
-                text = if (device.isOnline) "Online" else "Offline",
+                text = device.hostAddress ?: device.id,
                 style = MaterialTheme.typography.bodySmall,
-                color = if (device.isOnline) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Text(
+            text = action,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.Bold
+        )
     }
 }

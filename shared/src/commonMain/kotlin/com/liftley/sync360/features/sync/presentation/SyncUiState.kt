@@ -32,6 +32,23 @@ data class SyncUiState(
     val outgoingText: String = "",
     val pendingConnectDevice: DeviceProfile? = null,
     val pendingFileOffer: FileOffer? = null,
-    val userMessage: String? = null
+    val userMessage: String? = null,
+    val isScanningForDevices: Boolean = true
 )
+
+/** All devices we know about (paired + live nearby), for resolving selection by id. */
+fun SyncUiState.allKnownDevices(): List<DeviceProfile> {
+    val merged = linkedMapOf<String, DeviceProfile>()
+    connectedDevices.forEach { merged[it.id] = it }
+    nearbyDevices.forEach { nearby ->
+        merged[nearby.id] = nearby.copy(
+            name = merged[nearby.id]?.name ?: nearby.name,
+            hostAddress = nearby.hostAddress ?: merged[nearby.id]?.hostAddress
+        )
+    }
+    return merged.values.toList()
+}
+
+fun SyncUiState.activeDevice(): DeviceProfile? =
+    activeDeviceId?.let { id -> allKnownDevices().firstOrNull { it.id == id } }
 

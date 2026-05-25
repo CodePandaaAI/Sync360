@@ -1,8 +1,6 @@
 package com.liftley.sync360.core.platform
 
 import android.content.Context
-import android.content.Intent
-import android.os.Build
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
@@ -15,21 +13,9 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     var onOpenFileCallback: ((path: String) -> Unit)? = null
     var onSaveFileCallback: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
 
-    override fun startService(hostIp: String) {
-        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java).apply {
-            putExtra(com.liftley.sync360.service.SyncForegroundService.EXTRA_HOST_IP, hostIp)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            context.startForegroundService(intent)
-        } else {
-            context.startService(intent)
-        }
-    }
+    override fun startService(hostIp: String) = Unit
 
-    override fun stopService() {
-        val intent = Intent(context, com.liftley.sync360.service.SyncForegroundService::class.java)
-        context.stopService(intent)
-    }
+    override fun stopService() = Unit
 
     override fun showOverlay() {
         onShowOverlayCallback?.invoke()
@@ -84,10 +70,27 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     override fun disconnectServerClient(deviceId: String) {}
 
     override fun getLocalIpAddress(): String {
-        return "127.0.0.1" // Simplified for Android client
+        return try {
+            val interfaces = java.net.NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback) continue
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    val host = address.hostAddress ?: continue
+                    if (!address.isLoopbackAddress && host.contains('.')) {
+                        return host
+                    }
+                }
+            }
+            "127.0.0.1"
+        } catch (_: Exception) {
+            "127.0.0.1"
+        }
     }
 
-    override fun getIncomingMessagesFlow(): Flow<String>? {
+    override fun getIncomingMessagesFlow(): Flow<String> {
         return emptyFlow()
     }
 }

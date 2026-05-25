@@ -116,9 +116,8 @@ fun DesktopDeviceRail(
                     fontWeight = FontWeight.Bold,
                     color = colorScheme.onSurfaceVariant
                 )
-                val nearbyFiltered = uiState.nearbyDevices.filterNot { nearby ->
-                    uiState.connectedDevices.any { it.id == nearby.id }
-                }
+                val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
+                val nearbyFiltered = uiState.nearbyDevices.filter { it.id !in pairedIds }
                 if (nearbyFiltered.isEmpty()) {
                     Text(
                         text = "Searching local network…",

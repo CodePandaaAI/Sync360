@@ -28,5 +28,7 @@ sealed interface SyncEvent {
     object AcceptFileOffer : SyncEvent
     object DeclineFileOffer : SyncEvent
     object ClearUserMessage : SyncEvent
+    data class OpenFile(val path: String) : SyncEvent
+    object TriggerScan : SyncEvent
 }
 

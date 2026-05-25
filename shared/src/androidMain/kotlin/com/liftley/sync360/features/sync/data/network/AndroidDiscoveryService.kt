@@ -5,9 +5,13 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlin.coroutines.resume
 
 class AndroidDiscoveryService(private val context: Context) : NetworkDiscoveryService {
     private val _discoveredDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
@@ -16,54 +20,80 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val serviceType = "_sync360._tcp"
     private val devicesMap = mutableMapOf<String, DeviceProfile>()
+    private val serviceNameToIdMap = mutableMapOf<String, String>()
+
+    private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val resolveMutex = Mutex()
 
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private var registrationListener: NsdManager.RegistrationListener? = null
 
     override fun startDiscovery() {
+        if (discoveryListener != null) return
         discoveryListener = object : NsdManager.DiscoveryListener {
             override fun onDiscoveryStarted(regType: String) {}
             override fun onDiscoveryStopped(serviceType: String) {}
             override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
                 nsdManager.stopServiceDiscovery(this)
+                discoveryListener = null
             }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
                 nsdManager.stopServiceDiscovery(this)
             }
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (serviceInfo.serviceType.contains(serviceType)) {
-                    nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
-                        override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
-                        override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                            val ip = serviceInfo.host.hostAddress ?: return
-                            val typeAttr = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                serviceInfo.attributes["type"]?.let { String(it) }
-                            } else null
-                            
-                            val resolvedType = when (typeAttr) {
-                                "DESKTOP" -> DeviceType.DESKTOP
-                                "PHONE" -> DeviceType.PHONE
-                                "TABLET" -> DeviceType.TABLET
-                                else -> DeviceType.DESKTOP
+                    scope.launch {
+                        resolveMutex.withLock {
+                            val resolved = suspendCancellableCoroutine<NsdServiceInfo?> { continuation ->
+                                nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
+                                    override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                                        continuation.resume(null)
+                                    }
+
+                                    override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
+                                        continuation.resume(resolvedInfo)
+                                    }
+                                })
                             }
-                            
-                            val advertisedId = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                                serviceInfo.attributes["deviceId"]?.let { String(it) }
-                            } else null
-                            val device = DeviceProfile(
-                                id = advertisedId?.takeIf { it.isNotBlank() } ?: ip,
-                                name = serviceInfo.serviceName,
-                                type = resolvedType,
-                                hostAddress = ip
-                            )
-                            devicesMap[serviceInfo.serviceName] = device
-                            _discoveredDevices.value = devicesMap.values.toList()
+                            if (resolved != null) {
+                                val ip = resolved.host?.hostAddress ?: return@withLock
+                                val typeAttr = resolved.attributes["type"]?.let { String(it) }
+
+                                val resolvedType = when (typeAttr) {
+                                    "DESKTOP" -> DeviceType.DESKTOP
+                                    "PHONE" -> DeviceType.PHONE
+                                    "TABLET" -> DeviceType.TABLET
+                                    else -> DeviceType.DESKTOP
+                                }
+
+                                val advertisedId = resolved.attributes["deviceId"]?.let { String(it) }
+                                val resolvedId = advertisedId?.takeIf { it.isNotBlank() } ?: ip
+                                val device = DeviceProfile(
+                                    id = resolvedId,
+                                    name = resolved.serviceName.replace('-', ' '),
+                                    type = resolvedType,
+                                    hostAddress = ip,
+                                    isOnline = true
+                                )
+                                devicesMap[resolvedId] = device
+                                serviceNameToIdMap[resolved.serviceName] = resolvedId
+                                _discoveredDevices.value = devicesMap.values.toList()
+                            }
                         }
-                    })
+                    }
                 }
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                devicesMap.remove(serviceInfo.serviceName)
+                val resolvedId = serviceNameToIdMap.remove(serviceInfo.serviceName)
+                if (resolvedId != null) {
+                    devicesMap.remove(resolvedId)
+                }
+                
+                // Fallback cleanup using name comparison
+                val lostName = serviceInfo.serviceName.replace('-', ' ')
+                val toRemove = devicesMap.filter { it.value.name == lostName }.keys
+                toRemove.forEach { devicesMap.remove(it) }
+                
                 _discoveredDevices.value = devicesMap.values.toList()
             }
         }
@@ -74,32 +104,40 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
         discoveryListener?.let {
             try {
                 nsdManager.stopServiceDiscovery(it)
-            } catch (e: Exception) {
-                // Ignore if already stopped
+            } catch (_: Exception) {
             }
             discoveryListener = null
         }
     }
 
     override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {
+        val safeName = sanitizeServiceName(deviceName, deviceId)
         val serviceInfo = NsdServiceInfo().apply {
-            this.serviceName = deviceName
+            this.serviceName = safeName
             this.serviceType = this@AndroidDiscoveryService.serviceType
             this.port = port
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
-                this.setAttribute("type", deviceType)
-                this.setAttribute("deviceId", deviceId)
-            }
+            setAttribute("type", deviceType)
+            setAttribute("deviceId", deviceId)
         }
-        
+
         registrationListener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(NsdServiceInfo: NsdServiceInfo) {}
+            override fun onServiceRegistered(registered: NsdServiceInfo) {}
             override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
             override fun onServiceUnregistered(arg0: NsdServiceInfo) {}
             override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
         }
-        
+
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+    }
+
+    private fun sanitizeServiceName(name: String, deviceId: String): String {
+        val suffix = deviceId.takeLast(8)
+        return ("$name-$suffix")
+            .lowercase()
+            .replace(Regex("[^a-z0-9-]"), "-")
+            .trim('-')
+            .take(63)
+            .ifBlank { "sync360-$suffix" }
     }
 }
 

@@ -7,7 +7,9 @@ import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
+import java.net.Inet4Address
 import java.net.InetAddress
+import java.net.NetworkInterface
 
 class DesktopPlatformOperations : PlatformOperations {
 
@@ -63,19 +65,12 @@ class DesktopPlatformOperations : PlatformOperations {
         onResult: (success: Boolean, path: String?) -> Unit
     ) {
         try {
-            val mode = java.awt.FileDialog.SAVE
-            val dialog = java.awt.FileDialog(null as java.awt.Frame?, "Save Received File", mode)
-            dialog.file = name
-            dialog.isVisible = true
-            val file = dialog.file
-            val directory = dialog.directory
-            if (file != null && directory != null) {
-                val selectedFile = File(directory, file)
-                selectedFile.writeBytes(content)
-                onResult(true, selectedFile.absolutePath)
-            } else {
-                onResult(false, null)
-            }
+            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
+            val syncDir = File(downloadsDir, "Sync360")
+            syncDir.mkdirs()
+            val selectedFile = File(syncDir, name)
+            selectedFile.writeBytes(content)
+            onResult(true, selectedFile.absolutePath)
         } catch (e: Exception) {
             e.printStackTrace()
             onResult(false, null)
@@ -100,6 +95,20 @@ class DesktopPlatformOperations : PlatformOperations {
     override fun disconnectServerClient(deviceId: String) {}
 
     override fun getLocalIpAddress(): String {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces()
+            while (interfaces.hasMoreElements()) {
+                val networkInterface = interfaces.nextElement()
+                if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) continue
+                val addresses = networkInterface.inetAddresses
+                while (addresses.hasMoreElements()) {
+                    val address = addresses.nextElement()
+                    if (!address.isLoopbackAddress && address is Inet4Address) {
+                        return address.hostAddress
+                    }
+                }
+            }
+        } catch (_: Exception) {}
         return try {
             InetAddress.getLocalHost().hostAddress
         } catch (e: Exception) {

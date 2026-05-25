@@ -11,7 +11,8 @@ data class SyncPayload(
     val originDeviceType: String,
     val content: String,
     val timestamp: Long,
-    val targetDeviceId: String? = null
+    val targetDeviceId: String? = null,
+    val messageId: String? = null
 )
 
 @Serializable

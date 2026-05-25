@@ -21,7 +21,42 @@ fun ConfirmDialogs(
     uiState: SyncUiState,
     onEvent: (SyncEvent) -> Unit
 ) {
-    // Explicit Connect Request Dialog
+    uiState.pendingPairingRequests.firstOrNull()?.let { device ->
+        AlertDialog(
+            onDismissRequest = { onEvent(SyncEvent.DeclinePairing(device.id)) },
+            shape = RoundedCornerShape(SyncDimens.cornerMedium),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            title = {
+                Text(
+                    text = "Connection request",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "${device.name} wants to connect on your local network.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onEvent(SyncEvent.AcceptPairing(device.id)) },
+                    shape = RoundedCornerShape(SyncDimens.cornerSmall)
+                ) {
+                    Text("Accept", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onEvent(SyncEvent.DeclinePairing(device.id)) }) {
+                    Text("Decline", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    }
+
+    // Outgoing connect confirmation
     uiState.pendingConnectDevice?.let { device ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DismissConnectRequest) },

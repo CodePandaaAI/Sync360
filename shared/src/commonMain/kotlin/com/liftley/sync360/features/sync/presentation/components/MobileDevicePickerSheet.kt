@@ -36,6 +36,7 @@ import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.SyncUiState
+import com.liftley.sync360.features.sync.presentation.allKnownDevices
 
 private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Boolean {
     if (uiState.connectionStatus != ConnectionStatus.CONNECTED) return false
@@ -52,22 +53,7 @@ private fun isPairedDevice(device: DeviceProfile, uiState: SyncUiState): Boolean
     return uiState.connectedDevices.any { it.id == device.id }
 }
 
-private fun mergeDevices(uiState: SyncUiState): List<DeviceProfile> {
-    val merged = linkedMapOf<String, DeviceProfile>()
-    uiState.connectedDevices.forEach { device ->
-        merged[device.id] = device
-    }
-    uiState.nearbyDevices.forEach { nearby ->
-        val existing = merged[nearby.id]
-        merged[nearby.id] = when {
-            existing == null -> nearby
-            existing.hostAddress.isNullOrBlank() && !nearby.hostAddress.isNullOrBlank() ->
-                existing.copy(hostAddress = nearby.hostAddress)
-            else -> existing
-        }
-    }
-    return merged.values.toList()
-}
+private fun mergeDevices(uiState: SyncUiState): List<DeviceProfile> = uiState.allKnownDevices()
 
 private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): String {
     return when {
@@ -93,11 +79,9 @@ fun MobileDevicePickerSheet(
     onSelectPaired: (String) -> Unit,
     onPairNearby: (String) -> Unit
 ) {
-    val allDevices = sortDevices(mergeDevices(uiState), uiState)
-    val connectedDevices = allDevices.filter { isActivelyConnected(it, uiState) || isPairedDevice(it, uiState) }
-    val nearbyOnly = allDevices.filter { device ->
-        !isActivelyConnected(device, uiState) && !isPairedDevice(device, uiState)
-    }
+    val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
+    val connectedDevices = uiState.connectedDevices
+    val nearbyOnly = uiState.nearbyDevices.filter { it.id !in pairedIds }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
