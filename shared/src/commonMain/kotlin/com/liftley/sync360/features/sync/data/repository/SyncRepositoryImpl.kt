@@ -239,8 +239,6 @@ class SyncRepositoryImpl(
         if (files.isEmpty()) return
         val offerId = generateUniqueId()
         
-        fileTransferManager.registerOutgoingFiles(offerId, files)
-        
         val offer = FileOfferDto(
             offerId = offerId,
             senderDeviceId = localDevice.id,
@@ -252,7 +250,7 @@ class SyncRepositoryImpl(
             // #region agent log
             agentDebugLog(
                 location = "SyncRepositoryImpl.kt:offerFiles",
-                message = "sending file offer",
+                message = "sending file offer metadata",
                 hypothesisId = "B",
                 data = mapOf(
                     "offerId" to offerId,
@@ -262,78 +260,43 @@ class SyncRepositoryImpl(
                 )
             )
             // #endregion
-            httpClient.sendFileOffer(ip, offer)
+            
+            // 1. Send metadata POST so receiver UI opens the progress bar
+            val notified = httpClient.sendFileOffer(ip, offer)
+            if (!notified) return@launch
+            
+            // 2. Instantly draw the sending progress bar
+            val previews = files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) }
+            _fileTransferProgress.value = FileTransferProgress(
+                peerName = "Peer",
+                files = previews,
+                percent = 1,
+                direction = TransferDirection.SENDING
+            )
+            
+            // 3. Direct streaming POST loop chunk-by-chunk!
+            val success = fileTransferManager.uploadOutgoingFiles(ip, offerId, files) { percent ->
+                updateProgress(percent)
+            }
+            
+            // 4. Send complete signal or clean up on error
+            if (success) {
+                httpClient.sendFileComplete(ip, FileCompleteDto(offerId, localDevice.id))
+                updateProgress(100)
+                delay(900.milliseconds)
+                _fileTransferProgress.value = null
+            } else {
+                _fileTransferProgress.value = null
+            }
         }
     }
 
     override fun acceptFileOffer(offerId: String) {
-        val ip = getActivePeerIp() ?: return
-        val offer = _incomingFileOffer.value?.takeIf { it.offerId == offerId } ?: return
-        _incomingFileOffer.value = null
-        
-        _fileTransferProgress.value = FileTransferProgress(
-            peerName = offer.senderName,
-            files = offer.files,
-            percent = 0,
-            direction = TransferDirection.RECEIVING
-        )
-        
-        scope.launch(Dispatchers.IO) {
-            // #region agent log
-            agentDebugLog(
-                location = "SyncRepositoryImpl.kt:acceptFileOffer",
-                message = "accepting file offer, starting download",
-                hypothesisId = "A",
-                data = mapOf(
-                    "offerId" to offerId,
-                    "serverIp" to ip,
-                    "serverPort" to syncPort.toString(),
-                    "totalBytes" to offer.files.sumOf { it.sizeBytes }.toString()
-                ),
-                runId = "post-fix-3"
-            )
-            // #endregion
-            httpClient.sendFileAccept(ip, FileAcceptDto(offerId, localDevice.id))
-            
-            val savedPaths = fileTransferManager.downloadFiles(
-                serverIp = ip,
-                serverPort = syncPort,
-                offerId = offerId,
-                files = offer.files.map { FilePreviewDto(it.name, it.mimeType, it.sizeBytes) }
-            ) { percent ->
-                updateProgress(percent)
-            }
-            
-            if (savedPaths != null) {
-                updateProgress(100)
-                httpClient.sendFileComplete(ip, FileCompleteDto(offerId, localDevice.id))
-                delay(900.milliseconds)
-                _fileTransferProgress.value = null
-                _receivedFileBatch.value = ReceivedFileBatch(
-                    senderName = offer.senderName,
-                    files = offer.files,
-                    savedPaths = savedPaths
-                )
-            } else {
-                // #region agent log
-                agentDebugLog(
-                    location = "SyncRepositoryImpl.kt:acceptFileOffer",
-                    message = "download failed, clearing progress UI",
-                    hypothesisId = "C",
-                    data = mapOf("offerId" to offerId)
-                )
-                // #endregion
-                _fileTransferProgress.value = null
-            }
-        }
+        // No-op: files are now directly pushed and auto-accepted!
     }
 
     override fun declineFileOffer(offerId: String) {
-        val ip = getActivePeerIp() ?: return
-        _incomingFileOffer.value = null
-        scope.launch {
-            httpClient.sendFileReject(ip, FileRejectDto(offerId, localDevice.id))
-        }
+        // No-op: files are now directly pushed and auto-accepted!
     }
 
     override fun dismissReceivedFiles() {
@@ -393,46 +356,26 @@ class SyncRepositoryImpl(
     }
 
     override fun onFileOffer(offer: FileOfferDto) {
-        _incomingFileOffer.value = IncomingFileOffer(
-            offerId = offer.offerId,
-            senderDeviceId = offer.senderDeviceId,
-            senderName = offer.senderName,
-            files = offer.files.map { TransferFilePreview(it.fileName, it.mimeType, it.fileSize) }
-        )
-        incomingNotifier.notifyIncoming(offer.senderName, "${offer.files.size} files offered", true)
-    }
-
-    override fun onFileAccept(accept: FileAcceptDto) {
-        val files = fileTransferManager.getOutgoingFiles(accept.offerId)
-        // #region agent log
-        agentDebugLog(
-            location = "SyncRepositoryImpl.kt:onFileAccept",
-            message = "peer accepted file offer",
-            hypothesisId = "B",
-            data = mapOf(
-                "offerId" to accept.offerId,
-                "hasOutgoingBatch" to (files != null).toString(),
-                "fileCount" to (files?.size?.toString() ?: "0"),
-                "totalBytes" to (files?.sumOf { it.sizeBytes }?.toString() ?: "0")
-            )
-        )
-        // #endregion
-        if (files == null) return
+        // 1. Initialize receiver progress indicator instantly in Push model
+        val previews = offer.files.map { TransferFilePreview(it.fileName, it.mimeType, it.fileSize) }
         _fileTransferProgress.value = FileTransferProgress(
-            peerName = "Peer",
-            files = files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) },
+            peerName = offer.senderName,
+            files = previews,
             percent = 1,
-            direction = TransferDirection.SENDING
+            direction = TransferDirection.RECEIVING
         )
-        // Note: receiver is now pulling chunks via GET /files/...
-    }
 
-    override fun onFileReject(reject: FileRejectDto) {
-        fileTransferManager.clearOutgoingFiles(reject.offerId)
+        // 2. Register total expected size in FileTransferManager so it can compute total progress in chunk writes!
+        val totalBytes = offer.files.sumOf { it.fileSize }
+        fileTransferManager.registerIncomingTotalSize(totalBytes, ::updateProgress)
+
+        // 3. Clear any old received file batch
+        _receivedFileBatch.value = null
+        
+        incomingNotifier.notifyIncoming(offer.senderName, "Receiving ${offer.files.size} files...", true)
     }
 
     override fun onFileComplete(complete: FileCompleteDto) {
-        fileTransferManager.clearOutgoingFiles(complete.offerId)
         updateProgress(100)
         scope.launch {
             delay(900.milliseconds)
@@ -440,25 +383,45 @@ class SyncRepositoryImpl(
         }
     }
 
-    override fun getOutgoingFileSize(offerId: String, fileIndex: Int): Long? =
-        fileTransferManager.getOutgoingFileSize(offerId, fileIndex)
+    private val incomingFileBatchPaths = mutableListOf<String>()
 
-    override suspend fun serveFileChunk(offerId: String, fileIndex: Int, chunkSizeBytes: Int, onChunk: suspend (ByteArray) -> Unit) {
-        // #region agent log
-        agentDebugLog(
-            location = "SyncRepositoryImpl.kt:serveFileChunk",
-            message = "serveFileChunk invoked",
-            hypothesisId = "E",
-            data = mapOf(
-                "offerId" to offerId,
-                "fileIndex" to fileIndex.toString(),
-                "chunkSizeBytes" to chunkSizeBytes.toString()
-            )
-        )
-        // #endregion
-        fileTransferManager.serveFileChunk(offerId, fileIndex, chunkSizeBytes, ::updateProgress) {
-            onChunk(it)
+    override fun onIncomingFileChunkInit(offerId: String, fileIndex: Int) {
+        val progress = _fileTransferProgress.value
+        val fileName = progress?.files?.getOrNull(fileIndex)?.name ?: "file_$fileIndex"
+        
+        if (fileIndex == 0) {
+            incomingFileBatchPaths.clear()
         }
+        
+        fileTransferManager.initIncomingFileWrite(offerId, fileIndex, fileName)
+    }
+
+    override fun onIncomingFileChunkReceived(offerId: String, fileIndex: Int, chunk: ByteArray): Boolean {
+        return fileTransferManager.writeIncomingFileChunk(offerId, fileIndex, chunk)
+    }
+
+    override fun onIncomingFileChunkComplete(offerId: String, fileIndex: Int): String? {
+        val savedPath = fileTransferManager.completeIncomingFileWrite(offerId, fileIndex)
+        if (savedPath != null) {
+            incomingFileBatchPaths.add(savedPath)
+            
+            // If this is the last file in the batch, display the complete card!
+            val progress = _fileTransferProgress.value
+            if (progress != null && fileIndex == progress.files.lastIndex) {
+                _receivedFileBatch.value = ReceivedFileBatch(
+                    senderName = progress.peerName,
+                    files = progress.files,
+                    savedPaths = incomingFileBatchPaths.toList()
+                )
+                _fileTransferProgress.value = null
+            }
+        }
+        return savedPath
+    }
+
+    override fun onIncomingFileChunkError(offerId: String, fileIndex: Int) {
+        fileTransferManager.errorIncomingFileWrite(offerId, fileIndex)
+        _fileTransferProgress.value = null
     }
 
     // --- Helpers ---

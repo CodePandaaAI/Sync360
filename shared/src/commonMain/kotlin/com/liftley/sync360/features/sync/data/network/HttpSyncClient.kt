@@ -9,7 +9,10 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.http.content.OutgoingContent
 import io.ktor.serialization.kotlinx.json.*
+import io.ktor.utils.io.ByteWriteChannel
+import io.ktor.utils.io.writeFully
 import kotlinx.serialization.json.Json
 
 class HttpSyncClient(private val port: Int = 8080) {
@@ -32,8 +35,8 @@ class HttpSyncClient(private val port: Int = 8080) {
         }
     }
 
-    /** Raw-byte downloads only — no ContentNegotiation so bodies are not buffered as JSON. */
-    private val downloadHttpClient = HttpClient(CIO) {
+    /** Binary content client - no ContentNegotiation to prevent body buffering. */
+    private val binaryHttpClient = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
             socketTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
@@ -61,12 +64,6 @@ class HttpSyncClient(private val port: Int = 8080) {
     suspend fun sendFileOffer(ip: String, offer: FileOfferDto): Boolean =
         post(ip, "/api/file/offer", offer)
 
-    suspend fun sendFileAccept(ip: String, accept: FileAcceptDto): Boolean =
-        post(ip, "/api/file/accept", accept)
-
-    suspend fun sendFileReject(ip: String, reject: FileRejectDto): Boolean =
-        post(ip, "/api/file/reject", reject)
-
     suspend fun sendFileComplete(ip: String, complete: FileCompleteDto): Boolean =
         post(ip, "/api/file/complete", complete)
 
@@ -83,103 +80,56 @@ class HttpSyncClient(private val port: Int = 8080) {
         }
     }
 
-    suspend fun downloadFileChunked(
-        url: String,
-        onChunk: suspend (ByteArray) -> Boolean
+    suspend fun uploadFileChunked(
+        ip: String,
+        offerId: String,
+        fileIndex: Int,
+        file: com.liftley.sync360.features.sync.domain.model.PickedFile,
+        platformOperations: com.liftley.sync360.core.platform.PlatformOperations,
+        onProgress: (bytesSent: Int) -> Unit
     ): Boolean {
         // #region agent log
         agentDebugLog(
-            location = "HttpSyncClient.kt:downloadFileChunked",
-            message = "download start",
+            location = "HttpSyncClient.kt:uploadFileChunked",
+            message = "upload start",
             hypothesisId = "A",
-            data = mapOf("url" to url),
-            runId = "post-fix-2"
+            data = mapOf("fileName" to file.name, "fileSize" to file.sizeBytes.toString())
         )
         // #endregion
         return try {
-            var totalRead = 0L
-            var chunkCount = 0
-            val buffer = ByteArray(256 * 1024)
-            val ok = downloadHttpClient.prepareGet(url).execute { response ->
-                // #region agent log
-                agentDebugLog(
-                    location = "HttpSyncClient.kt:downloadFileChunked",
-                    message = "download response",
-                    hypothesisId = "A",
-                    data = mapOf(
-                        "url" to url,
-                        "status" to response.status.value.toString(),
-                        "contentLength" to (response.contentLength()?.toString() ?: "unknown")
-                    ),
-                    runId = "post-fix-2"
-                )
-                // #endregion
-                if (!response.status.isSuccess()) return@execute false
-                val channel = response.bodyAsChannel()
-                while (!channel.isClosedForRead) {
-                    if (channel.availableForRead == 0) {
-                        channel.awaitContent()
-                        if (channel.availableForRead == 0 && channel.isClosedForRead) break
-                        continue
-                    }
-                    val toRead = minOf(channel.availableForRead.toInt(), buffer.size)
-                    val read = channel.readAvailable(buffer, 0, toRead)
-                    when {
-                        read > 0 -> {
-                            chunkCount++
-                            totalRead += read
-                            val chunk = buffer.copyOf(read)
-                            if (!onChunk(chunk)) {
-                                // #region agent log
-                                agentDebugLog(
-                                    location = "HttpSyncClient.kt:downloadFileChunked",
-                                    message = "onChunk returned false",
-                                    hypothesisId = "D",
-                                    data = mapOf(
-                                        "url" to url,
-                                        "totalRead" to totalRead.toString(),
-                                        "chunkCount" to chunkCount.toString()
-                                    ),
-                                    runId = "post-fix-2"
-                                )
-                                // #endregion
-                                return@execute false
-                            }
+            val url = buildUrl(ip, "/api/file/upload/$offerId/$fileIndex")
+            val response = binaryHttpClient.post(url) {
+                setBody(object : OutgoingContent.WriteChannelContent() {
+                    override val contentType = ContentType.Application.OctetStream
+                    override val contentLength = file.sizeBytes
+
+                    override suspend fun writeTo(channel: ByteWriteChannel) {
+                        platformOperations.readFileChunks(file, 256 * 1024) { bytes ->
+                            channel.writeFully(bytes)
+                            onProgress(bytes.size)
                         }
-                        read == -1 -> break
                     }
-                }
-                true
+                })
             }
             // #region agent log
             agentDebugLog(
-                location = "HttpSyncClient.kt:downloadFileChunked",
-                message = "download finished",
+                location = "HttpSyncClient.kt:uploadFileChunked",
+                message = "upload finished",
                 hypothesisId = "A",
-                data = mapOf(
-                    "url" to url,
-                    "ok" to ok.toString(),
-                    "totalRead" to totalRead.toString(),
-                    "chunkCount" to chunkCount.toString()
-                ),
-                runId = "post-fix-2"
+                data = mapOf("fileName" to file.name, "status" to response.status.value.toString())
             )
             // #endregion
-            ok
+            response.status.isSuccess()
         } catch (e: Exception) {
             // #region agent log
             agentDebugLog(
-                location = "HttpSyncClient.kt:downloadFileChunked",
-                message = "download exception",
+                location = "HttpSyncClient.kt:uploadFileChunked",
+                message = "upload exception",
                 hypothesisId = "A",
-                data = mapOf(
-                    "url" to url,
-                    "error" to (e.message ?: e::class.simpleName.orEmpty())
-                ),
-                runId = "post-fix-2"
+                data = mapOf("fileName" to file.name, "error" to (e.message ?: e::class.simpleName.orEmpty()))
             )
             // #endregion
-            println("HttpSyncClient: Download failed for $url - ${e.message}")
+            println("HttpSyncClient: Upload failed for file ${file.name} to $ip - ${e.message}")
             false
         }
     }
