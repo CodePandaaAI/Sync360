@@ -9,6 +9,7 @@ import kotlinx.coroutines.runBlocking
 import org.koin.core.context.GlobalContext
 
 fun main() {
+    System.setProperty("java.net.preferIPv4Stack", "true")
     initKoin()
 
     application {

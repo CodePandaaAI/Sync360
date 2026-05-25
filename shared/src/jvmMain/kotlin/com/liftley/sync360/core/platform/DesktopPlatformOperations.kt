@@ -100,6 +100,24 @@ class DesktopPlatformOperations : PlatformOperations {
             while (interfaces.hasMoreElements()) {
                 val networkInterface = interfaces.nextElement()
                 if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) continue
+                
+                // Filter out virtual interfaces (Hyper-V, WSL, VirtualBox, Docker, etc.)
+                val name = networkInterface.name.lowercase()
+                val displayName = networkInterface.displayName.lowercase()
+                if (name.contains("virtual") || displayName.contains("virtual") ||
+                    name.contains("hyper-v") || displayName.contains("hyper-v") ||
+                    name.contains("host-only") || displayName.contains("host-only") ||
+                    name.contains("wsl") || displayName.contains("wsl") ||
+                    name.contains("vmware") || displayName.contains("vmware") ||
+                    name.contains("vbox") || displayName.contains("vbox") ||
+                    name.contains("vpn") || displayName.contains("vpn") ||
+                    name.contains("virtualbox") || displayName.contains("virtualbox") ||
+                    name.contains("zerotier") || displayName.contains("zerotier") ||
+                    name.contains("docker") || displayName.contains("docker") ||
+                    name.contains("vethernet") || displayName.contains("vethernet")) {
+                    continue
+                }
+
                 val addresses = networkInterface.inetAddresses
                 while (addresses.hasMoreElements()) {
                     val address = addresses.nextElement()
