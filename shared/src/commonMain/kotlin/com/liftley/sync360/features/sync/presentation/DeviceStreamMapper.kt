@@ -12,14 +12,13 @@ internal fun List<SyncMessage>.toDeviceStream(peerId: String): DeviceStream {
             ClipboardEntry(
                 text = message.text,
                 updatedLabel = message.timestamp.toHourMinuteLabel(),
-                sourceApp = "Peer",
                 isFromMe = message.isFromMe
             )
         }
 
     return DeviceStream(
         deviceId = peerId,
-        clipboard = texts.firstOrNull() ?: ClipboardEntry("", "", ""),
+        clipboard = texts.firstOrNull() ?: ClipboardEntry("", ""),
         media = emptyList(),
         documents = emptyList(),
         storageUsedPercent = 0,

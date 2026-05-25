@@ -14,7 +14,6 @@ data class DeviceStream(
 data class ClipboardEntry(
     val text: String,
     val updatedLabel: String,
-    val sourceApp: String,
     val isFromMe: Boolean = false
 )
 
@@ -23,7 +22,6 @@ data class SyncAsset(
     val title: String,
     val subtitle: String,
     val type: SyncAssetType,
-    val syncState: SyncTransferState,
     val progressPercent: Int = 0,
     val path: String = "",
     val isFromMe: Boolean = false
@@ -32,13 +30,4 @@ data class SyncAsset(
 enum class SyncAssetType {
     IMAGE,
     VIDEO,
-    PDF,
-    DOCUMENT,
-    ARCHIVE
-}
-
-enum class SyncTransferState {
-    THUMBNAIL_ONLY,
-    DOWNLOADING,
-    FULLY_DOWNLOADED
 }

@@ -1,30 +1,14 @@
 package com.liftley.sync360.features.sync.presentation.components
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,7 +22,6 @@ import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.SyncUiState
-import com.liftley.sync360.features.sync.presentation.allKnownDevices
 
 private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Boolean {
     if (uiState.connectionStatus != ConnectionStatus.CONNECTED) return false
@@ -55,8 +38,6 @@ private fun isPairedDevice(device: DeviceProfile, uiState: SyncUiState): Boolean
     return uiState.connectedDevices.any { it.id == device.id }
 }
 
-private fun mergeDevices(uiState: SyncUiState): List<DeviceProfile> = uiState.allKnownDevices()
-
 private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): String {
     return when {
         isActivelyConnected(device, uiState) -> "Connected"
@@ -64,15 +45,6 @@ private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): Stri
         else -> "Connect"
     }
 }
-
-private fun sortDevices(devices: List<DeviceProfile>, uiState: SyncUiState): List<DeviceProfile> {
-    return devices.sortedWith(
-        compareByDescending<DeviceProfile> { isActivelyConnected(it, uiState) }
-            .thenByDescending { isPairedDevice(it, uiState) }
-            .thenBy { it.name.lowercase() }
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MobileDevicePickerSheet(

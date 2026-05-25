@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -18,7 +19,6 @@ class SyncViewModel(
 
     private val _uiState = MutableStateFlow(
         SyncUiState(
-            isDesktop = isDesktop,
             serverIp = localIpAddress,
             connectionStatus = ConnectionStatus.DISCONNECTED,
             isScanningForDevices = true
@@ -30,8 +30,13 @@ class SyncViewModel(
         repository.startSync()
 
         viewModelScope.launch {
-            repository.pairedDevices.collect { paired ->
-                _uiState.update { it.copy(connectedDevices = paired) }
+            combine(
+                repository.activeDeviceId,
+                repository.pairedDevices
+            ) { activeId, paired ->
+                paired.firstOrNull { it.id == activeId }
+            }.collect { active ->
+                _uiState.update { it.copy(activeDevice = active) }
             }
         }
         viewModelScope.launch {
@@ -46,12 +51,12 @@ class SyncViewModel(
         }
         viewModelScope.launch {
             repository.pendingIncomingConnectRequests.collect { pending ->
-                _uiState.update { it.copy(pendingPairingRequests = pending) }
+                _uiState.update { it.copy(pendingIncomingRequest = pending.firstOrNull()) }
             }
         }
         viewModelScope.launch {
             repository.pendingOutgoingConnectDevice.collect { pending ->
-                _uiState.update { it.copy(pendingConnectDevice = pending) }
+                _uiState.update { it.copy(pendingOutgoingRequest = pending) }
             }
         }
         viewModelScope.launch {
@@ -75,26 +80,24 @@ class SyncViewModel(
             }
         }
         viewModelScope.launch {
-            combine(
-                repository.activeDeviceId,
-                repository.conversationMessages
-            ) { activeId, messages ->
-                val streams = if (activeId != null) {
-                    mapOf(activeId to messages.toDeviceStream(activeId))
-                } else {
-                    emptyMap()
-                }
-                activeId to streams
-            }.collect { (activeId, streams) ->
-                _uiState.update {
-                    it.copy(
-                        activeDeviceId = activeId,
-                        deviceStreams = streams
-                    )
-                }
+            repository.conversationMessages.collect { messages ->
+                val texts = messages.filter { !it.isFile && !it.isFromMe }
+                    .takeLast(3) // LATEST_TEXT_LIMIT = 3
+                    .asReversed()
+                    .map { message ->
+                        ClipboardEntry(
+                            text = message.text,
+                            updatedLabel = message.timestamp.toHourMinuteLabel(),
+                            isFromMe = message.isFromMe
+                        )
+                    }
+                _uiState.update { it.copy(latestTexts = texts) }
             }
         }
     }
+
+    private fun Long.toHourMinuteLabel(): String =
+        if (this <= 0L) "" else formatTimestampHourMinute(this)
 
     fun onEvent(event: SyncEvent) {
         when (event) {
@@ -121,8 +124,7 @@ class SyncViewModel(
             is SyncEvent.DeclinePairing -> repository.declineIncomingConnect(event.deviceId)
             is SyncEvent.SwitchDevice -> repository.switchActiveDevice(event.deviceId)
             is SyncEvent.CopyClipboard -> {
-                val stream = _uiState.value.deviceStreams[event.deviceId]
-                val latest = stream?.latestTexts?.firstOrNull()?.text
+                val latest = _uiState.value.latestTexts.firstOrNull()?.text
                 if (!latest.isNullOrBlank()) {
                     platformOperations.writeClipboard(latest)
                     _uiState.update { it.copy(userMessage = "Copied to clipboard") }
