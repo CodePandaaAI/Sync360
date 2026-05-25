@@ -8,85 +8,57 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.liftley.sync360.core.designsystem.AppTheme
 import com.liftley.sync360.features.sync.presentation.DesktopDashboard
 import com.liftley.sync360.features.sync.presentation.SyncScreen
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
-import kotlinx.coroutines.flow.Flow
+import org.koin.compose.KoinContext
+import org.koin.compose.getKoin
+import org.koin.core.parameter.parametersOf
 
 @Composable
 fun App(
-    isDesktop: Boolean,
-    platformContext: Any? = null,
-    serverIp: String = "127.0.0.1",
-    serverClientCount: Int = 0,
-    serverIncomingFlow: Flow<String>? = null,
-    onServerBroadcast: ((String) -> Unit)? = null,
-    onStartService: ((String) -> Unit)? = null,
-    onStopService: (() -> Unit)? = null,
-    onShowOverlay: (() -> Unit)? = null,
-    onHideOverlay: (() -> Unit)? = null,
-    onReadClipboard: (() -> String?)? = null,
-    onWriteClipboard: ((String) -> Unit)? = null,
-    syncClient: com.liftley.sync360.core.network.SyncClient? = null,
-    onOpenFilePicker: ((kind: com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind, onFileSelected: (name: String, mimeType: String, content: ByteArray) -> Unit) -> Unit)? = null,
-    onSaveFile: ((name: String, content: ByteArray, onResult: (success: Boolean, path: String?) -> Unit) -> Unit)? = null
+    isDesktop: Boolean
 ) {
     AppTheme {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-        ) {
+        KoinContext {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .then(
-                        if (isDesktop) Modifier.safeContentPadding()
-                        else Modifier
-                    )
+                    .background(MaterialTheme.colorScheme.background)
             ) {
-                // Instantiate the ViewModel using the KMP viewModel() function
-                val viewModel = viewModel {
-                    val db = com.liftley.sync360.core.database.createDatabase(
-                        com.liftley.sync360.core.database.createDatabaseDriverFactory(platformContext)
-                    )
-                    SyncViewModel(
-                        isDesktop = isDesktop,
-                        database = db,
-                        platformContext = platformContext,
-                        initialServerIp = serverIp,
-                        initialServerClientCount = serverClientCount,
-                        syncClient = syncClient,
-                        serverIncomingFlow = serverIncomingFlow,
-                        onServerBroadcast = onServerBroadcast,
-                        onStartService = onStartService,
-                        onStopService = onStopService,
-                        onShowOverlay = onShowOverlay,
-                        onHideOverlay = onHideOverlay,
-                        onReadClipboard = onReadClipboard,
-                        onWriteClipboard = onWriteClipboard,
-                        onOpenFilePicker = onOpenFilePicker,
-                        onSaveFile = onSaveFile
-                    )
-                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .then(
+                            if (isDesktop) Modifier.safeContentPadding()
+                            else Modifier
+                        )
+                ) {
+                    val koin = getKoin()
 
+                    // Instantiate the ViewModel resolving from Koin with only the isDesktop flag
+                    val viewModel = viewModel {
+                        koin.get<SyncViewModel> {
+                            parametersOf(isDesktop)
+                        }
+                    }
 
-                val uiState by viewModel.uiState.collectAsState()
+                    val uiState by viewModel.uiState.collectAsState()
 
-                if (isDesktop) {
-                    DesktopDashboard(
-                        uiState = uiState,
-                        onEvent = viewModel::onEvent
-                    )
-                } else {
-                    SyncScreen(
-                        uiState = uiState,
-                        onEvent = viewModel::onEvent
-                    )
+                    if (isDesktop) {
+                        DesktopDashboard(
+                            uiState = uiState,
+                            onEvent = { viewModel.onEvent(it) }
+                        )
+                    } else {
+                        SyncScreen(
+                            uiState = uiState,
+                            onEvent = { viewModel.onEvent(it) }
+                        )
+                    }
                 }
             }
         }

@@ -47,6 +47,7 @@ kotlin {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.sqldelight.android)
+            implementation(libs.koin.android)
         }
         jvmMain.dependencies {
             implementation(libs.jmdns)
@@ -65,9 +66,6 @@ kotlin {
             implementation(compose.materialIconsExtended)
             
             // Ktor & Serialization
-
-
-
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.websockets)
@@ -77,6 +75,16 @@ kotlin {
             
             // SQLDelight
             implementation(libs.sqldelight.coroutines)
+            
+            // Ktor Server
+            implementation(libs.ktor.server.core)
+            implementation(libs.ktor.server.cio)
+            implementation(libs.ktor.server.websockets)
+            implementation(libs.ktor.server.content.negotiation)
+            
+            // Koin Dependency Injection
+            implementation(libs.koin.core)
+            implementation(libs.koin.compose)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)

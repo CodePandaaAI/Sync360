@@ -27,6 +27,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import android.content.ContentValues
 import android.provider.MediaStore
+import org.koin.android.ext.android.inject
 
 /**
  * Main entry-point activity for the Sync360 Android app.
@@ -39,6 +40,9 @@ import android.provider.MediaStore
  * - Passes service & overlay callbacks down to the shared [App] composable.
  */
 class MainActivity : ComponentActivity() {
+
+    private val platformOps: com.liftley.sync360.core.platform.PlatformOperations by inject()
+    private val syncClient: com.liftley.sync360.core.network.SyncClient by inject()
 
     // ── Floating overlay manager (lazy-init after permissions are confirmed) ──
     private var floatingDockManager: FloatingDockManager? = null
@@ -150,8 +154,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ── Runtime permission launcher for POST_NOTIFICATIONS (Android 13+) ──
-
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) {
@@ -165,7 +167,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    // ── Overlay permission result callback ──
     private val overlayPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) {
             if (Settings.canDrawOverlays(this)) {
@@ -179,10 +180,6 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Lifecycle
-    // ──────────────────────────────────────────────────────────────────
-
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -195,72 +192,80 @@ class MainActivity : ComponentActivity() {
             initFloatingDock()
         }
 
-        setContent {
-            App(
-                isDesktop = false,
-                platformContext = applicationContext,
-                syncClient = com.liftley.sync360.core.SyncConnectionHolder.client,
-                onStartService = { hostIp -> startSyncService(hostIp) },
-                onStopService = { stopSyncService() },
-                onShowOverlay = { showOverlay() },
-                onHideOverlay = { hideOverlay() },
-                onReadClipboard = { readCurrentClipboardText() },
-                onWriteClipboard = { text -> writeCurrentClipboardText(text) },
-                onOpenFilePicker = { kind, callback ->
-                    onFilePickedCallback = callback
-                    when (kind) {
-                        com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Media -> {
-                            pickVisualMediaLauncher.launch(
-                                androidx.activity.result.PickVisualMediaRequest(
-                                    ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                                )
+        // Bind callbacks to the injected AndroidPlatformOperations
+        val androidOps = platformOps as? com.liftley.sync360.core.platform.AndroidPlatformOperations
+        if (androidOps != null) {
+            androidOps.onShowOverlayCallback = { showOverlay() }
+            androidOps.onHideOverlayCallback = { hideOverlay() }
+            androidOps.onOpenFilePickerCallback = { kind, callback ->
+                onFilePickedCallback = callback
+                when (kind) {
+                    com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Media -> {
+                        pickVisualMediaLauncher.launch(
+                            androidx.activity.result.PickVisualMediaRequest(
+                                ActivityResultContracts.PickVisualMedia.ImageAndVideo
                             )
-                        }
-                        com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Any -> {
-                            filePickerLauncher.launch("*/*")
-                        }
+                        )
                     }
-                },
-                onSaveFile = { name, bytes, onResult ->
-                    saveFileToDownloads(name, bytes, onResult)
+                    com.liftley.sync360.features.sync.presentation.SyncEvent.FilePickerKind.Any -> {
+                        filePickerLauncher.launch("*/*")
+                    }
                 }
-            )
+            }
+            androidOps.onOpenFileCallback = { path ->
+                try {
+                    val uri = if (path.startsWith("content://")) {
+                        Uri.parse(path)
+                    } else {
+                        androidx.core.content.FileProvider.getUriForFile(
+                            this@MainActivity,
+                            "$packageName.provider",
+                            java.io.File(path)
+                        )
+                    }
+                    val mimeType = applicationContext.contentResolver.getType(uri) ?: "*/*"
+                    val intent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, mimeType)
+                        flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    startActivity(intent)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    try {
+                        val uri = Uri.parse(path)
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "*/*")
+                            flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                        }
+                        startActivity(intent)
+                    } catch (ex: Exception) {
+                        ex.printStackTrace()
+                        Toast.makeText(this@MainActivity, "Could not open file", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            androidOps.onSaveFileCallback = { name, bytes, onResult ->
+                saveFileToDownloads(name, bytes, onResult)
+            }
+        }
+
+        setContent {
+            App(isDesktop = false)
         }
     }
 
-
-    private fun writeCurrentClipboardText(text: String) {
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = android.content.ClipData.newPlainText("Sync360", text)
-        clipboard.setPrimaryClip(clip)
-    }
-
     override fun onDestroy() {
-        // Clean up the floating overlay when the activity is destroyed.
         floatingDockManager?.hide()
-        com.liftley.sync360.core.SyncConnectionHolder.client.close()
+        syncClient.close()
         super.onDestroy()
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Permission Helpers
-    // ──────────────────────────────────────────────────────────────────
-
-    /**
-     * On Android 13 (TIRAMISU) and above, POST_NOTIFICATIONS is a runtime
-     * permission. We request it here so the foreground service notification
-     * can be displayed.
-     */
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
-    /**
-     * Checks whether the app has SYSTEM_ALERT_WINDOW (overlay) permission.
-     * If not, redirects the user to the system settings page for this app.
-     */
     private fun requestOverlayPermissionIfNeeded() {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(
@@ -271,42 +276,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // Foreground Service Controls
-    // ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Starts [SyncForegroundService] with the given [hostIp] passed via
-     * Intent extras. On Android O+ uses `startForegroundService()`.
-     */
-    private fun startSyncService(hostIp: String) {
-        val serviceIntent = Intent(this, SyncForegroundService::class.java).apply {
-            putExtra(SyncForegroundService.EXTRA_HOST_IP, hostIp)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            startForegroundService(serviceIntent)
-        } else {
-            startService(serviceIntent)
-        }
-    }
-
-    /**
-     * Stops [SyncForegroundService]. The service's `onDestroy()` will handle
-     * WebSocket disconnection and cleanup.
-     */
-    private fun stopSyncService() {
-        val serviceIntent = Intent(this, SyncForegroundService::class.java)
-        stopService(serviceIntent)
-    }
-
-    // ──────────────────────────────────────────────────────────────────
-    // Floating Dock Controls
-    // ──────────────────────────────────────────────────────────────────
-
-    /**
-     * Lazily initialises the [FloatingDockManager]. The overlay sends the
-     * clipboard text through the service's [SyncClient] when tapped.
-     */
     private fun initFloatingDock() {
         if (floatingDockManager != null) return
 
@@ -314,7 +283,7 @@ class MainActivity : ComponentActivity() {
         var deviceId = sharedPrefs.getString("device_uuid", null)
         if (deviceId == null) {
             deviceId = java.util.UUID.randomUUID().toString()
-            sharedPrefs.edit {putString("device_uuid", deviceId)}
+            sharedPrefs.edit { putString("device_uuid", deviceId) }
         }
 
         floatingDockManager = FloatingDockManager(
@@ -336,10 +305,6 @@ class MainActivity : ComponentActivity() {
         )
     }
 
-    /**
-     * Shows the floating bubble overlay, requesting the overlay permission
-     * first if it hasn't been granted yet.
-     */
     private fun showOverlay() {
         if (!Settings.canDrawOverlays(this)) {
             requestOverlayPermissionIfNeeded()
@@ -349,30 +314,7 @@ class MainActivity : ComponentActivity() {
         floatingDockManager?.show()
     }
 
-    /** Hides the floating bubble overlay. */
     private fun hideOverlay() {
         floatingDockManager?.hide()
     }
-
-    private fun readCurrentClipboardText(): String? {
-        val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
-        if (!clipboard.hasPrimaryClip()) return null
-        val description = clipboard.primaryClipDescription ?: return null
-        if (!description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) &&
-            !description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)
-        ) {
-            return null
-        }
-        return clipboard.primaryClip
-            ?.getItemAt(0)
-            ?.coerceToText(this)
-            ?.toString()
-            ?.takeIf { it.isNotBlank() }
-    }
-}
-
-@Preview
-@Composable
-fun AppAndroidPreview() {
-    App(isDesktop = false)
 }

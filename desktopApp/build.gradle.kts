@@ -19,6 +19,9 @@ dependencies {
     implementation(libs.ktor.server.netty)
     implementation(libs.ktor.server.websockets)
     implementation(libs.ktor.server.content.negotiation)
+    
+    // Koin DI
+    implementation(libs.koin.core)
 }
 
 compose.desktop {
