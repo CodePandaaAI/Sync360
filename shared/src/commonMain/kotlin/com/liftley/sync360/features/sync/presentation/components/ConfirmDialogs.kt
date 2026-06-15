@@ -18,7 +18,7 @@ fun ConfirmDialogs(
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DeclineConnection(device.id)) },
             shape = RoundedCornerShape(24.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = {
                 Text(
                     text = "Connection request",
@@ -56,7 +56,7 @@ fun ConfirmDialogs(
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DismissConnectRequest) },
             shape = RoundedCornerShape(24.dp),
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            containerColor = MaterialTheme.colorScheme.surface,
             title = {
                 Text(
                     text = "Connect to device?",

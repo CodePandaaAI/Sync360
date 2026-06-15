@@ -205,6 +205,43 @@ class DesktopPlatformOperations : PlatformOperations {
         }
     }
 
+    override fun showFileInFolder(path: String): FileOperationResult<Unit> {
+        return try {
+            val file = File(path)
+            if (file.exists() && java.awt.Desktop.isDesktopSupported()) {
+                val osName = System.getProperty("os.name").lowercase()
+                if (osName.contains("win")) {
+                    Runtime.getRuntime().exec(arrayOf("explorer.exe", "/select,", file.absolutePath))
+                } else if (osName.contains("mac")) {
+                    Runtime.getRuntime().exec(arrayOf("open", "-R", file.absolutePath))
+                } else {
+                    java.awt.Desktop.getDesktop().open(file.parentFile)
+                }
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        }
+    }
+
+    override fun openDownloadsFolder(): FileOperationResult<Unit> {
+        return try {
+            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
+            if (downloadsDir.exists() && java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().open(downloadsDir)
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        }
+    }
+
     override fun getNetworkEnvironment(): NetworkEnvironment {
         val addresses = try {
             buildList {

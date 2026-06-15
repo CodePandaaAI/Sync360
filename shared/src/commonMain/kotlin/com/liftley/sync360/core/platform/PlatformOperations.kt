@@ -29,6 +29,8 @@ interface FileOperations {
     fun finishFileWrite(handle: String): FileOperationResult<String>
     fun cancelFileWrite(handle: String): FileOperationResult<Unit>
     fun openFile(path: String): FileOperationResult<Unit>
+    fun showFileInFolder(path: String): FileOperationResult<Unit>
+    fun openDownloadsFolder(): FileOperationResult<Unit>
 }
 
 interface NetworkEnvironmentProvider {

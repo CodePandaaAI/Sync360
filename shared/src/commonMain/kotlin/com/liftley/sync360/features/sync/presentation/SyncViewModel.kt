@@ -78,12 +78,7 @@ class SyncViewModel(
                             it.isScanningForDevices
                     )
                 }
-                if (
-                    snapshot.transfer.failure != null &&
-                    snapshot.transfer.failure != lastTransferFailure
-                ) {
-                    showMessage(snapshot.transfer.failure.message)
-                }
+                // Let the UI handle the failure card via uiState.fileTransferFailure
                 lastTransferFailure = snapshot.transfer.failure
             }
         }
@@ -193,6 +188,14 @@ class SyncViewModel(
                 if (event.path.isNotBlank()) {
                     fileOperations.openFile(event.path)
                 }
+            }
+            is SyncEvent.ShowFileInFolder -> {
+                if (event.path.isNotBlank()) {
+                    fileOperations.showFileInFolder(event.path)
+                }
+            }
+            is SyncEvent.OpenDownloadsFolder -> {
+                fileOperations.openDownloadsFolder()
             }
             SyncEvent.TriggerScan -> runtimeController.scan()
         }

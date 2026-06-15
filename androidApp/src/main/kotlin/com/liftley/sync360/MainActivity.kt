@@ -3,7 +3,6 @@ package com.liftley.sync360
 import android.Manifest
 import android.content.Intent
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import android.widget.Toast
@@ -15,14 +14,13 @@ import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
 import com.liftley.sync360.core.platform.AndroidActivityBridge
 import com.liftley.sync360.core.platform.AndroidPlatformOperations
-import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.FilePickerKind
+import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-
 import org.koin.android.ext.android.inject
-import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
 
 class MainActivity : ComponentActivity() {
 
@@ -43,12 +41,21 @@ class MainActivity : ComponentActivity() {
                         )
                     )
                 }
+
                 FilePickerKind.Any -> filePickerLauncher.launch("*/*")
             }
         }
 
         override fun openFile(path: String) {
             this@MainActivity.openFile(path)
+        }
+
+        override fun showFileInFolder(path: String) {
+            this@MainActivity.showFileInFolder(path)
+        }
+
+        override fun openDownloadsFolder() {
+            this@MainActivity.openDownloadsFolder()
         }
     }
 
@@ -69,9 +76,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
+        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
 
 
         (platformOps as? AndroidPlatformOperations)?.attachActivityBridge(activityBridge)
@@ -162,4 +167,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun showFileInFolder(path: String) {
+        openDownloadsFolder() // Android Scoped Storage does not easily allow 'revealing' a specific file in a generic file manager intent. Falling back to Downloads folder.
+    }
+
+    private fun openDownloadsFolder() {
+        try {
+            startActivity(
+                Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+            )
+        } catch (e: Exception) {
+            Toast.makeText(this, "Could not open downloads folder", Toast.LENGTH_SHORT).show()
+        }
+    }
 }

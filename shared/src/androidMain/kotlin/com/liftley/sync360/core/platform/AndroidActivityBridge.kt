@@ -9,4 +9,6 @@ interface AndroidActivityBridge {
     )
 
     fun openFile(path: String)
+    fun showFileInFolder(path: String)
+    fun openDownloadsFolder()
 }

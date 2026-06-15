@@ -47,6 +47,7 @@ import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
 import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
 import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
+import com.liftley.sync360.features.sync.presentation.components.FileTransferErrorCard
 import com.liftley.sync360.features.sync.presentation.components.MobileDevicePickerSheet
 import com.liftley.sync360.features.sync.presentation.components.ReceivedFileBatchCard
 import com.liftley.sync360.features.sync.presentation.components.RuntimeSecurityBanner
@@ -153,6 +154,15 @@ fun SyncScreen(
                     item {
                         ReceivedFileBatchCard(
                             batch = batch,
+                            onEvent = onEvent
+                        )
+                    }
+                }
+
+                uiState.fileTransferFailure?.let { failure ->
+                    item {
+                        FileTransferErrorCard(
+                            failure = failure,
                             onEvent = onEvent
                         )
                     }

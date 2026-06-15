@@ -210,6 +210,20 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         return FileOperationResult.Success(Unit)
     }
 
+    override fun showFileInFolder(path: String): FileOperationResult<Unit> {
+        val bridge = activityBridge
+            ?: return FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        bridge.showFileInFolder(path)
+        return FileOperationResult.Success(Unit)
+    }
+
+    override fun openDownloadsFolder(): FileOperationResult<Unit> {
+        val bridge = activityBridge
+            ?: return FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        bridge.openDownloadsFolder()
+        return FileOperationResult.Success(Unit)
+    }
+
     override fun getNetworkEnvironment(): NetworkEnvironment {
         val addresses = try {
             buildList {

@@ -89,6 +89,9 @@ fun DesktopDashboard(
                     uiState.receivedFileBatch?.let { batch ->
                         ReceivedFileBatchCard(batch = batch, onEvent = onEvent)
                     }
+                    uiState.fileTransferFailure?.let { failure ->
+                        FileTransferErrorCard(failure = failure, onEvent = onEvent)
+                    }
                     uiState.fileTransferProgress?.let { progress ->
                         FileTransferProgressCard(progress = progress)
                     }
