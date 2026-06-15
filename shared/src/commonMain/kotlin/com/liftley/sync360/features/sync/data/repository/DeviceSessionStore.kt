@@ -1,51 +1,100 @@
 package com.liftley.sync360.features.sync.data.repository
 
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
+import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
+import com.liftley.sync360.features.sync.domain.model.ConnectionFailure
+import com.liftley.sync360.features.sync.domain.model.ConnectionState
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal class DeviceSessionStore {
-    private val _activeDeviceId = MutableStateFlow<String?>(null)
-    val activeDeviceId: StateFlow<String?> = _activeDeviceId.asStateFlow()
+    private val _snapshot = MutableStateFlow(ConnectionSnapshot())
+    val snapshot: StateFlow<ConnectionSnapshot> = _snapshot.asStateFlow()
 
-    private val _connectionStatus = MutableStateFlow(ConnectionStatus.DISCONNECTED)
-    val connectionStatus: StateFlow<ConnectionStatus> = _connectionStatus.asStateFlow()
+    val activeDeviceIdValue: String?
+        get() = snapshot.value.state.activeDeviceId()
 
-    private val _pendingIncoming = MutableStateFlow<List<DeviceProfile>>(emptyList())
-    val pendingIncoming: StateFlow<List<DeviceProfile>> = _pendingIncoming.asStateFlow()
+    val pendingOutgoingValue: DeviceProfile?
+        get() = snapshot.value.state.pendingDevice()
 
-    private val _pendingOutgoing = MutableStateFlow<DeviceProfile?>(null)
-    val pendingOutgoing: StateFlow<DeviceProfile?> = _pendingOutgoing.asStateFlow()
+    val pendingIncomingValue: List<DeviceProfile>
+        get() = snapshot.value.pendingIncoming
+
+    val stateValue: ConnectionState
+        get() = snapshot.value.state
 
     fun requestOutgoing(device: DeviceProfile) {
-        _pendingOutgoing.value = device
+        updateState(ConnectionState.ResolvingRoute(device))
+    }
+
+    fun beginConnecting() {
+        val device = pendingOutgoingValue ?: return
+        updateState(ConnectionState.Requesting(device))
+    }
+
+    fun awaitApproval() {
+        val device = pendingOutgoingValue ?: return
+        updateState(ConnectionState.AwaitingApproval(device))
     }
 
     fun clearOutgoing() {
-        _pendingOutgoing.value = null
+        if (snapshot.value.state is ConnectionState.Connected) return
+        updateState(ConnectionState.Idle)
+    }
+
+    fun failConnecting(reason: ConnectionFailure) {
+        val device = pendingOutgoingValue
+        updateState(ConnectionState.Failed(device, reason))
+    }
+
+    fun fail(reason: ConnectionFailure) {
+        updateState(ConnectionState.Failed(device = null, reason = reason))
     }
 
     fun addIncoming(device: DeviceProfile) {
-        if (_pendingIncoming.value.none { it.id == device.id }) {
-            _pendingIncoming.value += device
+        val current = snapshot.value
+        if (current.pendingIncoming.none { it.id == device.id }) {
+            _snapshot.value = current.copy(pendingIncoming = current.pendingIncoming + device)
         }
     }
 
     fun removeIncoming(deviceId: String): DeviceProfile? {
-        val device = _pendingIncoming.value.firstOrNull { it.id == deviceId } ?: return null
-        _pendingIncoming.value = _pendingIncoming.value.filterNot { it.id == deviceId }
+        val current = snapshot.value
+        val device = current.pendingIncoming.firstOrNull { it.id == deviceId } ?: return null
+        _snapshot.value = current.copy(
+            pendingIncoming = current.pendingIncoming.filterNot { it.id == deviceId }
+        )
         return device
     }
 
     fun connect(deviceId: String) {
-        _activeDeviceId.value = deviceId
-        _connectionStatus.value = ConnectionStatus.CONNECTED
+        updateState(ConnectionState.Connected(deviceId))
+    }
+
+    fun beginDisconnecting() {
+        val activeId = activeDeviceIdValue ?: return
+        updateState(ConnectionState.Disconnecting(activeId))
     }
 
     fun disconnect() {
-        _activeDeviceId.value = null
-        _connectionStatus.value = ConnectionStatus.DISCONNECTED
+        _snapshot.value = ConnectionSnapshot()
     }
+
+    private fun updateState(state: ConnectionState) {
+        _snapshot.value = snapshot.value.copy(state = state)
+    }
+}
+
+private fun ConnectionState.activeDeviceId(): String? = when (this) {
+    is ConnectionState.Connected -> deviceId
+    is ConnectionState.Disconnecting -> deviceId
+    else -> null
+}
+
+private fun ConnectionState.pendingDevice(): DeviceProfile? = when (this) {
+    is ConnectionState.ResolvingRoute -> device
+    is ConnectionState.Requesting -> device
+    is ConnectionState.AwaitingApproval -> device
+    else -> null
 }

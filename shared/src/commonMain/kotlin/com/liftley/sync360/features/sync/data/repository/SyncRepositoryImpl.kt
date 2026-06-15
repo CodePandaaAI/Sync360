@@ -3,558 +3,268 @@ package com.liftley.sync360.features.sync.data.repository
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.security.SessionAuthFields
+import com.liftley.sync360.features.sync.data.network.ConnectRequestOutcome
 import com.liftley.sync360.features.sync.data.network.FileTransferManager
 import com.liftley.sync360.features.sync.data.network.HttpSyncClient
 import com.liftley.sync360.features.sync.data.network.HttpSyncServer
+import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
 import com.liftley.sync360.features.sync.data.network.OutgoingFileTransferCoordinator
 import com.liftley.sync360.features.sync.data.network.SyncServerListener
-import com.liftley.sync360.features.sync.data.network.api.*
-import com.liftley.sync360.features.sync.domain.model.*
-import com.liftley.sync360.features.sync.domain.network.NetworkDiscoveryService
+import com.liftley.sync360.features.sync.data.network.api.ConnectAcceptDto
+import com.liftley.sync360.features.sync.data.network.api.ConnectRejectDto
+import com.liftley.sync360.features.sync.data.network.api.ConnectRequestDto
+import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
+import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
+import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
+import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
+import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
+import com.liftley.sync360.features.sync.domain.model.SyncMessage
+import com.liftley.sync360.features.sync.domain.model.SyncStartResult
+import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
+import com.liftley.sync360.features.sync.domain.model.UserFacingFailure
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
-import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
-import kotlin.time.Clock
-import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.ExperimentalTime
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
-@OptIn(ExperimentalTime::class)
 class SyncRepositoryImpl(
-    private val discoveryService: NetworkDiscoveryService,
+    private val discoveryController: SyncDiscoveryController,
     private val localDevice: DeviceProfile,
     private val incomingNotifier: IncomingMessageNotifier,
-    private val localLanIp: String,
     private val platformOperations: PlatformOperations,
     private val syncPort: Int = 8080,
     private val httpClient: HttpSyncClient = HttpSyncClient(syncPort),
     private val httpServer: HttpSyncServer = HttpSyncServer(syncPort),
-    private val fileTransferManager: FileTransferManager = FileTransferManager(platformOperations, httpClient),
+    private val fileTransferManager: FileTransferManager =
+        FileTransferManager(platformOperations, httpClient),
     private val outgoingFileTransferCoordinator: OutgoingFileTransferCoordinator =
         OutgoingFileTransferCoordinator(localDevice, httpClient, fileTransferManager)
 ) : SyncRepository, SyncServerListener {
-
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+    private val runtimeLock = Any()
+    private var syncStarted = false
+    private var runtimeClosed = false
 
     private val deviceSession = DeviceSessionStore()
-    override val activeDeviceId: Flow<String?> = deviceSession.activeDeviceId
-    override val connectionStatus: Flow<ConnectionStatus> = deviceSession.connectionStatus
-
-    private val _nearbyDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
-    override val nearbyDevices: Flow<List<DeviceProfile>> = _nearbyDevices.asStateFlow()
-
-    override val pendingIncomingConnectRequests: Flow<List<DeviceProfile>> = deviceSession.pendingIncoming
-    override val pendingOutgoingConnectDevice: Flow<DeviceProfile?> = deviceSession.pendingOutgoing
-
-    private val _isScanning = MutableStateFlow(false)
-    override val isScanning: Flow<Boolean> = _isScanning.asStateFlow()
-
-    private var scanJob: Job? = null
-
-    // --- State ---
     private val deviceRegistry = DeviceRegistry()
-    private val pendingSessionTokens = mutableMapOf<String, String>()
-    private val sessionAuthenticator = SessionAuthenticator(localDevice, localLanIp)
-    private val incomingFileTransferCoordinator =
-        IncomingFileTransferCoordinator(fileTransferManager, sessionAuthenticator)
-    private val _currentMessagesList = MutableStateFlow<List<SyncMessage>>(emptyList())
-    private val sessionTextStore = SessionTextStore()
-    private val _fileTransferProgress = MutableStateFlow<FileTransferProgress?>(null)
-    override val fileTransferProgress: Flow<FileTransferProgress?> = _fileTransferProgress.asStateFlow()
-    private val _fileTransferFailure = MutableStateFlow<FileTransferFailure?>(null)
-    override val fileTransferFailure: Flow<FileTransferFailure?> = _fileTransferFailure.asStateFlow()
-    private val _receivedFileBatch = MutableStateFlow<ReceivedFileBatch?>(null)
-    override val receivedFileBatch: Flow<ReceivedFileBatch?> = _receivedFileBatch.asStateFlow()
+    private val sessionTokens = SessionTokenStore()
+    private val events = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 8)
+    private val sessionAuthenticator = SessionAuthenticator(
+        localDevice = localDevice,
+        localAddressForPeer = { peerHost ->
+            platformOperations.getNetworkEnvironment().addressForPeer(peerHost)
+        },
+        localPort = syncPort
+    )
+    private val incomingFileTransferCoordinator = IncomingFileTransferCoordinator(
+        fileTransferManager,
+        sessionAuthenticator,
+        platformOperations
+    )
+    private val messageEngine = MessageEngine(
+        scope = scope,
+        localDevice = localDevice,
+        incomingNotifier = incomingNotifier,
+        httpClient = httpClient,
+        deviceSession = deviceSession,
+        deviceRegistry = deviceRegistry,
+        sessionAuthenticator = sessionAuthenticator,
+        events = events
+    )
+    private val transferEngine = TransferEngine(
+        scope = scope,
+        incomingNotifier = incomingNotifier,
+        platformOperations = platformOperations,
+        deviceSession = deviceSession,
+        deviceRegistry = deviceRegistry,
+        incoming = incomingFileTransferCoordinator,
+        outgoing = outgoingFileTransferCoordinator
+    )
+    private val connectionEngine = ConnectionEngine(
+        scope = scope,
+        localDevice = localDevice,
+        syncPort = syncPort,
+        httpClient = httpClient,
+        deviceSession = deviceSession,
+        deviceRegistry = deviceRegistry,
+        sessionTokens = sessionTokens,
+        sessionAuthenticator = sessionAuthenticator,
+        events = events,
+        hasActiveTransfer = { transferEngine.isActive },
+        onSessionCleared = {
+            messageEngine.clearVisible()
+            transferEngine.cancel()
+        },
+        onDeviceDeleted = messageEngine::removePeer
+    )
 
-    override val sessionDevices: Flow<List<DeviceProfile>> = combine(
-        deviceRegistry.approvedDevices,
-        _nearbyDevices,
-        deviceSession.activeDeviceId,
-        connectionStatus
-    ) { sessionList, nearby, activeId, status ->
-        sessionList.map { entity ->
-            val isCurrentlyConnected = entity.id == activeId && status == ConnectionStatus.CONNECTED
-            val live = nearby.firstOrNull { it.id == entity.id }
-            entity.copy(
-                hostAddress = live?.hostAddress ?: entity.hostAddress,
-                isOnline = live != null || isCurrentlyConnected
-            )
-        }
-    }
-
-    override val sessionMessages: Flow<List<SyncMessage>> = _currentMessagesList.asStateFlow()
+    override val nearbyDevices: Flow<List<DeviceProfile>> = discoveryController.nearbyDevices
+    override val isScanning: Flow<Boolean> = discoveryController.isScanning
+    override val connectionEvents: Flow<ConnectionEvent> = events.asSharedFlow()
+    override val connectionSnapshot: Flow<ConnectionSnapshot> = connectionEngine.connectionSnapshot
+    override val sessionSnapshot: Flow<SessionSnapshot> = connectionEngine.sessionSnapshot
+    override val sessionMessages: Flow<List<SyncMessage>> = messageEngine.messages
+    override val transferSnapshot: Flow<TransferSnapshot> = transferEngine.snapshot
 
     init {
         httpServer.listener = this
-
-        scope.launch {
-            discoveryService.discoveredDevices.collect { discovered ->
-                _nearbyDevices.value = discovered.filter { 
-                    it.id != localDevice.id && 
-                    it.hostAddress != localLanIp && 
-                    it.hostAddress != "127.0.0.1" && 
-                    it.hostAddress != "localhost"
-                }
-            }
-        }
-
-        scope.launch {
-            deviceSession.activeDeviceId.collect { activeId ->
-                if (activeId == null) {
-                    _currentMessagesList.value = emptyList()
-                    platformOperations.stopService()
-                } else {
-                    _currentMessagesList.value = sessionTextStore.messagesFor(activeId)
-                    platformOperations.startService("")
-                }
-            }
-        }
     }
 
-    override fun startSync() {
-        scope.launch(Dispatchers.IO) {
-            discoveryService.registerHost(
-                port = syncPort,
-                deviceId = localDevice.id,
-                deviceName = localDevice.name,
-                deviceType = localDevice.type.name
-            )
+    override fun startSync(): SyncStartResult {
+        val decision = synchronized(runtimeLock) {
+            when {
+                runtimeClosed -> SyncStartResult.RUNTIME_CLOSED
+                syncStarted -> SyncStartResult.ALREADY_RUNNING
+                else -> {
+                    syncStarted = true
+                    SyncStartResult.STARTED
+                }
+            }
         }
-        httpServer.start()
-        triggerManualScan()
+        if (decision != SyncStartResult.STARTED) return decision
+
+        if (!platformOperations.getNetworkEnvironment().isAvailable) {
+            synchronized(runtimeLock) { syncStarted = false }
+            return SyncStartResult.NETWORK_UNAVAILABLE
+        }
+
+        httpServer.listener = this
+        if (!httpServer.start()) {
+            synchronized(runtimeLock) { syncStarted = false }
+            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.SERVER_UNAVAILABLE))
+            return SyncStartResult.SERVER_UNAVAILABLE
+        }
+        return SyncStartResult.STARTED
     }
 
     override fun stopSync() {
-        scanJob?.cancel()
-        _isScanning.value = false
-        scope.launch(Dispatchers.IO) {
-            discoveryService.stopDiscovery()
+        val shouldStop = synchronized(runtimeLock) {
+            if (!syncStarted) {
+                false
+            } else {
+                syncStarted = false
+                true
+            }
         }
+        if (!shouldStop) return
+
+        connectionEngine.cancelPending()
+        transferEngine.cancel(updateService = false)
         httpServer.stop()
+        platformOperations.stopService()
     }
 
-    override fun triggerManualScan() {
-        scanJob?.cancel()
-        _isScanning.value = true
-        scope.launch(Dispatchers.IO) {
-            discoveryService.startDiscovery()
+    override fun shutdownSync() {
+        synchronized(runtimeLock) {
+            if (runtimeClosed) return
         }
-        scanJob = scope.launch {
-            delay(10000.milliseconds)
-            withContext(Dispatchers.IO) {
-                discoveryService.stopDiscovery()
-            }
-            _isScanning.value = false
+        stopSync()
+        httpClient.close()
+        synchronized(runtimeLock) {
+            runtimeClosed = true
+            syncStarted = false
         }
     }
 
-    private fun getActivePeerIp(): String? {
-        val activeId = deviceSession.activeDeviceId.value ?: return null
-        return deviceRegistry.hostFor(activeId)
-    }
+    override fun requestConnect(device: DeviceProfile) = connectionEngine.request(device)
 
-    override fun requestConnect(device: DeviceProfile) {
-        deviceSession.requestOutgoing(device)
-    }
+    override fun requestConnectByHost(hostAddress: String) =
+        connectionEngine.requestByHost(hostAddress)
 
-    override fun requestConnectByHost(hostAddress: String) {
-        val host = hostAddress.trim()
-        if (host.isBlank()) return
-        deviceSession.requestOutgoing(
-            DeviceProfile(
-                id = "manual:$host",
-                name = host,
-                type = DeviceType.DESKTOP,
-                hostAddress = host,
-                isOnline = true
-            )
-        )
-    }
+    override fun confirmOutgoingConnect() = connectionEngine.confirm()
 
-    override fun confirmOutgoingConnect() {
-        val device = deviceSession.pendingOutgoing.value ?: return
-        val host = device.hostAddress
-        if (host == null) {
-            deviceSession.clearOutgoing()
-            return
-        }
-        
-        scope.launch {
-            val token = sessionAuthenticator.newSessionToken()
-            pendingSessionTokens[device.id] = token
-            httpClient.sendConnectRequest(host, sessionAuthenticator.connectRequest(token))
-        }
-    }
+    override fun dismissOutgoingConnect() = connectionEngine.dismiss()
 
-    override fun dismissOutgoingConnect() {
-        deviceSession.clearOutgoing()
-    }
+    override fun acceptIncomingConnect(deviceId: String) =
+        connectionEngine.acceptIncoming(deviceId)
 
-    override fun acceptIncomingConnect(deviceId: String) {
-        val device = deviceSession.removeIncoming(deviceId) ?: return
-        val sessionToken = pendingSessionTokens.remove(device.id) ?: sessionAuthenticator.newSessionToken()
-        
-        approveSessionDevice(device, sessionToken)
-        deviceSession.connect(device.id)
+    override fun declineIncomingConnect(deviceId: String) =
+        connectionEngine.declineIncoming(deviceId)
 
-        device.hostAddress?.let { host ->
-            scope.launch {
-                httpClient.sendConnectAccept(host, sessionAuthenticator.connectAccept(sessionToken))
-            }
-        }
-    }
+    override fun switchActiveDevice(deviceId: String) =
+        connectionEngine.switchActive(deviceId)
 
-    override fun declineIncomingConnect(deviceId: String) {
-        val device = deviceSession.removeIncoming(deviceId) ?: return
-        val sessionToken = pendingSessionTokens.remove(device.id)
-        
-        device.hostAddress?.let { host ->
-            scope.launch {
-                httpClient.sendConnectReject(host, sessionAuthenticator.connectReject(sessionToken))
-            }
-        }
-    }
-
-    override fun switchActiveDevice(deviceId: String) {
-        deviceSession.connect(deviceId)
-    }
-
-    override fun disconnectActivePeer() {
-        if (hasActiveTransfer()) return
-
-        val ip = getActivePeerIp()
-        if (ip != null) {
-            val sessionToken = deviceSession.activeDeviceId.value?.let(deviceRegistry::sessionTokenFor)
-            scope.launch { httpClient.sendConnectReject(ip, sessionAuthenticator.connectReject(sessionToken)) }
-        }
-        clearActiveSession()
-    }
+    override fun disconnectActivePeer() = connectionEngine.disconnectActive()
 
     override fun disconnectAll() {
-        if (hasActiveTransfer()) return
-
-        disconnectActivePeer()
-        stopSync()
+        transferEngine.cancel()
+        connectionEngine.clearSession()
+        shutdownSync()
     }
 
-    override fun sendText(text: String) {
-        val ip = getActivePeerIp() ?: return
-        val peerId = deviceSession.activeDeviceId.value ?: return
-        val sessionToken = deviceRegistry.sessionTokenFor(peerId) ?: return
-        val msg = MessageDto(
-            messageId = generateUniqueId(),
-            senderDeviceId = localDevice.id,
-            senderName = localDevice.name,
-            content = text,
-            timestamp = Clock.System.now().toEpochMilliseconds(),
-            sessionToken = sessionToken,
-            issuedAtMillis = 0L,
-            nonce = "",
-            signature = ""
-        )
-        val signedMessage = sessionAuthenticator.signTextMessage(msg)
-        appendSessionMessage(signedMessage.messageId, peerId, signedMessage.senderDeviceId, signedMessage.content, signedMessage.timestamp)
-        
-        scope.launch {
-            httpClient.sendTextMessage(ip, signedMessage)
-        }
-    }
+    override suspend fun clearAllData() = connectionEngine.clearSession()
 
-    override fun offerFiles(files: List<PickedFile>) {
-        if (hasActiveTransfer()) {
-            setTransferFailure("A transfer is already in progress", TransferDirection.SENDING)
-            return
-        }
+    override fun deleteDevice(deviceId: String) = connectionEngine.deleteDevice(deviceId)
 
-        val ip = getActivePeerIp() ?: return
-        val peerId = deviceSession.activeDeviceId.value ?: return
-        val sessionToken = deviceRegistry.sessionTokenFor(peerId) ?: return
-        if (files.isEmpty()) return
-        val offerId = generateUniqueId()
-        
-        scope.launch {
-            val previews = outgoingFileTransferCoordinator.previews(files)
-            onTransferStarted()
-            _fileTransferFailure.value = null
-            _fileTransferProgress.value = FileTransferProgress(
-                peerName = "Peer",
-                files = previews,
-                percent = 1,
-                direction = TransferDirection.SENDING
-            )
-            
-            val success = outgoingFileTransferCoordinator.sendFiles(
-                peerHost = ip,
-                offerId = offerId,
-                files = files,
-                sessionToken = sessionToken,
-                onProgress = ::updateProgress
-            )
-            
-            if (success) {
-                updateProgress(100)
-                delay(900.milliseconds)
-                _fileTransferProgress.value = null
-                onTransferFinished()
-            } else {
-                setTransferFailure("File transfer failed", TransferDirection.SENDING)
-                _fileTransferProgress.value = null
-                onTransferFinished()
-            }
-        }
-    }
+    override fun sendText(text: String) = messageEngine.send(text)
 
-    override fun dismissReceivedFiles() {
-        _receivedFileBatch.value = null
-    }
+    override fun offerFiles(files: List<PickedFile>) = transferEngine.offer(files)
 
-    override fun dismissTransferFailure() {
-        _fileTransferFailure.value = null
-    }
+    override fun dismissReceivedFiles() = transferEngine.dismissReceivedFiles()
 
-    override suspend fun clearAllData() {
-        clearActiveSession()
-    }
+    override fun dismissTransferFailure() = transferEngine.dismissFailure()
 
-    override fun deleteDevice(deviceId: String) {
-        if (deviceSession.activeDeviceId.value == deviceId && hasActiveTransfer()) return
+    override fun onConnectRequest(
+        request: ConnectRequestDto,
+        remoteHost: String
+    ): ConnectRequestOutcome = connectionEngine.onConnectRequest(request, remoteHost)
 
-        sessionTextStore.removePeer(deviceId)
-        deviceRegistry.delete(deviceId)
-        if (deviceSession.activeDeviceId.value == deviceId) {
-            clearActiveSession()
-        }
-    }
+    override fun onConnectAccept(accept: ConnectAcceptDto, remoteHost: String): Boolean =
+        connectionEngine.onConnectAccept(accept, remoteHost)
 
-    // --- HTTP Server Listener Callbacks ---
+    override fun onConnectReject(reject: ConnectRejectDto, remoteHost: String): Boolean =
+        connectionEngine.onConnectReject(reject, remoteHost)
 
-    override fun onConnectRequest(request: ConnectRequestDto) {
-        if (!sessionAuthenticator.verifyConnectRequest(request)) return
+    override fun onTextMessage(message: MessageDto, remoteHost: String): Boolean =
+        messageEngine.receive(message, remoteHost)
 
-        val device = DeviceProfile(
-            id = request.deviceId,
-            name = request.deviceName,
-            type = parseDeviceType(request.deviceType),
-            hostAddress = request.senderIp,
-            isOnline = true
-        )
-        if (isApprovedSessionPeer(device.id, request.sessionToken)) {
-            approveSessionDevice(device, request.sessionToken)
-            deviceSession.connect(device.id)
-            device.hostAddress?.let { host ->
-                scope.launch {
-                    httpClient.sendConnectAccept(host, sessionAuthenticator.connectAccept(request.sessionToken))
-                }
-            }
-            return
-        }
+    override fun onFileOffer(offer: FileOfferDto, remoteHost: String): Boolean =
+        transferEngine.receiveOffer(offer, remoteHost)
 
-        pendingSessionTokens[device.id] = request.sessionToken
-        deviceSession.addIncoming(device)
-    }
-
-    override fun onConnectAccept(accept: ConnectAcceptDto) {
-        if (!sessionAuthenticator.verifyConnectAccept(accept)) return
-
-        val pending = deviceSession.pendingOutgoing.value
-        val pendingToken = pendingSessionTokens[accept.deviceId] ?: pending?.id?.let { pendingSessionTokens[it] }
-        val alreadyApproved = isApprovedSessionPeer(accept.deviceId, accept.sessionToken)
-        val matchesPendingDevice = pending?.id == accept.deviceId || pending?.hostAddress == accept.senderIp
-        val acceptsPendingRequest = matchesPendingDevice && pendingToken == accept.sessionToken
-        if (!acceptsPendingRequest && !alreadyApproved) return
-
-        deviceSession.clearOutgoing()
-        pendingSessionTokens.remove(accept.deviceId)
-        pending?.id?.let { pendingSessionTokens.remove(it) }
-        approveSessionDevice(
-            DeviceProfile(
-                id = accept.deviceId,
-                name = accept.deviceName,
-                type = parseDeviceType(accept.deviceType),
-                hostAddress = accept.senderIp,
-                isOnline = true
-            ),
-            accept.sessionToken
-        )
-        deviceSession.connect(accept.deviceId)
-    }
-
-    override fun onConnectReject(reject: ConnectRejectDto): Boolean {
-        if (!sessionAuthenticator.verifyConnectReject(reject)) return false
-
-        val pendingOutgoingId = deviceSession.pendingOutgoing.value?.id
-        val activeDeviceId = deviceSession.activeDeviceId.value
-        val tokenMatchesPending = reject.sessionToken != null && pendingSessionTokens.values.any { it == reject.sessionToken }
-        val allowed = hasApprovedSession(reject.senderDeviceId, reject.sessionToken) ||
-            (pendingOutgoingId == reject.senderDeviceId && pendingSessionTokens[reject.senderDeviceId] == reject.sessionToken) ||
-            tokenMatchesPending
-        if (!allowed) return false
-
-        if (pendingOutgoingId == reject.senderDeviceId || tokenMatchesPending) {
-            deviceSession.clearOutgoing()
-            val rejectedToken = reject.sessionToken
-            pendingSessionTokens
-                .filterValues { it == rejectedToken }
-                .keys
-                .toList()
-                .forEach { pendingSessionTokens.remove(it) }
-        }
-        if (activeDeviceId == reject.senderDeviceId) {
-            if (hasActiveTransfer()) return false
-            clearActiveSession()
-        }
-        return true
-    }
-
-    override fun onTextMessage(message: MessageDto): Boolean {
-        if (!isApprovedSessionPeer(message.senderDeviceId, message.sessionToken)) return false
-        if (!sessionAuthenticator.verifyTextMessage(message)) return false
-
-        val peerId = message.senderDeviceId
-        appendSessionMessage(message.messageId, peerId, peerId, message.content, message.timestamp)
-        incomingNotifier.notifyIncoming(message.senderName, message.content.take(120), false)
-        return true
-    }
-
-    override fun onFileOffer(offer: FileOfferDto): Boolean {
-        val start = incomingFileTransferCoordinator.startOffer(
-            offer = offer,
-            isApprovedSession = isApprovedSessionPeer(offer.senderDeviceId, offer.sessionToken),
-            hasActiveTransfer = hasActiveTransfer(),
-            onProgress = ::updateProgress
-        ) ?: return false
-
-        onTransferStarted()
-        _fileTransferFailure.value = null
-        _fileTransferProgress.value = start.progress
-        _receivedFileBatch.value = null
-        incomingNotifier.notifyIncoming(start.senderName, "Receiving ${start.fileCount} files...", true)
-        return true
-    }
-
-    override fun onFileComplete(complete: FileCompleteDto): Boolean {
-        val accepted = incomingFileTransferCoordinator.completeSignal(
-            complete = complete,
-            isApprovedSession = isApprovedSessionPeer(complete.senderDeviceId, complete.sessionToken)
-        )
-        if (!accepted) return false
-
-        updateProgress(100)
-        scope.launch {
-            delay(900.milliseconds)
-            _fileTransferProgress.value = null
-            onTransferFinished()
-        }
-        return true
-    }
+    override fun onFileComplete(complete: FileCompleteDto, remoteHost: String): Boolean =
+        transferEngine.receiveComplete(complete, remoteHost)
 
     override fun onIncomingFileChunkInit(
         offerId: String,
         fileIndex: Int,
         sessionToken: String,
-        authFields: SessionAuthFields
-    ): Boolean {
-        return incomingFileTransferCoordinator.initFileWrite(offerId, fileIndex, sessionToken, authFields)
-    }
+        authFields: SessionAuthFields,
+        declaredLength: Long,
+        remoteHost: String
+    ): Boolean = transferEngine.initIncomingFile(
+        offerId,
+        fileIndex,
+        sessionToken,
+        authFields,
+        declaredLength,
+        remoteHost
+    )
 
-    override fun onIncomingFileChunkReceived(offerId: String, fileIndex: Int, chunk: ByteArray): Boolean {
-        return incomingFileTransferCoordinator.writeChunk(offerId, fileIndex, chunk)
-    }
+    override fun onIncomingFileChunkReceived(
+        offerId: String,
+        fileIndex: Int,
+        chunk: ByteArray
+    ): Boolean = transferEngine.receiveChunk(offerId, fileIndex, chunk)
 
-    override fun onIncomingFileChunkComplete(offerId: String, fileIndex: Int): String? {
-        val complete = incomingFileTransferCoordinator.completeFileWrite(offerId, fileIndex)
-        if (complete.batch != null) {
-            _receivedFileBatch.value = complete.batch
-            _fileTransferProgress.value = null
-            onTransferFinished()
-        }
-        return complete.savedPath
-    }
+    override fun onIncomingFileChunkComplete(offerId: String, fileIndex: Int): String? =
+        transferEngine.completeIncomingFile(offerId, fileIndex)
 
-    override fun onIncomingFileChunkError(offerId: String, fileIndex: Int) {
-        incomingFileTransferCoordinator.errorFileWrite(offerId, fileIndex)
-        setTransferFailure("Receiving file failed", TransferDirection.RECEIVING)
-        _fileTransferProgress.value = null
-        onTransferFinished()
-    }
+    override fun onIncomingFileChunkError(
+        offerId: String,
+        fileIndex: Int,
+        knownFailure: IncomingUploadFailure?
+    ): IncomingUploadFailure? =
+        transferEngine.failIncomingFile(offerId, fileIndex, knownFailure)
 
-    // --- Helpers ---
-
-    private fun clearActiveSession() {
-        deviceSession.disconnect()
-        pendingSessionTokens.clear()
-        sessionAuthenticator.clearReplayHistory()
-        _currentMessagesList.value = emptyList()
-        _fileTransferProgress.value = null
-        _fileTransferFailure.value = null
-        _receivedFileBatch.value = null
-        incomingFileTransferCoordinator.clear()
-    }
-
-    private fun approveSessionDevice(device: DeviceProfile, sessionToken: String) {
-        deviceRegistry.upsert(device, sessionToken)
-    }
-
-    private fun isApprovedSessionPeer(deviceId: String, sessionToken: String): Boolean {
-        return deviceRegistry.hasValidSession(deviceId, sessionToken)
-    }
-
-    private fun hasApprovedSession(deviceId: String, sessionToken: String?): Boolean {
-        return sessionToken != null && deviceRegistry.hasValidSession(deviceId, sessionToken)
-    }
-
-    private fun appendSessionMessage(itemId: String, peerId: String, originId: String, content: String, timestamp: Long) {
-        val updated = sessionTextStore.addText(
-            itemId = itemId,
-            peerId = peerId,
-            originDeviceId = originId,
-            localDeviceId = localDevice.id,
-            text = content,
-            timestamp = timestamp
-        )
-        if (deviceSession.activeDeviceId.value == peerId) {
-            _currentMessagesList.value = updated
-        }
-    }
-
-    private fun updateProgress(percent: Int) {
-        val current = _fileTransferProgress.value
-        if (current != null && current.percent != percent) {
-            _fileTransferProgress.update { it?.copy(percent = percent) }
-        }
-    }
-
-    private fun hasActiveTransfer(): Boolean {
-        return _fileTransferProgress.value != null
-    }
-
-    private fun setTransferFailure(
-        message: String,
-        direction: TransferDirection,
-        failedFileName: String? = null
-    ) {
-        val peerName = _fileTransferProgress.value?.peerName ?: deviceSession.activeDeviceId.value ?: "Peer"
-        _fileTransferFailure.value = FileTransferFailure(
-            peerName = peerName,
-            message = message,
-            failedFileName = failedFileName,
-            direction = direction
-        )
-    }
-
-    private fun onTransferStarted() {
-        platformOperations.startService("transfer")
-    }
-
-    private fun onTransferFinished() {
-        if (deviceSession.activeDeviceId.value == null) {
-            platformOperations.stopService()
-        }
-    }
-
-    private fun generateUniqueId(): String {
-        return "${Clock.System.now().toEpochMilliseconds()}-${(1..8).map { "abcdefghijklmnopqrstuvwxyz0123456789".random() }.joinToString("")}"
-    }
-
-    private fun parseDeviceType(value: String): DeviceType =
-        runCatching { DeviceType.valueOf(value) }.getOrDefault(DeviceType.DESKTOP)
+    override fun consumeIncomingFileFailure(
+        offerId: String,
+        fileIndex: Int
+    ): IncomingUploadFailure? = transferEngine.consumeIncomingFailure(offerId, fileIndex)
 }

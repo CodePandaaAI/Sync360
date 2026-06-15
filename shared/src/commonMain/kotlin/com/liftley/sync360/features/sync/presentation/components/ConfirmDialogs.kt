@@ -7,13 +7,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import com.liftley.sync360.features.sync.presentation.SyncUiState
+import com.liftley.sync360.features.sync.domain.model.ConnectionState
 
 @Composable
 fun ConfirmDialogs(
     uiState: SyncUiState,
     onEvent: (SyncEvent) -> Unit
 ) {
-    uiState.pendingConnectionRequests.firstOrNull()?.let { device ->
+    uiState.pendingIncomingRequest?.let { device ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DeclineConnection(device.id)) },
             shape = RoundedCornerShape(24.dp),
@@ -49,7 +50,9 @@ fun ConfirmDialogs(
     }
 
     // Outgoing connect confirmation
-    uiState.pendingConnectDevice?.let { device ->
+    uiState.pendingOutgoingRequest
+        ?.takeIf { uiState.connectionState is ConnectionState.ResolvingRoute }
+        ?.let { device ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DismissConnectRequest) },
             shape = RoundedCornerShape(24.dp),

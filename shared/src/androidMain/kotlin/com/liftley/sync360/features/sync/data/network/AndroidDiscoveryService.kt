@@ -12,26 +12,39 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlin.coroutines.resume
 
 class AndroidDiscoveryService(private val context: Context) : NetworkDiscoveryService {
     private val _discoveredDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
     override val discoveredDevices: StateFlow<List<DeviceProfile>> = _discoveredDevices.asStateFlow()
+    private val _state = MutableStateFlow(DiscoveryState())
+    override val state: StateFlow<DiscoveryState> = _state.asStateFlow()
 
     private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val serviceType = "_sync360._tcp"
     private val devicesMap = mutableMapOf<String, DeviceProfile>()
     private val serviceNameToIdMap = mutableMapOf<String, String>()
+    private val devicesLock = Any()
 
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val resolveMutex = Mutex()
 
+    @Volatile
     private var discoveryListener: NsdManager.DiscoveryListener? = null
+    @Volatile
     private var registrationListener: NsdManager.RegistrationListener? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    @Volatile
+    private var scanGeneration = 0L
+    @Volatile
+    private var registrationGeneration = 0L
 
-    override fun startDiscovery() {
-        if (discoveryListener != null) return
+    override fun startDiscovery(): DiscoveryCommandResult {
+        if (_state.value.scan == DiscoveryScanState.SHUTDOWN) return DiscoveryCommandResult.SHUTDOWN
+        if (discoveryListener != null) return DiscoveryCommandResult.ALREADY_ACTIVE
+        _state.value = _state.value.copy(
+            scan = DiscoveryScanState.STARTING,
+            failure = null
+        )
 
         try {
             val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -43,31 +56,58 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
             println("AndroidDiscoveryService: Failed to acquire MulticastLock - ${e.message}")
         }
 
-        discoveryListener = object : NsdManager.DiscoveryListener {
-            override fun onDiscoveryStarted(regType: String) {}
-            override fun onDiscoveryStopped(serviceType: String) {}
-            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                nsdManager.stopServiceDiscovery(this)
+        val generation = ++scanGeneration
+        val listener = object : NsdManager.DiscoveryListener {
+            override fun onDiscoveryStarted(regType: String) {
+                if (!isCurrentScan(generation, this)) return
+                _state.value = _state.value.copy(scan = DiscoveryScanState.ACTIVE, failure = null)
+            }
+            override fun onDiscoveryStopped(serviceType: String) {
+                if (!isCurrentScan(generation, this)) return
                 discoveryListener = null
+                releaseMulticastLock()
+                _state.value = _state.value.copy(scan = DiscoveryScanState.IDLE)
+            }
+            override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+                if (!isCurrentScan(generation, this)) return
+                runCatching { nsdManager.stopServiceDiscovery(this) }
+                discoveryListener = null
+                releaseMulticastLock()
+                _state.value = _state.value.copy(
+                    scan = DiscoveryScanState.FAILED,
+                    failure = DiscoveryFailure.SCAN_START_FAILED
+                )
             }
             override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                nsdManager.stopServiceDiscovery(this)
+                if (!isCurrentScan(generation, this)) return
+                runCatching { nsdManager.stopServiceDiscovery(this) }
+                discoveryListener = null
+                releaseMulticastLock()
+                _state.value = _state.value.copy(
+                    scan = DiscoveryScanState.FAILED,
+                    failure = DiscoveryFailure.SCAN_STOP_FAILED
+                )
             }
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                if (serviceInfo.serviceType.contains(serviceType)) {
+                if (
+                    isCurrentScan(generation, this) &&
+                    serviceInfo.serviceType.contains(serviceType)
+                ) {
                     scope.launch {
                         resolveMutex.withLock {
+                            if (!isCurrentScanGeneration(generation)) return@withLock
                             val resolved = suspendCancellableCoroutine<NsdServiceInfo?> { continuation ->
                                 nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
                                     override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                                        continuation.resume(null)
+                                        continuation.tryResume(null)?.let(continuation::completeResume)
                                     }
 
                                     override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
-                                        continuation.resume(resolvedInfo)
+                                        continuation.tryResume(resolvedInfo)?.let(continuation::completeResume)
                                     }
                                 })
                             }
+                            if (!isCurrentScanGeneration(generation)) return@withLock
                             if (resolved != null) {
                                 val ip = resolved.host?.hostAddress
                                 ?.takeIf { '.' in it && ':' !in it }
@@ -88,59 +128,82 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                                     name = resolved.serviceName.replace('-', ' '),
                                     type = resolvedType,
                                     hostAddress = ip,
+                                    port = resolved.port,
                                     isOnline = true
                                 )
-                                devicesMap[resolvedId] = device
-                                serviceNameToIdMap[resolved.serviceName] = resolvedId
-                                _discoveredDevices.value = devicesMap.values.toList()
+                                publishResolvedDevice(
+                                    generation,
+                                    resolved.serviceName,
+                                    resolvedId,
+                                    device
+                                )
                             }
                         }
                     }
                 }
             }
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                if (!isCurrentScan(generation, this)) return
                 scope.launch {
                     resolveMutex.withLock {
-                        val resolvedId = serviceNameToIdMap.remove(serviceInfo.serviceName)
-                        if (resolvedId != null) {
-                            devicesMap.remove(resolvedId)
-                        }
-                        val lostName = serviceInfo.serviceName.replace('-', ' ')
-                        val toRemove = devicesMap.filter { it.value.name == lostName }.keys
-                        toRemove.forEach { devicesMap.remove(it) }
-                        _discoveredDevices.value = devicesMap.values.toList()
+                        if (!isCurrentScanGeneration(generation)) return@withLock
+                        removeLostDevice(generation, serviceInfo.serviceName)
                     }
                 }
             }
         }
-        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+        discoveryListener = listener
+        runCatching {
+            nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
+        }.onFailure {
+            if (isCurrentScan(generation, listener)) {
+                discoveryListener = null
+                releaseMulticastLock()
+                _state.value = _state.value.copy(
+                    scan = DiscoveryScanState.FAILED,
+                    failure = DiscoveryFailure.SCAN_START_FAILED
+                )
+            }
+        }.getOrElse {
+            return DiscoveryCommandResult.FAILED
+        }
+        return DiscoveryCommandResult.ACCEPTED
     }
 
-    override fun stopDiscovery() {
-        discoveryListener?.let {
-            try {
-                nsdManager.stopServiceDiscovery(it)
-            } catch (_: Exception) {
-            }
-            discoveryListener = null
+    override fun stopDiscovery(): DiscoveryCommandResult {
+        if (_state.value.scan == DiscoveryScanState.SHUTDOWN) return DiscoveryCommandResult.SHUTDOWN
+        val listener = discoveryListener ?: return DiscoveryCommandResult.ALREADY_IDLE
+        _state.value = _state.value.copy(scan = DiscoveryScanState.STOPPING)
+        scanGeneration++
+        discoveryListener = null
+        try {
+            nsdManager.stopServiceDiscovery(listener)
+        } catch (_: Exception) {
         }
 
-        try {
-            multicastLock?.let {
-                if (it.isHeld) {
-                    it.release()
-                }
-            }
-            multicastLock = null
-        } catch (e: Exception) {
-            println("AndroidDiscoveryService: Failed to release MulticastLock - ${e.message}")
-        }
+        releaseMulticastLock()
 
         // Discovery and advertisement have different lifetimes. Keep the host
         // registered so desktops can still find this phone after scan auto-stop.
+        _state.value = _state.value.copy(scan = DiscoveryScanState.IDLE)
+        return DiscoveryCommandResult.ACCEPTED
     }
 
-    override fun registerHost(port: Int, deviceId: String, deviceName: String, deviceType: String) {
+    override fun registerHost(
+        port: Int,
+        deviceId: String,
+        deviceName: String,
+        deviceType: String
+    ): DiscoveryCommandResult {
+        if (_state.value.advertisement == DiscoveryAdvertisementState.SHUTDOWN) {
+            return DiscoveryCommandResult.SHUTDOWN
+        }
+        if (registrationListener != null) return DiscoveryCommandResult.ALREADY_ACTIVE
+        _state.value = _state.value.copy(
+            advertisement = DiscoveryAdvertisementState.REGISTERING,
+            failure = null
+        )
+
         val safeName = sanitizeServiceName(deviceName, deviceId)
         val serviceInfo = NsdServiceInfo().apply {
             this.serviceName = safeName
@@ -150,14 +213,153 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
             setAttribute("deviceId", deviceId)
         }
 
-        registrationListener = object : NsdManager.RegistrationListener {
-            override fun onServiceRegistered(registered: NsdServiceInfo) {}
-            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
-            override fun onServiceUnregistered(arg0: NsdServiceInfo) {}
-            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {}
+        val generation = ++registrationGeneration
+        val listener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(registered: NsdServiceInfo) {
+                if (!isCurrentRegistration(generation, this)) return
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.ACTIVE,
+                    failure = null
+                )
+            }
+            override fun onRegistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                if (!isCurrentRegistration(generation, this)) return
+                registrationListener = null
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.FAILED,
+                    failure = DiscoveryFailure.REGISTRATION_FAILED
+                )
+            }
+            override fun onServiceUnregistered(arg0: NsdServiceInfo) {
+                if (!isCurrentRegistration(generation, this)) return
+                registrationListener = null
+                _state.value = _state.value.copy(advertisement = DiscoveryAdvertisementState.IDLE)
+            }
+            override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                if (!isCurrentRegistration(generation, this)) return
+                registrationListener = null
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.FAILED,
+                    failure = DiscoveryFailure.REGISTRATION_FAILED
+                )
+            }
         }
+        registrationListener = listener
 
-        nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        return runCatching {
+            nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, listener)
+            DiscoveryCommandResult.ACCEPTED
+        }.onFailure {
+            if (isCurrentRegistration(generation, listener)) {
+                registrationListener = null
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.FAILED,
+                    failure = DiscoveryFailure.REGISTRATION_FAILED
+                )
+            }
+        }.getOrDefault(DiscoveryCommandResult.FAILED)
+    }
+
+    override fun shutdown() {
+        stopDiscovery()
+        unregisterHost()
+        scanGeneration++
+        registrationGeneration++
+        scope.cancel()
+        clearDiscoveredDevices()
+        _state.value = DiscoveryState(
+            scan = DiscoveryScanState.SHUTDOWN,
+            advertisement = DiscoveryAdvertisementState.SHUTDOWN
+        )
+    }
+
+    override fun unregisterHost(): DiscoveryCommandResult {
+        if (_state.value.advertisement == DiscoveryAdvertisementState.SHUTDOWN) {
+            return DiscoveryCommandResult.SHUTDOWN
+        }
+        val listener = registrationListener ?: return DiscoveryCommandResult.ALREADY_IDLE
+        registrationGeneration++
+        registrationListener = null
+        return runCatching {
+            nsdManager.unregisterService(listener)
+            _state.value = _state.value.copy(
+                advertisement = DiscoveryAdvertisementState.IDLE
+            )
+            DiscoveryCommandResult.ACCEPTED
+        }.onFailure {
+            _state.value = _state.value.copy(
+                advertisement = DiscoveryAdvertisementState.FAILED,
+                failure = DiscoveryFailure.REGISTRATION_FAILED
+            )
+        }.getOrDefault(DiscoveryCommandResult.FAILED)
+    }
+
+    private fun isCurrentScan(
+        generation: Long,
+        listener: NsdManager.DiscoveryListener
+    ): Boolean {
+        return generation == scanGeneration &&
+            discoveryListener === listener &&
+            _state.value.scan != DiscoveryScanState.SHUTDOWN
+    }
+
+    private fun isCurrentScanGeneration(generation: Long): Boolean {
+        return generation == scanGeneration &&
+            discoveryListener != null &&
+            _state.value.scan != DiscoveryScanState.SHUTDOWN
+    }
+
+    private fun isCurrentRegistration(
+        generation: Long,
+        listener: NsdManager.RegistrationListener
+    ): Boolean {
+        return generation == registrationGeneration &&
+            registrationListener === listener &&
+            _state.value.advertisement != DiscoveryAdvertisementState.SHUTDOWN
+    }
+
+    private fun clearDiscoveredDevices() {
+        synchronized(devicesLock) {
+            devicesMap.clear()
+            serviceNameToIdMap.clear()
+            _discoveredDevices.value = emptyList()
+        }
+    }
+
+    private fun publishResolvedDevice(
+        generation: Long,
+        serviceName: String,
+        deviceId: String,
+        device: DeviceProfile
+    ) {
+        synchronized(devicesLock) {
+            if (!isCurrentScanGeneration(generation)) return
+            devicesMap[deviceId] = device
+            serviceNameToIdMap[serviceName] = deviceId
+            _discoveredDevices.value = devicesMap.values.toList()
+        }
+    }
+
+    private fun removeLostDevice(generation: Long, serviceName: String) {
+        synchronized(devicesLock) {
+            if (!isCurrentScanGeneration(generation)) return
+            serviceNameToIdMap.remove(serviceName)?.let(devicesMap::remove)
+            val lostName = serviceName.replace('-', ' ')
+            devicesMap.entries.removeAll { it.value.name == lostName }
+            _discoveredDevices.value = devicesMap.values.toList()
+        }
+    }
+
+    private fun releaseMulticastLock() {
+        try {
+            multicastLock?.let { lock ->
+                if (lock.isHeld) lock.release()
+            }
+        } catch (e: Exception) {
+            println("AndroidDiscoveryService: Failed to release MulticastLock - ${e.message}")
+        } finally {
+            multicastLock = null
+        }
     }
 
     private fun sanitizeServiceName(name: String, deviceId: String): String {

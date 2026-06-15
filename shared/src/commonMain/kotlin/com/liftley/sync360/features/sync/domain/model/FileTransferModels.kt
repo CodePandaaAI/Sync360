@@ -10,7 +10,8 @@ data class PickedFile(
 data class TransferFilePreview(
     val name: String,
     val mimeType: String,
-    val sizeBytes: Long
+    val sizeBytes: Long,
+    val sha256: String? = null
 )
 
 data class ReceivedFileBatch(
@@ -23,17 +24,37 @@ data class FileTransferProgress(
     val peerName: String,
     val files: List<TransferFilePreview>,
     val percent: Int,
-    val direction: TransferDirection
+    val direction: TransferDirection,
+    val stage: TransferStage
 )
 
 data class FileTransferFailure(
     val peerName: String,
     val message: String,
     val failedFileName: String? = null,
-    val direction: TransferDirection
+    val direction: TransferDirection,
+    val reason: TransferFailureReason = TransferFailureReason.UNKNOWN
 )
+
+enum class TransferFailureReason {
+    INVALID_SELECTION,
+    SOURCE_UNAVAILABLE,
+    STORAGE_FULL,
+    STORAGE_UNAVAILABLE,
+    INTEGRITY_FAILED,
+    NETWORK_FAILED,
+    TIMED_OUT,
+    WRITE_FAILED,
+    UNKNOWN
+}
 
 enum class TransferDirection {
     SENDING,
     RECEIVING
+}
+
+enum class TransferStage {
+    PREPARING,
+    TRANSFERRING,
+    VERIFYING
 }

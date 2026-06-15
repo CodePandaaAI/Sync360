@@ -10,49 +10,76 @@ import com.liftley.sync360.features.sync.data.network.api.ConnectRequestDto
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import com.liftley.sync360.features.sync.data.network.api.SyncProtocol
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 
 internal class SessionAuthenticator(
     private val localDevice: DeviceProfile,
-    private val localLanIp: String
+    private val localAddressForPeer: (String) -> String,
+    private val localPort: Int
 ) {
-    private val replayCache = SessionReplayCache()
+    private val untrustedConnectReplayCache = SessionReplayCache()
+    private val approvedSessionReplayCache = SessionReplayCache()
 
     fun newSessionToken(): String = SessionCrypto.secureToken()
 
-    fun connectRequest(sessionToken: String): ConnectRequestDto {
+    fun connectRequest(sessionToken: String, peerHost: String): ConnectRequestDto {
+        val senderAddress = localAddressForPeer(peerHost)
         val auth = authFields(
             sessionToken = sessionToken,
             purpose = CONNECT_REQUEST,
-            parts = listOf(localDevice.id, localDevice.name, localDevice.type.name, localLanIp)
+            parts = listOf(
+                localDevice.id,
+                localDevice.name,
+                localDevice.type.name,
+                senderAddress,
+                localPort.toString(),
+                SyncProtocol.VERSION.toString(),
+                SyncProtocol.capabilities.joinToString(",")
+            )
         )
         return ConnectRequestDto(
             deviceId = localDevice.id,
             deviceName = localDevice.name,
             deviceType = localDevice.type.name,
-            senderIp = localLanIp,
+            senderIp = senderAddress,
+            senderPort = localPort,
             sessionToken = sessionToken,
             issuedAtMillis = auth.issuedAtMillis,
             nonce = auth.nonce,
-            signature = auth.signature
+            signature = auth.signature,
+            protocolVersion = SyncProtocol.VERSION,
+            capabilities = SyncProtocol.capabilities
         )
     }
 
-    fun connectAccept(sessionToken: String): ConnectAcceptDto {
+    fun connectAccept(sessionToken: String, peerHost: String): ConnectAcceptDto {
+        val senderAddress = localAddressForPeer(peerHost)
         val auth = authFields(
             sessionToken = sessionToken,
             purpose = CONNECT_ACCEPT,
-            parts = listOf(localDevice.id, localDevice.name, localDevice.type.name, localLanIp)
+            parts = listOf(
+                localDevice.id,
+                localDevice.name,
+                localDevice.type.name,
+                senderAddress,
+                localPort.toString(),
+                SyncProtocol.VERSION.toString(),
+                SyncProtocol.capabilities.joinToString(",")
+            )
         )
         return ConnectAcceptDto(
             deviceId = localDevice.id,
             deviceName = localDevice.name,
             deviceType = localDevice.type.name,
-            senderIp = localLanIp,
+            senderIp = senderAddress,
+            senderPort = localPort,
             sessionToken = sessionToken,
             issuedAtMillis = auth.issuedAtMillis,
             nonce = auth.nonce,
-            signature = auth.signature
+            signature = auth.signature,
+            protocolVersion = SyncProtocol.VERSION,
+            capabilities = SyncProtocol.capabilities
         )
     }
 
@@ -93,7 +120,16 @@ internal class SessionAuthenticator(
             fields = request.authFields(),
             sessionToken = request.sessionToken,
             purpose = CONNECT_REQUEST,
-            parts = listOf(request.deviceId, request.deviceName, request.deviceType, request.senderIp)
+            parts = listOf(
+                request.deviceId,
+                request.deviceName,
+                request.deviceType,
+                request.senderIp,
+                request.senderPort.toString(),
+                request.protocolVersion.toString(),
+                request.capabilities.joinToString(",")
+            ),
+            replayCache = untrustedConnectReplayCache
         )
     }
 
@@ -102,7 +138,15 @@ internal class SessionAuthenticator(
             fields = accept.authFields(),
             sessionToken = accept.sessionToken,
             purpose = CONNECT_ACCEPT,
-            parts = listOf(accept.deviceId, accept.deviceName, accept.deviceType, accept.senderIp)
+            parts = listOf(
+                accept.deviceId,
+                accept.deviceName,
+                accept.deviceType,
+                accept.senderIp,
+                accept.senderPort.toString(),
+                accept.protocolVersion.toString(),
+                accept.capabilities.joinToString(",")
+            )
         )
     }
 
@@ -158,7 +202,8 @@ internal class SessionAuthenticator(
     }
 
     fun clearReplayHistory() {
-        replayCache.clear()
+        untrustedConnectReplayCache.clear()
+        approvedSessionReplayCache.clear()
     }
 
     private fun authFields(sessionToken: String, purpose: String, parts: List<String>): SessionAuthFields {
@@ -169,7 +214,8 @@ internal class SessionAuthenticator(
         fields: SessionAuthFields,
         sessionToken: String,
         purpose: String,
-        parts: List<String>
+        parts: List<String>,
+        replayCache: SessionReplayCache = approvedSessionReplayCache
     ): Boolean {
         return SessionAuth.verify(fields, sessionToken, purpose, parts, replayCache)
     }
@@ -186,7 +232,9 @@ internal class SessionAuthenticator(
 
     private fun fileOfferAuthParts(offer: FileOfferDto): List<String> {
         return listOf(offer.offerId, offer.senderDeviceId, offer.senderName) +
-            offer.files.flatMap { file -> listOf(file.fileName, file.mimeType, file.fileSize.toString()) }
+            offer.files.flatMap { file ->
+                listOf(file.fileName, file.mimeType, file.fileSize.toString(), file.sha256)
+            }
     }
 
     private companion object {

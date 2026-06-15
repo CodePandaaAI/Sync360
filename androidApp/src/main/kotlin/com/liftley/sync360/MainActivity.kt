@@ -1,12 +1,10 @@
 package com.liftley.sync360
 
 import android.Manifest
-import android.content.ContentValues
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.MediaStore
 import android.provider.OpenableColumns
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -15,6 +13,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.net.toUri
 import androidx.lifecycle.lifecycleScope
+import com.liftley.sync360.core.platform.AndroidActivityBridge
 import com.liftley.sync360.core.platform.AndroidPlatformOperations
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.FilePickerKind
@@ -30,6 +29,28 @@ class MainActivity : ComponentActivity() {
     private val platformOps: PlatformOperations by inject()
     private val disconnectAllUseCase: DisconnectAllUseCase by inject()
     private var onFilePickedCallback: ((files: List<PickedFile>) -> Unit)? = null
+    private val activityBridge = object : AndroidActivityBridge {
+        override fun openFilePicker(
+            kind: FilePickerKind,
+            onFilesSelected: (files: List<PickedFile>) -> Unit
+        ) {
+            onFilePickedCallback = onFilesSelected
+            when (kind) {
+                FilePickerKind.Media -> {
+                    pickVisualMediaLauncher.launch(
+                        androidx.activity.result.PickVisualMediaRequest(
+                            ActivityResultContracts.PickVisualMedia.ImageAndVideo
+                        )
+                    )
+                }
+                FilePickerKind.Any -> filePickerLauncher.launch("*/*")
+            }
+        }
+
+        override fun openFile(path: String) {
+            this@MainActivity.openFile(path)
+        }
+    }
 
     private val filePickerLauncher =
         registerForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris: List<Uri> ->
@@ -53,29 +74,7 @@ class MainActivity : ComponentActivity() {
         }
 
 
-        val androidOps = platformOps as? AndroidPlatformOperations
-        if (androidOps != null) {
-            androidOps.onOpenFilePickerCallback = { kind, callback ->
-                onFilePickedCallback = callback
-                when (kind) {
-                    FilePickerKind.Media -> {
-                        pickVisualMediaLauncher.launch(
-                            androidx.activity.result.PickVisualMediaRequest(
-                                ActivityResultContracts.PickVisualMedia.ImageAndVideo
-                            )
-                        )
-                    }
-                    FilePickerKind.Any -> filePickerLauncher.launch("*/*")
-                }
-            }
-            androidOps.onOpenFileCallback = { path -> openFile(path) }
-            androidOps.onSaveFileCallback = { name, bytes, onResult ->
-                saveFileToDownloads(name, bytes, onResult)
-            }
-            androidOps.onSaveFileChunksCallback = { name, chunks, onResult ->
-                saveFileChunksToDownloads(name, chunks, onResult)
-            }
-        }
+        (platformOps as? AndroidPlatformOperations)?.attachActivityBridge(activityBridge)
 
         setContent {
             App(isDesktop = false)
@@ -83,6 +82,8 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        (platformOps as? AndroidPlatformOperations)?.detachActivityBridge(activityBridge)
+        onFilePickedCallback = null
         if (isFinishing) {
             disconnectAllUseCase()
         }
@@ -161,51 +162,4 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun saveFileToDownloads(
-        name: String,
-        content: ByteArray,
-        onResult: (success: Boolean, path: String?) -> Unit
-    ) {
-        saveFileChunksToDownloads(name, listOf(content), onResult)
-    }
-
-    private fun saveFileChunksToDownloads(
-        name: String,
-        chunks: List<ByteArray>,
-        onResult: (success: Boolean, path: String?) -> Unit
-    ) {
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val resolver = applicationContext.contentResolver
-                val contentValues = ContentValues().apply {
-                    put(MediaStore.MediaColumns.DISPLAY_NAME, name)
-                    put(
-                        MediaStore.MediaColumns.RELATIVE_PATH,
-                        android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360"
-                    )
-                    put(MediaStore.MediaColumns.IS_PENDING, 1)
-                }
-                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
-                if (uri != null) {
-                    resolver.openOutputStream(uri)?.use { output ->
-                        chunks.forEach { output.write(it) }
-                    }
-                    contentValues.clear()
-                    contentValues.put(MediaStore.MediaColumns.IS_PENDING, 0)
-                    resolver.update(uri, contentValues, null, null)
-                    launch(Dispatchers.Main) {
-                        Toast.makeText(this@MainActivity, "Saved: $name", Toast.LENGTH_LONG).show()
-                        onResult(true, uri.toString())
-                    }
-                } else {
-                    throw java.io.IOException("Failed to create MediaStore entry")
-                }
-            } catch (e: Exception) {
-                launch(Dispatchers.Main) {
-                    Toast.makeText(this@MainActivity, "Failed to save file", Toast.LENGTH_SHORT).show()
-                    onResult(false, null)
-                }
-            }
-        }
-    }
 }

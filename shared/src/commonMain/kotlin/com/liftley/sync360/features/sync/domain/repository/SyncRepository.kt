@@ -1,27 +1,25 @@
 package com.liftley.sync360.features.sync.domain.repository
 
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
+import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
+import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
-import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.PickedFile
-import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
+import com.liftley.sync360.features.sync.domain.model.SyncStartResult
+import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
+import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
 import kotlinx.coroutines.flow.Flow
 
 interface DeviceConnectionRepository {
-    val sessionDevices: Flow<List<DeviceProfile>>
     val nearbyDevices: Flow<List<DeviceProfile>>
-    val pendingIncomingConnectRequests: Flow<List<DeviceProfile>>
-    val pendingOutgoingConnectDevice: Flow<DeviceProfile?>
-    val connectionStatus: Flow<ConnectionStatus>
-    val activeDeviceId: Flow<String?>
+    val connectionEvents: Flow<ConnectionEvent>
+    val connectionSnapshot: Flow<ConnectionSnapshot>
+    val sessionSnapshot: Flow<SessionSnapshot>
     val isScanning: Flow<Boolean>
 
-    fun startSync()
+    fun startSync(): SyncStartResult
     fun stopSync()
-    fun triggerManualScan()
-
+    fun shutdownSync()
     fun requestConnect(device: DeviceProfile)
     fun requestConnectByHost(hostAddress: String)
     fun confirmOutgoingConnect()
@@ -44,9 +42,7 @@ interface MessageRepository {
 }
 
 interface FileTransferRepository {
-    val fileTransferProgress: Flow<FileTransferProgress?>
-    val fileTransferFailure: Flow<FileTransferFailure?>
-    val receivedFileBatch: Flow<ReceivedFileBatch?>
+    val transferSnapshot: Flow<TransferSnapshot>
 
     fun offerFiles(files: List<PickedFile>)
     fun dismissReceivedFiles()

@@ -19,7 +19,7 @@ actual fun platformModule(): Module = module {
         createLocalDeviceProfile(
             context = null,
             isDesktop = true,
-            desktopAddress = get<PlatformOperations>().getLocalIpAddress()
+            desktopAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress
         )
     }
 }

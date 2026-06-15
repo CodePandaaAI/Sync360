@@ -1,17 +1,20 @@
 package com.liftley.sync360.features.sync.presentation
 
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
-import com.liftley.sync360.features.sync.domain.model.DeviceStream
+import com.liftley.sync360.features.sync.domain.model.ConnectionState
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
+import com.liftley.sync360.features.sync.domain.model.SessionSecurityMode
+import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 
 data class SyncUiState(
     val serverIp: String = "127.0.0.1",
-    val connectionStatus: ConnectionStatus = ConnectionStatus.DISCONNECTED,
+    val runtimeState: SyncRuntimeState = SyncRuntimeState.Stopped,
+    val securityMode: SessionSecurityMode = SessionSecurityMode.TRUSTED_LAN_PLAINTEXT,
+    val connectionState: ConnectionState = ConnectionState.Idle,
     val activeDevice: DeviceProfile? = null,
     val nearbyDevices: List<DeviceProfile> = emptyList(),
     val pendingIncomingRequest: DeviceProfile? = null,
@@ -24,28 +27,7 @@ data class SyncUiState(
     val fileTransferFailure: FileTransferFailure? = null,
     val receivedFileBatch: ReceivedFileBatch? = null,
     val localNetworkHealthy: Boolean = true
-) {
-    // Computed legacy compatibility layer to avoid breaking UI components
-    val connectedDevices: List<DeviceProfile> get() = activeDevice?.let { listOf(it) } ?: emptyList()
-    val activeDeviceId: String? get() = activeDevice?.id
-    val activeClientCount: Int get() = if (activeDevice != null) 1 else 0
-    val pendingConnectionRequests: List<DeviceProfile> get() = pendingIncomingRequest?.let { listOf(it) } ?: emptyList()
-    val pendingConnectDevice: DeviceProfile? get() = pendingOutgoingRequest
-
-    val deviceStreams: Map<String, DeviceStream> get() = activeDevice?.let { device ->
-        mapOf(
-            device.id to DeviceStream(
-                deviceId = device.id,
-                clipboard = latestTexts.firstOrNull() ?: ClipboardEntry("", ""),
-                media = emptyList(),
-                documents = emptyList(),
-                storageUsedPercent = 0,
-                lastSeenLabel = "Now",
-                latestTexts = latestTexts
-            )
-        )
-    } ?: emptyMap()
-}
+)
 
 fun SyncUiState.allKnownDevices(): List<DeviceProfile> {
     val merged = linkedMapOf<String, DeviceProfile>()
@@ -58,5 +40,3 @@ fun SyncUiState.allKnownDevices(): List<DeviceProfile> {
     }
     return merged.values.toList()
 }
-
-fun SyncUiState.activeDevice(): DeviceProfile? = activeDevice

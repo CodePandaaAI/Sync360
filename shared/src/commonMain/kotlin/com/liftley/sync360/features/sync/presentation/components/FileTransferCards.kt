@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
+import com.liftley.sync360.features.sync.domain.model.TransferStage
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 
 @Composable
@@ -35,7 +36,12 @@ fun FileTransferProgressCard(
                 color = colorScheme.onSurface
             )
             Text(
-                text = if (progress.direction == TransferDirection.RECEIVING) "Receiving files" else "Sending files",
+                text = when (progress.stage) {
+                    TransferStage.PREPARING -> "Preparing files"
+                    TransferStage.TRANSFERRING ->
+                        if (progress.direction == TransferDirection.RECEIVING) "Receiving files" else "Sending files"
+                    TransferStage.VERIFYING -> "Verifying files"
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant
             )

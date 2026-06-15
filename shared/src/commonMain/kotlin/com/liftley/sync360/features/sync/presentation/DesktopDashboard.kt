@@ -32,8 +32,7 @@ fun DesktopDashboard(
     onEvent: (SyncEvent) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val activeDevice = uiState.activeDevice()
-    val activeStream = uiState.activeDeviceId?.let { uiState.deviceStreams[it] }
+    val activeDevice = uiState.activeDevice
     var copiedFeedbackText by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(copiedFeedbackText) {
@@ -73,6 +72,10 @@ fun DesktopDashboard(
 
                 SectionLabel("You'll appear as")
                 DesktopIdentityCard(serverIp = uiState.serverIp)
+                RuntimeSecurityBanner(
+                    runtime = uiState.runtimeState,
+                    securityMode = uiState.securityMode
+                )
 
                 SectionLabel(if (activeDevice == null) "Ready to receive" else "Sharing with you")
                 if (activeDevice == null) {
@@ -111,7 +114,7 @@ fun DesktopDashboard(
 
                 if (activeDevice != null) {
                     ClipboardHistorySection(
-                        textsList = activeStream?.latestTexts ?: emptyList(),
+                        textsList = uiState.latestTexts,
                         onCopyClick = { _ ->
                             onEvent(SyncEvent.CopyClipboard(activeDevice.id))
                         }
@@ -258,8 +261,7 @@ private fun DesktopDevicesPanel(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     var manualHost by remember { mutableStateOf("") }
-    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
-    val nearby = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
+    val nearby = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
 
     Sync360Surface(cornerRadius = 24.dp) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -295,16 +297,14 @@ private fun DesktopDevicesPanel(
                 }
             }
 
-            if (uiState.connectedDevices.isNotEmpty()) {
+            if (activeDevice != null) {
                 DeviceGroup("This session") {
-                    uiState.connectedDevices.forEach { device ->
-                        DesktopDeviceListRow(
-                            device = device,
-                            selected = device.id == uiState.activeDeviceId,
-                            action = if (device.id == uiState.activeDeviceId) "Active" else "Use",
-                            onClick = { onEvent(SyncEvent.SwitchDevice(device.id)) }
-                        )
-                    }
+                    DesktopDeviceListRow(
+                        device = activeDevice,
+                        selected = true,
+                        action = "Active",
+                        onClick = {}
+                    )
                 }
             }
 

@@ -22,47 +22,22 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.Spacing
 import com.liftley.sync360.core.designsystem.SyncDimens
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 
-private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Boolean {
-    if (uiState.connectionStatus != ConnectionStatus.CONNECTED) return false
-    if (device.id == uiState.activeDeviceId) return true
-    val activeId = uiState.activeDeviceId ?: return false
-    val activeDevice = uiState.connectedDevices.firstOrNull { it.id == activeId }
-        ?: uiState.nearbyDevices.firstOrNull { it.id == activeId }
-    if (activeDevice == null) return false
-    return device.id == activeDevice.id ||
-        (!device.connectionHost.isNullOrBlank() && device.connectionHost == activeDevice.connectionHost)
-}
-
-private fun isSessionDevice(device: DeviceProfile, uiState: SyncUiState): Boolean {
-    return uiState.connectedDevices.any { it.id == device.id }
-}
-
-private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): String {
-    return when {
-        isActivelyConnected(device, uiState) -> "Connected"
-        isSessionDevice(device, uiState) -> "Use"
-        else -> "Connect"
-    }
-}
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MobileDevicePickerSheet(
     uiState: SyncUiState,
     onDismiss: () -> Unit,
-    onSelectSessionDevice: (String) -> Unit,
     onPairNearby: (String) -> Unit,
     onManualConnect: (String) -> Unit,
     onDisconnect: () -> Unit
 ) {
     var manualHost by remember { mutableStateOf("") }
-    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
-    val connectedDevices = uiState.connectedDevices
-    val nearbyOnly = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
+    val activeDevice = uiState.activeDevice
+    val nearbyOnly = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -78,12 +53,12 @@ fun MobileDevicePickerSheet(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
-                text = if (uiState.activeDeviceId == null) "Nearby devices" else "Connected device",
+                text = if (activeDevice == null) "Nearby devices" else "Connected device",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold
             )
 
-            if (connectedDevices.isNotEmpty()) {
+            if (activeDevice != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
                         text = "This session",
@@ -91,23 +66,13 @@ fun MobileDevicePickerSheet(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
                     )
-                    connectedDevices.forEach { device ->
-                        val activelyConnected = isActivelyConnected(device, uiState)
-                        DeviceRowItem(
-                            device = device,
-                            isSelected = activelyConnected,
-                            actionLabel = deviceActionLabel(device, uiState),
-                            enabled = !activelyConnected,
-                            onClick = {
-                                if (activelyConnected) return@DeviceRowItem
-                                if (isSessionDevice(device, uiState)) {
-                                    onSelectSessionDevice(device.id)
-                                } else {
-                                    onPairNearby(device.id)
-                                }
-                            }
-                        )
-                    }
+                    DeviceRowItem(
+                        device = activeDevice,
+                        isSelected = true,
+                        actionLabel = "Connected",
+                        enabled = false,
+                        onClick = {}
+                    )
                 }
                 OutlinedButton(
                     onClick = {

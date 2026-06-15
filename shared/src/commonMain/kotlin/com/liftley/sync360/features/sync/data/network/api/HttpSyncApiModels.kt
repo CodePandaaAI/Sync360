@@ -8,11 +8,13 @@ data class ConnectRequestDto(
     val deviceName: String,
     val deviceType: String,
     val senderIp: String,
+    val senderPort: Int = 8080,
     val sessionToken: String,
     val issuedAtMillis: Long,
     val nonce: String,
     val signature: String,
-    val protocolVersion: Int = 1,
+    val protocolVersion: Int = SyncProtocol.VERSION,
+    val capabilities: List<String> = emptyList(),
     val publicKey: String? = null
 )
 
@@ -22,11 +24,13 @@ data class ConnectAcceptDto(
     val deviceName: String,
     val deviceType: String,
     val senderIp: String,
+    val senderPort: Int = 8080,
     val sessionToken: String,
     val issuedAtMillis: Long,
     val nonce: String,
     val signature: String,
-    val protocolVersion: Int = 1,
+    val protocolVersion: Int = SyncProtocol.VERSION,
+    val capabilities: List<String> = emptyList(),
     val publicKey: String? = null
 )
 
@@ -56,7 +60,8 @@ data class MessageDto(
 data class FilePreviewDto(
     val fileName: String,
     val mimeType: String,
-    val fileSize: Long
+    val fileSize: Long,
+    val sha256: String
 )
 
 @Serializable

@@ -49,6 +49,7 @@ import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
 import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
 import com.liftley.sync360.features.sync.presentation.components.MobileDevicePickerSheet
 import com.liftley.sync360.features.sync.presentation.components.ReceivedFileBatchCard
+import com.liftley.sync360.features.sync.presentation.components.RuntimeSecurityBanner
 import com.liftley.sync360.features.sync.presentation.components.SharePanel
 import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
 import kotlinx.coroutines.flow.Flow
@@ -60,15 +61,13 @@ fun SyncScreen(
     uiEffects: Flow<SyncUiEffect>,
     onEvent: (SyncEvent) -> Unit
 ) {
-    val activeDevice = uiState.activeDevice()
-    val activeStream = uiState.activeDeviceId?.let { uiState.deviceStreams[it] }
+    val activeDevice = uiState.activeDevice
     var showDevicePicker by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
-    val visibleNearby = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
+    val visibleNearby = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
 
-    LaunchedEffect(uiState.activeDeviceId) {
-        if (uiState.activeDeviceId == null) {
+    LaunchedEffect(activeDevice?.id) {
+        if (activeDevice == null) {
             showDevicePicker = true
         }
     }
@@ -122,6 +121,13 @@ fun SyncScreen(
             }
 
             item {
+                RuntimeSecurityBanner(
+                    runtime = uiState.runtimeState,
+                    securityMode = uiState.securityMode
+                )
+            }
+
+            item {
                 Text(
                     text = if (activeDevice == null) "Ready to receive" else "Sharing with you",
                     style = MaterialTheme.typography.titleSmall,
@@ -164,7 +170,7 @@ fun SyncScreen(
 
                 item {
                     ClipboardHistorySection(
-                        textsList = activeStream?.latestTexts ?: emptyList(),
+                        textsList = uiState.latestTexts,
                         onCopyClick = { _ ->
                             onEvent(SyncEvent.CopyClipboard(activeDevice.id))
                         }
@@ -178,10 +184,6 @@ fun SyncScreen(
         MobileDevicePickerSheet(
             uiState = uiState,
             onDismiss = { showDevicePicker = false },
-            onSelectSessionDevice = {
-                onEvent(SyncEvent.SwitchDevice(it))
-                showDevicePicker = false
-            },
             onPairNearby = {
                 onEvent(SyncEvent.RequestConnect(it))
                 showDevicePicker = false

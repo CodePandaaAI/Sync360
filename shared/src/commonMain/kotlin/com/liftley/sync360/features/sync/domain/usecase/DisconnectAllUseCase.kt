@@ -1,9 +1,9 @@
 package com.liftley.sync360.features.sync.domain.usecase
 
-import com.liftley.sync360.features.sync.domain.repository.SyncRepository
+import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
 
 class DisconnectAllUseCase(
-    private val repository: SyncRepository
+    private val runtimeController: SyncRuntimeController
 ) {
-    operator fun invoke() = repository.disconnectAll()
+    operator fun invoke() = runtimeController.shutdown()
 }

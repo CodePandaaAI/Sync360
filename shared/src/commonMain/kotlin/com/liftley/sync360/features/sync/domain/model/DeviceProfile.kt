@@ -5,6 +5,7 @@ data class DeviceProfile(
     val name: String,
     val type: DeviceType,
     val hostAddress: String? = null,
+    val port: Int = 8080,
     val isOnline: Boolean = true
 ) {
     /** IP or hostname used for HTTP connections. Null if no valid address. */

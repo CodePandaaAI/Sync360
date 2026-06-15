@@ -75,18 +75,18 @@ class SessionReplayCache {
     private val seen = ArrayDeque<String>()
     private val seenSet = mutableSetOf<String>()
 
-    fun markIfNew(sessionToken: String, nonce: String): Boolean {
+    fun markIfNew(sessionToken: String, nonce: String): Boolean = synchronized(this) {
         val key = "$sessionToken:$nonce"
-        if (!seenSet.add(key)) return false
+        if (!seenSet.add(key)) return@synchronized false
 
         seen.addLast(key)
         while (seen.size > MAX_ENTRIES) {
             seenSet.remove(seen.removeFirst())
         }
-        return true
+        true
     }
 
-    fun clear() {
+    fun clear() = synchronized(this) {
         seen.clear()
         seenSet.clear()
     }
