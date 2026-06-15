@@ -249,7 +249,8 @@ internal class ConnectionEngine(
             remoteHost
         )
         val matchesPendingDevice = pending?.let {
-            it.hostAddress == remoteHost &&
+            val hostMatches = it.hostAddress == remoteHost || it.id.startsWith(MANUAL_DEVICE_ID_PREFIX)
+            hostMatches &&
                 it.port == accept.senderPort &&
                 (it.id == accept.deviceId || it.id.startsWith(MANUAL_DEVICE_ID_PREFIX))
         } == true
@@ -293,7 +294,9 @@ internal class ConnectionEngine(
         val pendingId = pending?.id
         val activeId = deviceSession.activeDeviceIdValue
         val tokenMatchesPending = sessionTokens.containsToken(reject.sessionToken)
-        val pendingRouteMatches = pending?.hostAddress == remoteHost
+        val pendingRouteMatches = pending?.let {
+            it.hostAddress == remoteHost || it.id.startsWith(MANUAL_DEVICE_ID_PREFIX)
+        } == true
         val allowed = isApprovedPeerAtRoute(
             reject.senderDeviceId,
             reject.sessionToken,

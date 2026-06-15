@@ -59,6 +59,7 @@ class SyncDiscoveryController(
 
     fun scan() {
         scanJob?.cancel()
+        discoveryService.stopDiscovery()
         val result = discoveryService.startDiscovery()
         if (
             result != DiscoveryCommandResult.ACCEPTED &&

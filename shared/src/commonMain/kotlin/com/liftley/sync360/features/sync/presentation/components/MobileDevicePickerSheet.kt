@@ -33,7 +33,8 @@ fun MobileDevicePickerSheet(
     onDismiss: () -> Unit,
     onPairNearby: (String) -> Unit,
     onManualConnect: (String) -> Unit,
-    onDisconnect: () -> Unit
+    onDisconnect: () -> Unit,
+    onScan: () -> Unit
 ) {
     var manualHost by remember { mutableStateOf("") }
     val activeDevice = uiState.activeDevice
@@ -96,15 +97,36 @@ fun MobileDevicePickerSheet(
             HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(
-                    text = "Nearby on Local Wi-Fi",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Nearby on Local Wi-Fi",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontWeight = FontWeight.Medium
+                    )
+                    if (uiState.isScanningForDevices) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    } else {
+                        Text(
+                            text = "Scan again",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.clickable(onClick = onScan)
+                        )
+                    }
+                }
                 if (nearbyOnly.isEmpty()) {
                     Text(
-                        text = "Searching for nearby devices...",
+                        text = if (uiState.isScanningForDevices) "Searching for nearby devices..." else "Scan stopped. No devices found.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

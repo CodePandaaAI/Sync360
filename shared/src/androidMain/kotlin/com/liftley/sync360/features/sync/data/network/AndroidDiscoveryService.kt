@@ -43,6 +43,7 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
     override fun startDiscovery(): DiscoveryCommandResult {
         if (_state.value.scan == DiscoveryScanState.SHUTDOWN) return DiscoveryCommandResult.SHUTDOWN
         if (discoveryListener != null) return DiscoveryCommandResult.ALREADY_ACTIVE
+        clearDiscoveredDevices()
         _state.value = _state.value.copy(
             scan = DiscoveryScanState.STARTING,
             failure = null

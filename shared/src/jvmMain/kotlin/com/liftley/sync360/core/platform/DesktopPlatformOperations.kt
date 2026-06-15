@@ -20,22 +20,39 @@ class DesktopPlatformOperations : PlatformOperations {
     override fun stopService() {}
 
     override fun readClipboard(): String? {
-        return try {
-            val transferable = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
-            if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                transferable.getTransferData(DataFlavor.stringFlavor) as String
-            } else null
-        } catch (e: Exception) {
-            null
+        var attempts = 3
+        while (attempts > 0) {
+            try {
+                val transferable = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
+                if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                    return transferable.getTransferData(DataFlavor.stringFlavor) as String
+                }
+                return null
+            } catch (e: Exception) {
+                attempts--
+                if (attempts > 0) {
+                    try { Thread.sleep(50) } catch (_: Exception) {}
+                }
+            }
         }
+        return null
     }
 
     override fun writeClipboard(text: String) {
-        try {
-            val selection = StringSelection(text)
-            Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        var attempts = 3
+        while (attempts > 0) {
+            try {
+                val selection = StringSelection(text)
+                Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+                return
+            } catch (e: Exception) {
+                attempts--
+                if (attempts > 0) {
+                    try { Thread.sleep(50) } catch (_: Exception) {}
+                } else {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
@@ -97,10 +114,14 @@ class DesktopPlatformOperations : PlatformOperations {
 
     override fun beginFileWrite(name: String): FileOperationResult<String> {
         return try {
-            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
-            val syncDir = File(downloadsDir, "Sync360")
+            val userHome = System.getProperty("user.home")
+            val downloadsDir = File(userHome, "Downloads")
+            var syncDir = File(downloadsDir, "Sync360")
             if ((!syncDir.exists() && !syncDir.mkdirs()) || !syncDir.isDirectory || !syncDir.canWrite()) {
-                return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
+                syncDir = File(userHome, "Sync360")
+                if ((!syncDir.exists() && !syncDir.mkdirs()) || !syncDir.isDirectory || !syncDir.canWrite()) {
+                    return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
+                }
             }
             val selectedFile = uniqueFile(syncDir, name)
             val output = selectedFile.outputStream()
@@ -116,10 +137,10 @@ class DesktopPlatformOperations : PlatformOperations {
 
     override fun getAvailableStorageBytes(): FileOperationResult<Long> {
         return try {
-            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
-            val storageRoot = downloadsDir.takeIf { it.exists() } ?: downloadsDir.parentFile
-            val available = storageRoot?.usableSpace
-                ?: return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
+            val userHome = System.getProperty("user.home")
+            val downloadsDir = File(userHome, "Downloads")
+            val storageRoot = downloadsDir.takeIf { it.exists() } ?: File(userHome)
+            val available = storageRoot.usableSpace
             FileOperationResult.Success(available)
         } catch (_: Exception) {
             FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)

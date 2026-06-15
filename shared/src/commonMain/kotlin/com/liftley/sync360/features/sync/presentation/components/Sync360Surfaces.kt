@@ -32,14 +32,12 @@ fun Sync360Surface(
     content: @Composable () -> Unit
 ) {
     val sizedModifier = if (fillMaxWidth) modifier.fillMaxWidth() else modifier
-    Box(
-        sizedModifier
-            .clip(RoundedCornerShape(cornerRadius))
-            .background(color),
-        contentAlignment = Alignment.Center
-    ) {
-        content()
-    }
+    androidx.compose.material3.Surface(
+        modifier = sizedModifier,
+        shape = RoundedCornerShape(cornerRadius),
+        color = color,
+        content = content
+    )
 }
 
 @Composable

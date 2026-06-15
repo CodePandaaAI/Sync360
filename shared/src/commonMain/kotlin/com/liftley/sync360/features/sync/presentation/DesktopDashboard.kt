@@ -50,17 +50,17 @@ fun DesktopDashboard(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(colorScheme.surfaceContainer)
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = colorScheme.surfaceContainer
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
             Column(
                 modifier = Modifier
                     .weight(1.35f)
@@ -70,12 +70,14 @@ fun DesktopDashboard(
             ) {
                 DesktopHero(activeDevice = activeDevice)
 
-                SectionLabel("You'll appear as")
-                DesktopIdentityCard(serverIp = uiState.serverIp)
-                RuntimeSecurityBanner(
-                    runtime = uiState.runtimeState,
-                    securityMode = uiState.securityMode
-                )
+                if (activeDevice == null) {
+                    SectionLabel("You'll appear as")
+                    DesktopIdentityCard(serverIp = uiState.serverIp)
+                    RuntimeSecurityBanner(
+                        runtime = uiState.runtimeState,
+                        securityMode = uiState.securityMode
+                    )
+                }
 
                 SectionLabel(if (activeDevice == null) "Ready to receive" else "Sharing with you")
                 if (activeDevice == null) {
@@ -146,6 +148,7 @@ fun DesktopDashboard(
             }
         }
     }
+}
 
     ConfirmDialogs(uiState = uiState, onEvent = onEvent)
 }
@@ -306,56 +309,7 @@ private fun DesktopDevicesPanel(
                         onClick = {}
                     )
                 }
-            }
-
-            HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.45f))
-
-            DeviceGroup("Nearby devices") {
-                if (nearby.isEmpty()) {
-                    Sync360Surface(cornerRadius = 24.dp, color = colorScheme.surfaceContainer) {
-                        Text(
-                            text = if (uiState.isScanningForDevices) "Searching local network..." else "No nearby devices found.",
-                            modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colorScheme.onSurface
-                        )
-                    }
-                } else {
-                    nearby.forEach { device ->
-                        DesktopDeviceListRow(
-                            device = device,
-                            selected = false,
-                            action = "Connect",
-                            onClick = { onEvent(SyncEvent.RequestConnect(device.id)) }
-                        )
-                    }
-                }
-            }
-
-            DeviceGroup("Connect by IP") {
-                OutlinedTextField(
-                    value = manualHost,
-                    onValueChange = { manualHost = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text("IP address") },
-                    shape = RoundedCornerShape(24.dp)
-                )
-                Button(
-                    onClick = {
-                        onEvent(SyncEvent.RequestConnectByHost(manualHost))
-                        manualHost = ""
-                    },
-                    enabled = manualHost.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    Text("Connect", fontWeight = FontWeight.Bold)
-                }
-            }
-
-            if (activeDevice != null) {
+                Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { onEvent(SyncEvent.Disconnect) },
                     modifier = Modifier.fillMaxWidth(),
@@ -363,6 +317,53 @@ private fun DesktopDevicesPanel(
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Text("Disconnect", fontWeight = FontWeight.Bold)
+                }
+            } else {
+                DeviceGroup("Nearby devices") {
+                    if (nearby.isEmpty()) {
+                        Sync360Surface(cornerRadius = 24.dp, color = colorScheme.surfaceContainer) {
+                            Text(
+                                text = if (uiState.isScanningForDevices) "Searching local network..." else "No nearby devices found.",
+                                modifier = Modifier.padding(16.dp),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colorScheme.onSurface
+                            )
+                        }
+                    } else {
+                        nearby.forEach { device ->
+                            DesktopDeviceListRow(
+                                device = device,
+                                selected = false,
+                                action = "Connect",
+                                onClick = { onEvent(SyncEvent.RequestConnect(device.id)) }
+                            )
+                        }
+                    }
+                }
+
+                HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.45f))
+
+                DeviceGroup("Connect by IP") {
+                    OutlinedTextField(
+                        value = manualHost,
+                        onValueChange = { manualHost = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        label = { Text("IP address") },
+                        shape = RoundedCornerShape(24.dp)
+                    )
+                    Button(
+                        onClick = {
+                            onEvent(SyncEvent.RequestConnectByHost(manualHost))
+                            manualHost = ""
+                        },
+                        enabled = manualHost.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(24.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Text("Connect", fontWeight = FontWeight.Bold)
+                    }
                 }
             }
         }
@@ -443,7 +444,7 @@ private fun DesktopDeviceListRow(
                 text = action,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
-                color = colorScheme.primary
+                color = if (selected) colorScheme.onPrimaryContainer else colorScheme.primary
             )
         }
     }

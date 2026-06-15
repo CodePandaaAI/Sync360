@@ -195,6 +195,17 @@ class SyncRepositoryImpl(
 
     override fun disconnectAll() {
         transferEngine.cancel()
+        val route = connectionEngine.activePeerRoute()
+        if (route != null) {
+            val activeId = connectionEngine.activePeerId()
+            val token = activeId?.let { deviceRegistry.sessionTokenFor(it) }
+            kotlinx.coroutines.runBlocking {
+                try {
+                    val rejectDto = sessionAuthenticator.connectReject(token)
+                    httpClient.sendConnectReject(route.host, route.port, rejectDto)
+                } catch (_: Exception) {}
+            }
+        }
         connectionEngine.clearSession()
         shutdownSync()
     }

@@ -143,6 +143,14 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
         _state.value = _state.value.copy(scan = DiscoveryScanState.STARTING, failure = null)
 
+        scope.launch {
+            mapMutex.withLock {
+                devicesMap.clear()
+                serviceNameToIdMap.clear()
+                _discoveredDevices.value = emptyList()
+            }
+        }
+
         return try {
             ensureJmDnsInstances()
             if (jmdnsInstances.isEmpty()) {

@@ -142,7 +142,10 @@ fun SyncScreen(
                 item {
                     ReadyReceiveSurface(
                         isScanning = uiState.isScanningForDevices,
-                        onOpenDevices = { showDevicePicker = true }
+                        onOpenDevices = {
+                            if (!uiState.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
+                            showDevicePicker = true
+                        }
                     )
                 }
             } else {
@@ -193,7 +196,8 @@ fun SyncScreen(
             onManualConnect = {
                 onEvent(SyncEvent.RequestConnectByHost(it))
             },
-            onDisconnect = { onEvent(SyncEvent.Disconnect) }
+            onDisconnect = { onEvent(SyncEvent.Disconnect) },
+            onScan = { onEvent(SyncEvent.TriggerScan) }
         )
     }
 
@@ -326,7 +330,7 @@ private fun ReadyReceiveSurface(
         modifier = Modifier.clickable(onClick = onOpenDevices)
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 40.dp, horizontal = 18.dp),
+            modifier = Modifier.padding(vertical = 32.dp, horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -344,16 +348,25 @@ private fun ReadyReceiveSurface(
                 }
             }
             Text(
-                text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
+                text = if (isScanning) "Searching for devices..." else "Ready to receive",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.onSurface
             )
             Text(
-                text = "Tap the top pill to connect with another device.",
+                text = "Tap to search for nearby devices on the same Wi-Fi.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant
             )
+            if (!isScanning) {
+                androidx.compose.material3.Button(
+                    onClick = onOpenDevices,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
+                ) {
+                    Text("Search devices", fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
