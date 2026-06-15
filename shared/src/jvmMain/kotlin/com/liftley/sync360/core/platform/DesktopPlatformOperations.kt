@@ -124,7 +124,7 @@ class DesktopPlatformOperations : PlatformOperations {
                 }
             }
             val selectedFile = uniqueFile(syncDir, name)
-            val output = selectedFile.outputStream()
+            val output = selectedFile.outputStream().buffered()
             val handle = selectedFile.absolutePath
             synchronized(activeFileWrites) {
                 activeFileWrites[handle] = DesktopFileWrite(selectedFile, output)

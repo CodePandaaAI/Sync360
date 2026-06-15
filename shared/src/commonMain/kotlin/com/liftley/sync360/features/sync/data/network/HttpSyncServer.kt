@@ -211,7 +211,7 @@ class HttpSyncServer(private val port: Int = 8080) {
                         }
 
                         val channel = call.receiveChannel()
-                        val buffer = ByteArray(1024 * 1024)
+                        val buffer = ByteArray(64 * 1024)
 
                         try {
                             val authFields = SessionAuthFields(issuedAt, nonce, signature)
@@ -242,13 +242,7 @@ class HttpSyncServer(private val port: Int = 8080) {
                             }
 
                             while (!channel.isClosedForRead) {
-                                if (channel.availableForRead == 0) {
-                                    channel.awaitContent()
-                                    if (channel.availableForRead == 0 && channel.isClosedForRead) break
-                                    continue
-                                }
-                                val toRead = minOf(channel.availableForRead.toInt(), buffer.size)
-                                val read = channel.readAvailable(buffer, 0, toRead)
+                                val read = channel.readAvailable(buffer, 0, buffer.size)
                                 if (read > 0) {
                                     val chunk = buffer.copyOf(read)
                                     val wrote = activeListener.onIncomingFileChunkReceived(offerId, fileIndex, chunk)
