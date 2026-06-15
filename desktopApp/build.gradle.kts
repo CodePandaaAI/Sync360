@@ -25,7 +25,7 @@ compose.desktop {
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
-            packageName = "com.liftley.sync360"
+            packageName = "Sync360"
             packageVersion = "1.0.0"
 
             macOS {
@@ -33,6 +33,9 @@ compose.desktop {
             }
             windows {
                 iconFile.set(project.file("src/main/resources/icons/icon.ico"))
+                shortcut = true
+                menu = true
+                menuGroup = "Sync360"
             }
             linux {
                 iconFile.set(project.file("src/main/resources/icons/icon.png"))
