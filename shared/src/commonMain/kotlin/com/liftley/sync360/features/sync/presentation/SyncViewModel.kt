@@ -3,6 +3,8 @@ package com.liftley.sync360.features.sync.presentation
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.ClipboardOperations
+import com.liftley.sync360.core.platform.FileOperations
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
@@ -23,7 +25,8 @@ class SyncViewModel(
     private val runtimeController: SyncRuntimeController,
     private val connectionController: SyncConnectionController,
     private val transferController: SyncTransferController,
-    private val platformOperations: PlatformOperations,
+    private val clipboardOperations: ClipboardOperations,
+    private val fileOperations: FileOperations,
     private val localIpAddress: String
 ) : ViewModel() {
 
@@ -154,18 +157,18 @@ class SyncViewModel(
             is SyncEvent.CopyClipboard -> {
                 val latest = _uiState.value.latestTexts.firstOrNull()?.text
                 if (!latest.isNullOrBlank()) {
-                    platformOperations.writeClipboard(latest)
+                    clipboardOperations.writeClipboard(latest)
                     showMessage("Copied to clipboard")
                 }
             }
             is SyncEvent.PasteFromClipboard -> {
-                val clipText = platformOperations.readClipboard()
+                val clipText = clipboardOperations.readClipboard()
                 if (!clipText.isNullOrBlank()) {
                     _uiState.update { it.copy(outgoingText = clipText) }
                 }
             }
             is SyncEvent.OpenFilePicker -> {
-                platformOperations.openFilePicker(event.kind) { files ->
+                fileOperations.openFilePicker(event.kind) { files ->
                     onEvent(SyncEvent.AddSelectedFiles(files))
                 }
             }
@@ -188,7 +191,7 @@ class SyncViewModel(
             SyncEvent.DismissTransferFailure -> transferController.dismissFailure()
             is SyncEvent.OpenFile -> {
                 if (event.path.isNotBlank()) {
-                    platformOperations.openFile(event.path)
+                    fileOperations.openFile(event.path)
                 }
             }
             SyncEvent.TriggerScan -> runtimeController.scan()

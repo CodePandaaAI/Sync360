@@ -6,7 +6,7 @@ import com.liftley.sync360.core.platform.NoOpIncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.createLocalDeviceProfile
-import com.liftley.sync360.features.sync.domain.network.DesktopDiscoveryService
+import com.liftley.sync360.features.sync.data.network.DesktopDiscoveryService
 import com.liftley.sync360.features.sync.domain.network.NetworkDiscoveryService
 import org.koin.core.module.Module
 import org.koin.dsl.module

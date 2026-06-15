@@ -105,7 +105,6 @@ fun SharePanel(
                     files = uiState.selectedFiles,
                     onSend = { onEvent(SyncEvent.SendSelectedFiles) },
                     onClear = { onEvent(SyncEvent.ClearSelectedFiles) },
-                    onAddMedia = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Media)) },
                     onAddFiles = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) }
                 )
             }
@@ -115,20 +114,12 @@ fun SharePanel(
 
 @Composable
 private fun FilePickerActions(onEvent: (SyncEvent) -> Unit) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-        FileAction(
-            label = "Images / videos",
-            icon = Icons.Default.PermMedia,
-            onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Media)) },
-            modifier = Modifier.fillMaxWidth()
-        )
-        FileAction(
-            label = "Files",
-            icon = Icons.Default.Folder,
-            onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
+    FileAction(
+        label = "Select Files",
+        icon = Icons.Default.Folder,
+        onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
+        modifier = Modifier.fillMaxWidth()
+    )
 }
 
 @Composable
@@ -162,7 +153,6 @@ private fun SelectedFilesPanel(
     files: List<PickedFile>,
     onSend: () -> Unit,
     onClear: () -> Unit,
-    onAddMedia: () -> Unit,
     onAddFiles: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -174,11 +164,6 @@ private fun SelectedFilesPanel(
                 files = files
             )
             Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = onAddMedia, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.PermMedia, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add images / videos")
-                }
                 FilledTonalButton(onClick = onAddFiles, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(8.dp))

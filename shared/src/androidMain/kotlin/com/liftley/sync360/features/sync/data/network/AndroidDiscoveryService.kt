@@ -1,4 +1,4 @@
-package com.liftley.sync360.features.sync.domain.network
+package com.liftley.sync360.features.sync.data.network
 
 import android.content.Context
 import android.net.nsd.NsdManager
@@ -6,6 +6,8 @@ import android.net.nsd.NsdServiceInfo
 import android.net.wifi.WifiManager
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
+import com.liftley.sync360.features.sync.domain.network.*
+import kotlin.coroutines.resume
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -88,6 +90,7 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                     failure = DiscoveryFailure.SCAN_STOP_FAILED
                 )
             }
+            @Suppress("DEPRECATION")
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
                 if (
                     isCurrentScan(generation, this) &&
@@ -96,14 +99,14 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
                     scope.launch {
                         resolveMutex.withLock {
                             if (!isCurrentScanGeneration(generation)) return@withLock
-                            val resolved = suspendCancellableCoroutine<NsdServiceInfo?> { continuation ->
+                            val resolved = suspendCancellableCoroutine { continuation ->
                                 nsdManager.resolveService(serviceInfo, object : NsdManager.ResolveListener {
                                     override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                                        continuation.tryResume(null)?.let(continuation::completeResume)
+                                        continuation.resume(null)
                                     }
 
                                     override fun onServiceResolved(resolvedInfo: NsdServiceInfo) {
-                                        continuation.tryResume(resolvedInfo)?.let(continuation::completeResume)
+                                        continuation.resume(resolvedInfo)
                                     }
                                 })
                             }
@@ -373,9 +376,3 @@ class AndroidDiscoveryService(private val context: Context) : NetworkDiscoverySe
     }
 }
 
-actual fun createNetworkDiscoveryService(context: Any?): NetworkDiscoveryService {
-    if (context !is Context) {
-        throw IllegalArgumentException("Context is required for Android NetworkDiscoveryService")
-    }
-    return AndroidDiscoveryService(context)
-}

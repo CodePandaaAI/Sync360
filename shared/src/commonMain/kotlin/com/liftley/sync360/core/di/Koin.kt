@@ -12,6 +12,8 @@ import com.liftley.sync360.features.sync.domain.controller.SyncTransferControlle
 import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
 import com.liftley.sync360.features.sync.domain.diagnostics.SyncDiagnosticLog
 import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.ClipboardOperations
+import com.liftley.sync360.core.platform.FileOperations
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -37,6 +39,9 @@ val commonModule = module {
     factory { DisconnectAllUseCase(get()) }
     factory { SyncNavigationViewModel() }
 
+    single<ClipboardOperations> { get<PlatformOperations>() }
+    single<FileOperations> { get<PlatformOperations>() }
+
     factory { (isDesktop: Boolean) ->
         SyncViewModel(
             isDesktop = isDesktop,
@@ -44,7 +49,8 @@ val commonModule = module {
             runtimeController = get(),
             connectionController = get(),
             transferController = get(),
-            platformOperations = get(),
+            clipboardOperations = get(),
+            fileOperations = get(),
             localIpAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress
         )
     }

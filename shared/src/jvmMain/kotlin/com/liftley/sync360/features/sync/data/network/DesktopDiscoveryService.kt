@@ -1,7 +1,8 @@
-package com.liftley.sync360.features.sync.domain.network
+package com.liftley.sync360.features.sync.data.network
 
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
+import com.liftley.sync360.features.sync.domain.network.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -304,8 +305,4 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             DiscoveryCommandResult.FAILED
         }
     }
-}
-
-actual fun createNetworkDiscoveryService(context: Any?): NetworkDiscoveryService {
-    return DesktopDiscoveryService()
 }

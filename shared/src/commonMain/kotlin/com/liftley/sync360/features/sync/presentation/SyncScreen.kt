@@ -109,22 +109,24 @@ fun SyncScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
-                Text(
-                    text = "You'll appear as",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(Modifier.height(10.dp))
-                LocalDeviceCard(serverIp = uiState.serverIp)
-            }
+            if (activeDevice == null) {
+                item {
+                    Text(
+                        text = "You'll appear as",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    LocalDeviceCard(serverIp = uiState.serverIp)
+                }
 
-            item {
-                RuntimeSecurityBanner(
-                    runtime = uiState.runtimeState,
-                    securityMode = uiState.securityMode
-                )
+                item {
+                    RuntimeSecurityBanner(
+                        runtime = uiState.runtimeState,
+                        securityMode = uiState.securityMode
+                    )
+                }
             }
 
             item {
