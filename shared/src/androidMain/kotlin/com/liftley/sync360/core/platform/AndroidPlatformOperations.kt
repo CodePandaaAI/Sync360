@@ -87,7 +87,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     override suspend fun readFileChunks(
         file: PickedFile,
         chunkSizeBytes: Int,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
     ): FileOperationResult<Long> = withContext(Dispatchers.IO) {
         try {
             var bytesRead = 0L
@@ -98,7 +98,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
                     val read = input.read(buffer)
                     if (read <= 0) break
                     bytesRead += read
-                    onChunk(buffer.copyOf(read))
+                    onChunk(buffer, 0, read)
                 }
             } ?: return@withContext FileOperationResult.Failure(PlatformFileError.SOURCE_UNAVAILABLE)
             FileOperationResult.Success(bytesRead)
@@ -125,7 +125,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
             }
             val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
                 ?: return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
-            val output = resolver.openOutputStream(uri)?.let(::BufferedOutputStream)
+            val output = resolver.openOutputStream(uri)?.let { BufferedOutputStream(it) }
             if (output == null) {
                 resolver.delete(uri, null, null)
                 return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
@@ -152,12 +152,12 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         }
     }
 
-    override fun writeFileChunk(handle: String, bytes: ByteArray): FileOperationResult<Int> {
+    override fun writeFileChunk(handle: String, bytes: ByteArray, offset: Int, length: Int): FileOperationResult<Int> {
         return try {
             val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output }
                 ?: return FileOperationResult.Failure(PlatformFileError.INVALID_HANDLE)
-            output.write(bytes)
-            FileOperationResult.Success(bytes.size)
+            output.write(bytes, offset, length)
+            FileOperationResult.Success(length)
         } catch (error: Exception) {
             println("AndroidPlatformOperations: writeFileChunk failed - ${error.message}")
             cancelFileWrite(handle)

@@ -91,7 +91,7 @@ class DesktopPlatformOperations : PlatformOperations {
     override suspend fun readFileChunks(
         file: PickedFile,
         chunkSizeBytes: Int,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
     ): FileOperationResult<Long> = withContext(Dispatchers.IO) {
         try {
             var bytesRead = 0L
@@ -101,7 +101,7 @@ class DesktopPlatformOperations : PlatformOperations {
                     val read = input.read(buffer)
                     if (read <= 0) break
                     bytesRead += read
-                    onChunk(buffer.copyOf(read))
+                    onChunk(buffer, 0, read)
                 }
             }
             FileOperationResult.Success(bytesRead)
@@ -147,12 +147,12 @@ class DesktopPlatformOperations : PlatformOperations {
         }
     }
 
-    override fun writeFileChunk(handle: String, bytes: ByteArray): FileOperationResult<Int> {
+    override fun writeFileChunk(handle: String, bytes: ByteArray, offset: Int, length: Int): FileOperationResult<Int> {
         return try {
             val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output }
                 ?: return FileOperationResult.Failure(PlatformFileError.INVALID_HANDLE)
-            output.write(bytes)
-            FileOperationResult.Success(bytes.size)
+            output.write(bytes, offset, length)
+            FileOperationResult.Success(length)
         } catch (error: Exception) {
             cancelFileWrite(handle)
             FileOperationResult.Failure(fileError(error, PlatformFileError.WRITE_FAILED))

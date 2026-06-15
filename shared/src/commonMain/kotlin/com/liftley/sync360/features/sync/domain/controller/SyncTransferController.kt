@@ -11,4 +11,5 @@ class SyncTransferController(
     fun dismissReceived() = repository.dismissReceivedFiles()
 
     fun dismissFailure() = repository.dismissTransferFailure()
+
 }

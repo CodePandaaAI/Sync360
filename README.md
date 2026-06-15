@@ -8,6 +8,10 @@ Last updated: June 15, 2026.
 
 Current Sync360 is an Android + JVM Desktop Kotlin Multiplatform / Compose Multiplatform app. The current refactor goal is to modularize, remove duplicate logic, keep layers clean, and fix transfer/connection issues without changing the product's simple connect-share-leave behavior. The UI now intentionally follows the lightweight Habitrek Compose style: `surfaceContainer` screen backgrounds, reusable rounded surfaces, compact title/device pills, restrained nesting, and consistent spacing across Android and Desktop.
 
+## Known Issues
+
+1. **Slow sending and receiving of files:** Local HTTP file transfers remain much slower than expected on a fast LAN. The bottleneck is not yet proven to be sender-side file reading, HTTP upload streaming, receiver-side HTTP reading, hashing, platform storage writing, or interaction between these stages. Treat this as the highest-priority unresolved issue. Measure sender preparation time, network upload time, receiver write time, and finalization time separately before making another performance claim or optimization.
+
 Product philosophy:
 
 * **Session-first, Quick Share-style:** Sync360 is not a chat app and not a long-term device ledger. Each app launch starts fresh. Devices are approved for the current app session, users send text/files as needed, then leave.
@@ -25,22 +29,26 @@ Current local-network architecture:
 * **Control channel:** Ktor HTTP JSON endpoints carry connection request/accept/reject, explicit text sharing, file offers, and transfer-complete signals. Do not add WebSocket paths back unless the product direction changes.
 * **File byte channel:** Large file bytes move over raw HTTP streaming, not WebSocket chunks and not JSON/base64/protobuf payloads. The current push model posts bytes to `/api/file/upload/{offerId}/{fileIndex}` on the receiver's embedded Ktor server.
 * **Android storage:** Android receives files through `MediaStore.Downloads`, targeting `Downloads/Sync360`, using `IS_PENDING = 1` during writes and `IS_PENDING = 0` after finalization.
-* **Android foreground reliability:** Active transfers start the Android foreground service in `transfer` mode, with a transfer-specific notification and longer wake-lock fallback.
+* **Android foreground reliability:** Only active transfers call `startTransferService()`. Idle approved sessions do not keep the foreground service or wake lock alive.
 * **Progress semantics:** Receiving progress should mean bytes successfully written to the destination output. Do not show successful completion until platform storage finalization returns a saved path.
 * **Session approval:** Approve device identity for the current app session, not permanently. IP is only the current route to reach an approved device and can change between networks.
 * **HTTP session gate:** Unknown devices may request connection approval, but text/file endpoints should reject unapproved senders. Approved devices share an in-memory session token for the current app run. Control requests and file upload headers are HMAC-signed with timestamp + nonce replay checks.
 
 Current code organization:
 
-* `SyncRepositoryImpl` remains the integration boundary, while focused collaborators own session devices, temporary text, authentication, incoming transfers, and outgoing transfers.
+* `SyncRepositoryImpl` is the HTTP/runtime integration facade. It delegates connection, message, and transfer behavior instead of owning their orchestration.
+* `ConnectionEngine` owns incoming/outgoing connection orchestration, approval, active-session changes, manual host parsing, and connection protocol validation.
+* `MessageEngine` owns temporary per-session text sending, receiving, validation, and notification behavior.
+* `TransferEngine` owns outgoing and incoming transfer orchestration, transfer state, cancellation, idle timeout monitoring, and foreground-service lifetime.
 * `DeviceSessionStore` owns active and pending connection state; `DeviceRegistry` owns approved devices and their in-memory session tokens.
 * `SessionTextStore` owns temporary text for the current runtime only. There is no persisted conversation or device history.
 * `IncomingFileTransferCoordinator` and `OutgoingFileTransferCoordinator` own the two transfer directions; `FileTransferManager` owns streaming progress and platform file handles.
+* File bytes currently use reusable `1 MiB` streaming buffers with offset/length APIs to avoid copying every chunk. SHA-256 integrity verification remains enabled.
 * `SyncUiState` contains durable render state. `SyncUiEffect` contains one-time presentation events such as snackbar messages.
 * `SyncNavigationViewModel` owns an explicit `List<SyncRoute>` back stack, following Navigation 3's state-owned back-stack model. Navigation 3's `NavDisplay` dependency is not currently needed because Sync360 has only the `Home` route.
 * Shared UI primitives live in `Sync360Surfaces.kt`, and `AppShapes` supplies consistent Habitrek-inspired shape defaults on Android and JVM.
 
-If both sender and receiver stay at `1%`, the file offer likely arrived but the HTTP upload stream did not start or could not write to platform storage. Check the peer's reachable LAN host, `/api/file/upload/{offerId}/{fileIndex}`, Android cleartext/network permissions, and whether `beginFileWrite()` returned a valid handle.
+If both sender and receiver stay at `1%`, the file offer likely arrived but the HTTP upload stream did not start or could not write to platform storage. Check the peer's reachable LAN host, `/api/file/upload/{offerId}/{fileIndex}`, Android cleartext/network permissions, and whether `beginFileWrite()` returned a valid handle. This is separate from the current slow-throughput issue, where transfers complete but take too long.
 
 Recommended architecture going forward:
 
@@ -156,5 +164,5 @@ To prevent scope creep, construction is split into clear development increments:
 
 ### Phase 4: Media Lazy-Loading & WebRTC Extension
 * Integrate `ContentResolver.loadThumbnail` on Android and system preview hooks on Desktop to load the 20 most recent assets.
-* Implement the chunked file-streaming engine inside Ktor for on-demand downloading upon asset selection.
+* Keep Ktor HTTP for discovery, pairing, text, offers, status, completion, and errors. Stream file bytes over raw TCP.
 * Wire up WebRTC data infrastructure to support seamless connection handovers when moving from local Wi-Fi out onto a cellular 4G network.

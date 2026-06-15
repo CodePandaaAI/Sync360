@@ -1,6 +1,5 @@
 package com.liftley.sync360.features.sync.data.repository
 
-import com.liftley.sync360.core.security.SessionAuthFields
 import com.liftley.sync360.core.platform.FileOperationResult
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.data.network.FileTransferManager
@@ -87,32 +86,30 @@ internal class IncomingFileTransferCoordinator(
         return incomingTransferSession.isComplete(complete.offerId, complete.senderDeviceId)
     }
 
-    fun initFileWrite(
+    fun initRawFileWrite(
         offerId: String,
         fileIndex: Int,
-        sessionToken: String,
-        authFields: SessionAuthFields,
-        declaredLength: Long
+        declaredLength: Long,
+        fileIdentifier: String
     ): Boolean {
         if (!incomingTransferSession.canReceiveFile(offerId, fileIndex)) return false
-        if (!incomingTransferSession.hasSessionToken(sessionToken)) return false
-        if (!sessionAuthenticator.verifyFileUpload(sessionToken, authFields, offerId, fileIndex)) return false
 
         val file = incomingTransferSession.fileAt(fileIndex) ?: return false
-        if (declaredLength != file.sizeBytes) return false
+        if (declaredLength != file.sizeBytes || fileIdentifier != file.name) return false
         val expectedSha256 = file.sha256 ?: return false
         return fileTransferManager.initIncomingFileWrite(
             offerId = offerId,
             fileIndex = fileIndex,
             fileName = file.name,
             expectedBytes = file.sizeBytes,
-            expectedSha256 = expectedSha256
+            expectedSha256 = expectedSha256,
+            dispatcher = "Dispatchers.IO raw TCP receiver"
         )
     }
 
-    fun writeChunk(offerId: String, fileIndex: Int, chunk: ByteArray): Boolean {
+    fun writeChunk(offerId: String, fileIndex: Int, chunk: ByteArray, offset: Int, length: Int): Boolean {
         if (!incomingTransferSession.canReceiveFile(offerId, fileIndex)) return false
-        return fileTransferManager.writeIncomingFileChunk(offerId, fileIndex, chunk)
+        return fileTransferManager.writeIncomingFileChunk(offerId, fileIndex, chunk, offset, length)
     }
 
     fun completeFileWrite(offerId: String, fileIndex: Int): IncomingFileWriteComplete {

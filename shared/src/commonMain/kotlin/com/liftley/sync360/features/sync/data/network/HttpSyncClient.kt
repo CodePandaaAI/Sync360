@@ -1,27 +1,31 @@
 package com.liftley.sync360.features.sync.data.network
 
-import com.liftley.sync360.features.sync.data.network.api.*
-import com.liftley.sync360.core.security.SessionAuthFields
-import com.liftley.sync360.core.platform.FileOperationResult
-import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
-import io.ktor.client.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.HttpTimeout
+import com.liftley.sync360.features.sync.data.network.api.ConnectAcceptDto
+import com.liftley.sync360.features.sync.data.network.api.ConnectRejectDto
+import com.liftley.sync360.features.sync.data.network.api.ConnectRequestDto
+import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
+import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
+import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
+import com.liftley.sync360.features.sync.data.network.api.HttpSyncRoutes
+import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
 import io.ktor.client.plugins.HttpRequestTimeoutException
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.http.content.OutgoingContent
-import io.ktor.serialization.kotlinx.json.*
-import io.ktor.utils.io.ByteWriteChannel
-import io.ktor.utils.io.writeFully
+import io.ktor.client.plugins.HttpTimeout
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.http.isSuccess
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 
 class HttpSyncClient(private val port: Int = 8080) {
     private var isClosed = false
-
     private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(Json {
@@ -37,18 +41,6 @@ class HttpSyncClient(private val port: Int = 8080) {
         }
         engine {
             requestTimeout = 30_000
-        }
-    }
-
-    /** Binary content client: no ContentNegotiation, so file bodies stream as raw bytes. */
-    private val binaryHttpClient = HttpClient(CIO) {
-        install(HttpTimeout) {
-            requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
-            socketTimeoutMillis = SyncProtocolLimits.FILE_IDLE_TIMEOUT_MILLIS
-            connectTimeoutMillis = 10_000
-        }
-        engine {
-            requestTimeout = 0
         }
     }
 
@@ -83,7 +75,53 @@ class HttpSyncClient(private val port: Int = 8080) {
         ip: String,
         targetPort: Int,
         offer: FileOfferDto
-    ): HttpTransportResult = post(ip, targetPort, HttpSyncRoutes.FileOffer, offer)
+    ): FileOfferTransportResult {
+        if (isClosed) {
+            return FileOfferTransportResult.Failure(
+                HttpTransportResult.Failure(HttpTransportError.CLIENT_CLOSED)
+            )
+        }
+        return try {
+            val response = httpClient.post(buildUrl(ip, targetPort, HttpSyncRoutes.FileOffer)) {
+                contentType(ContentType.Application.Json)
+                setBody(offer)
+            }
+            if (!response.status.isSuccess()) {
+                val rejection = runCatching {
+                    response.body<FileOfferResponseDto>()
+                }.getOrNull()
+                FileOfferTransportResult.Failure(
+                    (response.toTransportResult() as HttpTransportResult.Failure).copy(
+                        detail = rejection?.failureReason
+                    )
+                )
+            } else {
+                val body = response.body<FileOfferResponseDto>()
+                if (
+                    body.accepted &&
+                    body.rawTcpHost != null &&
+                    body.rawTcpPort != null &&
+                    body.rawTcpPort in 1..65_535 &&
+                    body.transferId == offer.offerId &&
+                    body.transferToken != null
+                ) {
+                    FileOfferTransportResult.Accepted(body)
+                } else {
+                    FileOfferTransportResult.Failure(
+                        HttpTransportResult.Failure(
+                            error = HttpTransportError.REJECTED,
+                            statusCode = response.status.value,
+                            detail = body.failureReason ?: "Invalid raw TCP offer response"
+                        )
+                    )
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            FileOfferTransportResult.Failure(error.toTransportFailure())
+        }
+    }
 
     suspend fun sendFileComplete(
         ip: String,
@@ -104,57 +142,11 @@ class HttpSyncClient(private val port: Int = 8080) {
                 setBody(body)
             }
             response.toTransportResult()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            println("HttpSyncClient: Error posting to $path at $ip - ${e.message}")
-            e.toTransportFailure()
-        }
-    }
-
-    suspend fun uploadFileChunked(
-        ip: String,
-        targetPort: Int,
-        offerId: String,
-        fileIndex: Int,
-        file: com.liftley.sync360.features.sync.domain.model.PickedFile,
-        sessionToken: String,
-        authFields: SessionAuthFields,
-        platformOperations: com.liftley.sync360.core.platform.PlatformOperations,
-        onProgress: (bytesSent: Int) -> Unit
-    ): HttpTransportResult {
-        if (isClosed) return HttpTransportResult.Failure(HttpTransportError.CLIENT_CLOSED)
-        return try {
-            val url = buildUrl(ip, targetPort, HttpSyncRoutes.fileUpload(offerId, fileIndex))
-            val response = binaryHttpClient.post(url) {
-                header(HttpSyncRoutes.SessionTokenHeader, sessionToken)
-                header(HttpSyncRoutes.IssuedAtHeader, authFields.issuedAtMillis.toString())
-                header(HttpSyncRoutes.NonceHeader, authFields.nonce)
-                header(HttpSyncRoutes.SignatureHeader, authFields.signature)
-                setBody(object : OutgoingContent.WriteChannelContent() {
-                    override val contentType = ContentType.Application.OctetStream
-                    override val contentLength = file.sizeBytes
-
-                    override suspend fun writeTo(channel: ByteWriteChannel) {
-                        val readSucceeded = platformOperations.readFileChunks(file, 1024 * 1024) { bytes ->
-                            channel.writeFully(bytes)
-                            onProgress(bytes.size)
-                        }
-                        val streamedBytes =
-                            (readSucceeded as? FileOperationResult.Success<*>)?.value as? Long
-                                ?: error("Could not read ${file.name}")
-                        check(streamedBytes == file.sizeBytes) {
-                            "File size changed while sending ${file.name}"
-                        }
-                    }
-                })
-            }
-            response.toTransportResult()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            println("HttpSyncClient: Upload failed for file ${file.name} to $ip - ${e.message}")
-            e.toTransportFailure()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            println("HttpSyncClient: Error posting to $path at $ip - ${error.message}")
+            error.toTransportFailure()
         }
     }
 
@@ -162,7 +154,6 @@ class HttpSyncClient(private val port: Int = 8080) {
         if (isClosed) return
         isClosed = true
         httpClient.close()
-        binaryHttpClient.close()
     }
 
     private fun HttpResponse.toTransportResult(): HttpTransportResult =
@@ -185,10 +176,9 @@ class HttpSyncClient(private val port: Int = 8080) {
     private fun Exception.toTransportFailure(): HttpTransportResult.Failure {
         val typeName = this::class.simpleName.orEmpty()
         val error = when {
-            this is HttpRequestTimeoutException ||
-                "Timeout" in typeName -> HttpTransportError.TIMEOUT
+            this is HttpRequestTimeoutException || "Timeout" in typeName ->
+                HttpTransportError.TIMEOUT
             typeName in UNREACHABLE_EXCEPTION_NAMES -> HttpTransportError.UNREACHABLE
-            this is IllegalStateException -> HttpTransportError.SOURCE_READ_FAILED
             else -> HttpTransportError.UNKNOWN
         }
         return HttpTransportResult.Failure(error = error, detail = message)

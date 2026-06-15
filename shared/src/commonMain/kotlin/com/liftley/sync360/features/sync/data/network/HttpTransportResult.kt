@@ -12,6 +12,14 @@ sealed interface HttpTransportResult {
         get() = this is Success
 }
 
+sealed interface FileOfferTransportResult {
+    data class Accepted(
+        val response: com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
+    ) : FileOfferTransportResult
+
+    data class Failure(val transport: HttpTransportResult.Failure) : FileOfferTransportResult
+}
+
 enum class HttpTransportError {
     CLIENT_CLOSED,
     TIMEOUT,

@@ -8,6 +8,19 @@ Last updated: June 15, 2026.
 
 Sync360 is currently an Android + JVM Desktop KMP/CMP app. The current engineering goal is to preserve its simple connect-share-leave behavior while debugging, modularizing, removing duplicate logic, and separating responsibilities cleanly across presentation/domain/data/platform layers. The UI has now been deliberately aligned with the Habitrek project's Compose style: `surfaceContainer` backgrounds, reusable rounded surfaces, compact title/device pills, simpler hierarchy, fewer nested panels, and shared shape defaults.
 
+### Known Issues
+
+1. **File transport:** Measurements isolated Ktor CIO HTTP body streaming as the large-file bottleneck. Ktor HTTP now carries control messages only; raw TCP carries file bytes using a dynamic receiver port and one-time transfer grant.
+
+Current transfer performance work already present:
+
+* Raw HTTP file bodies remain the transport.
+* Sender and receiver use reusable `1 MiB` buffers.
+* Chunk callbacks use offset/length instead of copying each chunk.
+* Receiver uses one idle-activity watchdog instead of recreating a timeout coroutine per chunk.
+* Fixed completion delays were removed.
+* SHA-256 integrity and byte-count verification remain enabled.
+
 ### Product Philosophy
 
 Sync360 should behave closer to Quick Share than a chat or device-management app:
@@ -32,7 +45,7 @@ The app currently uses an HTTP-only local LAN model:
 * **Session approval model:** Approve stable device identity for the current runtime session, not permanent history. An IP address is only the current route for an approved device.
 * **Session gate:** Connection requests are the only expected unauthenticated entry point. Text, file offer, file complete, and upload routes should only proceed for approved session devices/current transfer sessions. The current implementation uses an in-memory session token exchanged during connection approval and cleared with the app/session.
 * **Request authentication:** Session control requests and file upload headers are HMAC-SHA256 signed with timestamp and nonce replay checks. This is session-scoped protection, not permanent account/device identity.
-* **Android foreground reliability:** Active transfers call `PlatformOperations.startService("transfer")`; Android's `SyncService` switches notification text and extends the wake-lock fallback for transfer mode.
+* **Android foreground reliability:** Active transfers call `PlatformOperations.startTransferService()`. Idle approved sessions do not own the foreground service or wake lock.
 * **No WebSocket/protobuf transport:** JSON is used only for small control DTOs, while file bodies are raw HTTP bytes. Do not reintroduce base64, protobuf file envelopes, or WebSocket file chunks.
 
 ### Current File Transfer Flow
@@ -52,6 +65,7 @@ Progress must be byte-based for HTTP transfers: bytes successfully written divid
 
 ### Known Current Pitfalls
 
+* Slow transfer throughput is issue #1. A completed transfer does not prove the byte pipeline is efficient. Add stage timing before changing buffer sizes, hashing, storage, or Ktor code again.
 * If both sides stay at `1%`, the file offer likely arrived but the HTTP byte stream did not start or the receiver could not open/write storage. Check the reachable peer host, route `/api/file/upload/{offerId}/{fileIndex}`, and whether `beginFileWrite()` returned a handle.
 * A device's self-reported local IP can be wrong or unreachable from the peer. Requests should prefer the peer host learned from discovery/connection approval.
 * Android files may not appear in Downloads if `finishFileWrite()` fails or `IS_PENDING` is not cleared. Treat `finishFileWrite() == null` as transfer failure.
@@ -70,14 +84,17 @@ Android MediaStore / Desktop filesystem for final storage
 
 ### Current Internal Structure
 
-* `SyncRepositoryImpl` coordinates the feature but delegates focused work instead of owning every detail.
+* `SyncRepositoryImpl` is the runtime/HTTP integration facade.
+* `ConnectionEngine` owns incoming and outgoing connection orchestration, approval, session changes, manual endpoint parsing, and connection validation.
+* `MessageEngine` owns session text sending, receiving, validation, notification, and temporary message state.
+* `TransferEngine` owns transfer orchestration, transfer state, cancellation, idle timeout monitoring, and foreground-service lifetime.
 * `DeviceSessionStore` owns active, incoming-pending, and outgoing-pending connection state.
 * `DeviceRegistry` owns approved session devices, current peer hosts, and in-memory session tokens.
 * `SessionAuthenticator` owns signing, verification, timestamp/nonce replay protection, and session-token generation.
 * `SessionTextStore` holds temporary text for the current runtime. It is not a conversation database.
 * `IncomingFileTransferCoordinator` owns receiver offer/upload/finalization orchestration.
 * `OutgoingFileTransferCoordinator` owns sender offer/upload/complete orchestration.
-* `FileTransferManager` owns byte progress and platform streaming handles.
+* `FileTransferManager` owns byte progress, SHA-256 verification, and platform streaming handles.
 * `SyncUiState` is durable render state; `SyncUiEffect` is a one-shot effect stream. Snackbars and desktop feedback are sent through a buffered `Channel`, not stored as `userMessage`.
 * `SyncNavigationViewModel` owns a state-backed `List<SyncRoute>` back stack. This follows the Navigation 3 model where the app owns navigation state. Only `SyncRoute.Home` exists today, so `NavDisplay` is not yet needed.
 * `Sync360Surfaces.kt` contains Habitrek-inspired shared surface, title-pill, and icon-button primitives. `AppShapes` is applied by both Android and JVM themes.
@@ -181,10 +198,10 @@ Use these commands when verification is requested. The project owner normally ru
 
 ## 🚀 6. Next Steps & Active Roadmap
 When launching the next session, consider taking on the following high-priority tasks:
-1. **Multi-device Live Validation**: Test Android-to-Android, Android-to-Desktop, Desktop-to-Android, and Desktop-to-Desktop transfers with large files on the same LAN.
-2. **Transfer Recovery**: Add carefully scoped retry/recovery behavior for interrupted HTTP uploads without persisting chat or device history.
-3. **Navigation Growth**: Add Navigation 3 `NavDisplay` only when a genuine second screen exists; keep navigation state in `SyncNavigationViewModel`.
-4. **Repository Reduction**: Continue moving connection orchestration out of `SyncRepositoryImpl` while preserving its public behavior.
+1. **Diagnose Slow File Transfers**: Instrument sender preparation/read, HTTP upload, receiver network read, hashing/write, and finalization separately. Compare Android-to-Desktop and Desktop-to-Android using the same file and network.
+2. **Multi-device Live Validation**: Test Android-to-Android, Android-to-Desktop, Desktop-to-Android, and Desktop-to-Desktop transfers with large files on the same LAN.
+3. **Transfer Recovery**: Add carefully scoped retry/recovery behavior for interrupted HTTP uploads without persisting chat or device history.
+4. **Navigation Growth**: Add Navigation 3 `NavDisplay` only when a genuine second screen exists; keep navigation state in `SyncNavigationViewModel`.
 
 ---
 

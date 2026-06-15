@@ -108,6 +108,7 @@ fun SharePanel(
                     onAddFiles = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) }
                 )
             }
+
         }
     }
 }

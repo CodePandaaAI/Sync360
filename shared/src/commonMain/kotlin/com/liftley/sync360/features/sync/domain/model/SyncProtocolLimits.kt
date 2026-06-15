@@ -23,7 +23,6 @@ object SyncProtocolLimits {
     const val MIN_STORAGE_RESERVE_BYTES = 256L * 1024 * 1024
     const val MAX_CONNECT_REQUESTS_PER_MINUTE = 12
     const val MAX_CONTROL_REQUESTS_PER_MINUTE = 240
-    const val MAX_FILE_UPLOADS_PER_MINUTE = 60
     const val SHA_256_HEX_LENGTH = 64
     const val FILE_IDLE_TIMEOUT_MILLIS = 120_000L
     const val MAX_AUTOMATIC_FILE_RETRIES = 0

@@ -2,19 +2,28 @@ package com.liftley.sync360.features.sync.data.repository
 
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.core.security.SessionAuthFields
+import com.liftley.sync360.core.security.SessionCrypto
 import com.liftley.sync360.features.sync.data.network.ConnectRequestOutcome
 import com.liftley.sync360.features.sync.data.network.FileTransferManager
 import com.liftley.sync360.features.sync.data.network.HttpSyncClient
 import com.liftley.sync360.features.sync.data.network.HttpSyncServer
 import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
 import com.liftley.sync360.features.sync.data.network.OutgoingFileTransferCoordinator
+import com.liftley.sync360.features.sync.data.network.RawTcpFileHeader
+import com.liftley.sync360.features.sync.data.network.RawTcpFileListener
+import com.liftley.sync360.features.sync.data.network.RawTcpFileTransferConfig
+import com.liftley.sync360.features.sync.data.network.RawTcpFileTransport
+import com.liftley.sync360.features.sync.data.network.RawTcpFailure
+import com.liftley.sync360.features.sync.data.network.RawTcpListenerStartResult
+import com.liftley.sync360.features.sync.data.network.RawTcpReceiveResult
+import com.liftley.sync360.features.sync.data.network.RawTransferGrantStore
 import com.liftley.sync360.features.sync.data.network.SyncServerListener
 import com.liftley.sync360.features.sync.data.network.api.ConnectAcceptDto
 import com.liftley.sync360.features.sync.data.network.api.ConnectRejectDto
 import com.liftley.sync360.features.sync.data.network.api.ConnectRequestDto
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
+import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
 import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
@@ -42,15 +51,23 @@ class SyncRepositoryImpl(
     private val syncPort: Int = 8080,
     private val httpClient: HttpSyncClient = HttpSyncClient(syncPort),
     private val httpServer: HttpSyncServer = HttpSyncServer(syncPort),
+    private val rawTcpFileTransport: RawTcpFileTransport = RawTcpFileTransport(),
     private val fileTransferManager: FileTransferManager =
-        FileTransferManager(platformOperations, httpClient),
+        FileTransferManager(platformOperations),
     private val outgoingFileTransferCoordinator: OutgoingFileTransferCoordinator =
-        OutgoingFileTransferCoordinator(localDevice, httpClient, fileTransferManager)
-) : SyncRepository, SyncServerListener {
+        OutgoingFileTransferCoordinator(
+            localDevice,
+            httpClient,
+            fileTransferManager,
+            rawTcpFileTransport
+        )
+) : SyncRepository, SyncServerListener, RawTcpFileListener {
     private val scope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private val runtimeLock = Any()
     private var syncStarted = false
     private var runtimeClosed = false
+    private var activeRawTransferId: String? = null
+    private val rawTransferGrants = RawTransferGrantStore()
 
     private val deviceSession = DeviceSessionStore()
     private val deviceRegistry = DeviceRegistry()
@@ -85,7 +102,8 @@ class SyncRepositoryImpl(
         deviceSession = deviceSession,
         deviceRegistry = deviceRegistry,
         incoming = incomingFileTransferCoordinator,
-        outgoing = outgoingFileTransferCoordinator
+        outgoing = outgoingFileTransferCoordinator,
+        onIncomingTerminated = ::closeActiveRawTransfer
     )
     private val connectionEngine = ConnectionEngine(
         scope = scope,
@@ -101,6 +119,7 @@ class SyncRepositoryImpl(
         onSessionCleared = {
             messageEngine.clearVisible()
             transferEngine.cancel()
+            closeActiveRawTransfer()
         },
         onDeviceDeleted = messageEngine::removePeer
     )
@@ -115,6 +134,7 @@ class SyncRepositoryImpl(
 
     init {
         httpServer.listener = this
+        rawTcpFileTransport.listener = this
     }
 
     override fun startSync(): SyncStartResult {
@@ -136,6 +156,7 @@ class SyncRepositoryImpl(
         }
 
         httpServer.listener = this
+        rawTcpFileTransport.listener = this
         if (!httpServer.start()) {
             synchronized(runtimeLock) { syncStarted = false }
             events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.SERVER_UNAVAILABLE))
@@ -157,6 +178,9 @@ class SyncRepositoryImpl(
 
         connectionEngine.cancelPending()
         transferEngine.cancel(updateService = false)
+        rawTcpFileTransport.stop()
+        rawTransferGrants.clear()
+        activeRawTransferId = null
         httpServer.stop()
         platformOperations.stopService()
     }
@@ -236,46 +260,155 @@ class SyncRepositoryImpl(
     override fun onTextMessage(message: MessageDto, remoteHost: String): Boolean =
         messageEngine.receive(message, remoteHost)
 
-    override fun onFileOffer(offer: FileOfferDto, remoteHost: String): Boolean =
-        transferEngine.receiveOffer(offer, remoteHost)
-
-    override fun onFileComplete(complete: FileCompleteDto, remoteHost: String): Boolean =
-        transferEngine.receiveComplete(complete, remoteHost)
-
-    override fun onIncomingFileChunkInit(
-        offerId: String,
-        fileIndex: Int,
-        sessionToken: String,
-        authFields: SessionAuthFields,
-        declaredLength: Long,
+    override fun onFileOffer(
+        offer: FileOfferDto,
         remoteHost: String
-    ): Boolean = transferEngine.initIncomingFile(
-        offerId,
-        fileIndex,
-        sessionToken,
-        authFields,
-        declaredLength,
-        remoteHost
-    )
+    ): FileOfferResponseDto {
+        if (!transferEngine.receiveOffer(offer, remoteHost)) {
+            return FileOfferResponseDto(
+                accepted = false,
+                failureReason = "raw_tcp_receiver_unavailable"
+            )
+        }
+        rawTcpFileTransport.listener = this
+        val listener = rawTcpFileTransport.startDynamic()
+        if (listener is RawTcpListenerStartResult.Failure) {
+            transferEngine.cancel()
+            return FileOfferResponseDto(
+                accepted = false,
+                failureReason = listener.reason.logCode()
+            )
+        }
+        val port = (listener as RawTcpListenerStartResult.Success).port
+        val transferToken = SessionCrypto.secureToken()
+        rawTransferGrants.register(offer.offerId, transferToken, offer.files.size)
+        activeRawTransferId = offer.offerId
+        return FileOfferResponseDto(
+            accepted = true,
+            rawTcpHost = platformOperations.getNetworkEnvironment().addressForPeer(remoteHost),
+            rawTcpPort = port,
+            transferId = offer.offerId,
+            transferToken = transferToken
+        )
+    }
 
-    override fun onIncomingFileChunkReceived(
+    override fun onFileComplete(complete: FileCompleteDto, remoteHost: String): Boolean {
+        val accepted = transferEngine.receiveComplete(complete, remoteHost)
+        if (accepted) closeRawTransfer(complete.offerId)
+        return accepted
+    }
+
+    override fun onRawFileInit(
+        header: RawTcpFileHeader,
+        remoteHost: String
+    ): RawTcpReceiveResult {
+        if (
+            header.transferId != activeRawTransferId ||
+            !rawTransferGrants.validateAndConsume(
+                header.transferId,
+                header.transferToken,
+                header.fileIndex
+            )
+        ) {
+            return RawTcpReceiveResult.Failure(RawTcpFailure.TOKEN_INVALID)
+        }
+        val initialized = transferEngine.initIncomingRawFile(
+            offerId = header.transferId,
+            fileIndex = header.fileIndex,
+            declaredLength = header.contentLength,
+            fileIdentifier = header.fileIdentifier,
+            remoteHost = remoteHost
+        )
+        if (initialized) return RawTcpReceiveResult.Success
+        val incomingFailure = transferEngine.consumeIncomingFailure(
+            header.transferId,
+            header.fileIndex
+        )
+        transferEngine.failIncomingFile(
+            header.transferId,
+            header.fileIndex,
+            incomingFailure
+        )
+        rawTransferGrants.revoke(header.transferId)
+        activeRawTransferId = null
+        return RawTcpReceiveResult.Failure(
+            when (incomingFailure) {
+                IncomingUploadFailure.STORAGE_FULL -> RawTcpFailure.RECEIVER_STORAGE_FULL
+                IncomingUploadFailure.STORAGE_UNAVAILABLE ->
+                    RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE
+                IncomingUploadFailure.WRITE_FAILED -> RawTcpFailure.RECEIVER_WRITE_FAILED
+                IncomingUploadFailure.INTEGRITY -> RawTcpFailure.HASH_MISMATCH
+                IncomingUploadFailure.INVALID_REQUEST,
+                null -> RawTcpFailure.RECEIVER_UNAVAILABLE
+            }
+        )
+    }
+
+    override fun onRawFileChunk(
         offerId: String,
         fileIndex: Int,
-        chunk: ByteArray
-    ): Boolean = transferEngine.receiveChunk(offerId, fileIndex, chunk)
+        chunk: ByteArray,
+        offset: Int,
+        length: Int
+    ): Boolean = transferEngine.receiveChunk(offerId, fileIndex, chunk, offset, length)
 
-    override fun onIncomingFileChunkComplete(offerId: String, fileIndex: Int): String? =
-        transferEngine.completeIncomingFile(offerId, fileIndex)
+    override fun onRawFileComplete(offerId: String, fileIndex: Int): RawTcpReceiveResult {
+        if (transferEngine.completeIncomingFile(offerId, fileIndex) != null) {
+            return RawTcpReceiveResult.Success
+        }
+        val failure = transferEngine.consumeIncomingFailure(offerId, fileIndex)
+        return RawTcpReceiveResult.Failure(
+            when (failure) {
+                IncomingUploadFailure.INTEGRITY -> RawTcpFailure.HASH_MISMATCH
+                IncomingUploadFailure.STORAGE_FULL -> RawTcpFailure.RECEIVER_STORAGE_FULL
+                IncomingUploadFailure.STORAGE_UNAVAILABLE ->
+                    RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE
+                IncomingUploadFailure.WRITE_FAILED -> RawTcpFailure.RECEIVER_WRITE_FAILED
+                IncomingUploadFailure.INVALID_REQUEST,
+                null -> RawTcpFailure.IO_ERROR
+            }
+        )
+    }
 
-    override fun onIncomingFileChunkError(
-        offerId: String,
-        fileIndex: Int,
-        knownFailure: IncomingUploadFailure?
-    ): IncomingUploadFailure? =
-        transferEngine.failIncomingFile(offerId, fileIndex, knownFailure)
+    override fun onRawFileError(offerId: String, fileIndex: Int, failure: RawTcpFailure) {
+        val incomingFailure = when (failure) {
+            RawTcpFailure.HASH_MISMATCH,
+            RawTcpFailure.SIZE_MISMATCH -> IncomingUploadFailure.INTEGRITY
+            RawTcpFailure.RECEIVER_STORAGE_FULL -> IncomingUploadFailure.STORAGE_FULL
+            RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE ->
+                IncomingUploadFailure.STORAGE_UNAVAILABLE
+            RawTcpFailure.RECEIVER_WRITE_FAILED -> IncomingUploadFailure.WRITE_FAILED
+            else -> null
+        }
+        transferEngine.failIncomingFile(offerId, fileIndex, incomingFailure)
+        closeRawTransfer(offerId)
+    }
 
-    override fun consumeIncomingFileFailure(
-        offerId: String,
-        fileIndex: Int
-    ): IncomingUploadFailure? = transferEngine.consumeIncomingFailure(offerId, fileIndex)
+    private fun closeRawTransfer(transferId: String) {
+        rawTransferGrants.revoke(transferId)
+        if (activeRawTransferId == transferId) activeRawTransferId = null
+        rawTcpFileTransport.stop()
+    }
+
+    private fun closeActiveRawTransfer() {
+        val transferId = activeRawTransferId ?: return
+        closeRawTransfer(transferId)
+    }
+}
+
+private fun RawTcpFailure.logCode(): String = when (this) {
+    RawTcpFailure.LISTENER_START_FAILED -> "raw_tcp_listener_start_failed"
+    RawTcpFailure.PORT_BIND_FAILED -> "raw_tcp_port_bind_failed"
+    RawTcpFailure.ACCEPT_TIMEOUT -> "raw_tcp_accept_timeout"
+    RawTcpFailure.CONNECTION_REFUSED -> "raw_tcp_connection_refused"
+    RawTcpFailure.CONNECT_TIMEOUT -> "raw_tcp_connect_timeout"
+    RawTcpFailure.READ_TIMEOUT -> "raw_tcp_read_timeout"
+    RawTcpFailure.WRITE_FAILED -> "raw_tcp_write_failed"
+    RawTcpFailure.TOKEN_INVALID -> "raw_tcp_token_invalid"
+    RawTcpFailure.HEADER_INVALID -> "raw_tcp_header_invalid"
+    RawTcpFailure.SIZE_MISMATCH -> "raw_tcp_size_mismatch"
+    RawTcpFailure.HASH_MISMATCH -> "raw_tcp_hash_mismatch"
+    RawTcpFailure.CANCELLED -> "raw_tcp_cancelled"
+    RawTcpFailure.RECEIVER_UNAVAILABLE -> "raw_tcp_receiver_unavailable"
+    else -> "raw_tcp_${name.lowercase()}"
 }

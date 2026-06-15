@@ -77,6 +77,16 @@ data class FileOfferDto(
 )
 
 @Serializable
+data class FileOfferResponseDto(
+    val accepted: Boolean,
+    val rawTcpHost: String? = null,
+    val rawTcpPort: Int? = null,
+    val transferId: String? = null,
+    val transferToken: String? = null,
+    val failureReason: String? = null
+)
+
+@Serializable
 data class FileCompleteDto(
     val offerId: String,
     val senderDeviceId: String,

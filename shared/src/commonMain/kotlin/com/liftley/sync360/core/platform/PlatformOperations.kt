@@ -21,11 +21,11 @@ interface FileOperations {
     suspend fun readFileChunks(
         file: com.liftley.sync360.features.sync.domain.model.PickedFile,
         chunkSizeBytes: Int,
-        onChunk: suspend (ByteArray) -> Unit
+        onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
     ): FileOperationResult<Long>
     fun beginFileWrite(name: String): FileOperationResult<String>
     fun getAvailableStorageBytes(): FileOperationResult<Long>
-    fun writeFileChunk(handle: String, bytes: ByteArray): FileOperationResult<Int>
+    fun writeFileChunk(handle: String, bytes: ByteArray, offset: Int, length: Int): FileOperationResult<Int>
     fun finishFileWrite(handle: String): FileOperationResult<String>
     fun cancelFileWrite(handle: String): FileOperationResult<Unit>
     fun openFile(path: String): FileOperationResult<Unit>

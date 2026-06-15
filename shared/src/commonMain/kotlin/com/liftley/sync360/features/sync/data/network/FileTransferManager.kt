@@ -3,15 +3,17 @@ package com.liftley.sync360.features.sync.data.network
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.FileOperationResult
 import com.liftley.sync360.core.platform.PlatformFileError
-import com.liftley.sync360.core.security.SessionAuth
 import com.liftley.sync360.core.security.Sha256Hasher
+import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
+import com.liftley.sync360.features.sync.domain.diagnostics.transferExecutionContext
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.time.TimeMark
+import kotlin.time.TimeSource
 
 class FileTransferManager(
-    private val platformOperations: PlatformOperations,
-    private val httpClient: HttpSyncClient
+    private val platformOperations: PlatformOperations
 ) {
     private val activeIncomingWrites = mutableMapOf<String, IncomingFileWrite>()
     private val incomingFailures = mutableMapOf<String, IncomingUploadFailure>()
@@ -30,17 +32,65 @@ class FileTransferManager(
 
     suspend fun prepareOutgoingFiles(files: List<PickedFile>): List<PreparedOutgoingFile>? =
         withContext(Dispatchers.IO) {
+            val batchStarted = TimeSource.Monotonic.markNow()
             val prepared = mutableListOf<PreparedOutgoingFile>()
-            for (file in files) {
+            var batchBytes = 0L
+            var batchChunks = 0L
+            for ((fileIndex, file) in files.withIndex()) {
+                val fileStarted = TimeSource.Monotonic.markNow()
                 val hasher = Sha256Hasher()
-                val read = platformOperations.readFileChunks(file, HASH_CHUNK_SIZE_BYTES) { chunk ->
-                    hasher.update(chunk)
+                var hashNanos = 0L
+                var chunkCount = 0L
+                var executionContext = transferExecutionContext()
+                val read = platformOperations.readFileChunks(
+                    file,
+                    HASH_CHUNK_SIZE_BYTES
+                ) { bytes, offset, length ->
+                    executionContext = transferExecutionContext()
+                    val hashStarted = TimeSource.Monotonic.markNow()
+                    hasher.update(bytes, offset, length)
+                    hashNanos += hashStarted.elapsedNow().inWholeNanoseconds
+                    chunkCount += 1
                 }
                 val bytesRead = (read as? FileOperationResult.Success<*>)?.value as? Long
-                    ?: return@withContext null
-                if (bytesRead != file.sizeBytes) return@withContext null
+                val actualBytesRead = bytesRead ?: 0L
+                val succeeded = actualBytesRead == file.sizeBytes
+                TransferDiagnostics.log(
+                    stage = "sender_prepare_hash_read",
+                    bytes = actualBytesRead,
+                    elapsedNanos = fileStarted.elapsedNow().inWholeNanoseconds,
+                    bufferBytes = HASH_CHUNK_SIZE_BYTES,
+                    dispatcher = "Dispatchers.IO",
+                    streamed = true,
+                    fullFileInMemory = false,
+                    base64 = false,
+                    stringEncoding = false,
+                    json = false,
+                    multipart = false,
+                    executionContext = executionContext,
+                    details = "fileIndex=$fileIndex chunks=$chunkCount" +
+                        " hashMs=${hashNanos / NANOS_PER_MILLISECOND}" +
+                        " outcome=${if (succeeded) "success" else "failure"}"
+                )
+                if (!succeeded) return@withContext null
+                batchBytes += actualBytesRead
+                batchChunks += chunkCount
                 prepared += PreparedOutgoingFile(file, hasher.digestHex())
             }
+            TransferDiagnostics.log(
+                stage = "sender_prepare_batch",
+                bytes = batchBytes,
+                elapsedNanos = batchStarted.elapsedNow().inWholeNanoseconds,
+                bufferBytes = HASH_CHUNK_SIZE_BYTES,
+                dispatcher = "Dispatchers.IO",
+                streamed = true,
+                fullFileInMemory = false,
+                base64 = false,
+                stringEncoding = false,
+                json = false,
+                multipart = false,
+                details = "files=${files.size} chunks=$batchChunks outcome=success"
+            )
             prepared
         }
 
@@ -49,7 +99,8 @@ class FileTransferManager(
         fileIndex: Int,
         fileName: String,
         expectedBytes: Long,
-        expectedSha256: String
+        expectedSha256: String,
+        dispatcher: String = "Raw TCP receiver coroutine"
     ): Boolean {
         val key = "${offerId}_$fileIndex"
         val beginResult = platformOperations.beginFileWrite(fileName)
@@ -68,7 +119,9 @@ class FileTransferManager(
                 activeIncomingWrites[key] = IncomingFileWrite(
                     handle = handle,
                     expectedBytes = expectedBytes,
-                    expectedSha256 = expectedSha256
+                    expectedSha256 = expectedSha256,
+                    dispatcher = dispatcher,
+                    executionContext = transferExecutionContext()
                 )
                 true
             }
@@ -82,10 +135,10 @@ class FileTransferManager(
         return registered
     }
 
-    fun writeIncomingFileChunk(offerId: String, fileIndex: Int, chunk: ByteArray): Boolean {
+    fun writeIncomingFileChunk(offerId: String, fileIndex: Int, chunk: ByteArray, offset: Int, length: Int): Boolean {
         val key = "${offerId}_$fileIndex"
         val write = synchronized(activeIncomingWrites) { activeIncomingWrites[key] } ?: return false
-        if (write.bytesWritten + chunk.size > write.expectedBytes) {
+        if (write.bytesWritten + length > write.expectedBytes) {
             synchronized(incomingFailures) {
                 incomingFailures[key] = IncomingUploadFailure.INTEGRITY
             }
@@ -93,15 +146,24 @@ class FileTransferManager(
             return false
         }
 
-        val wrote = platformOperations.writeFileChunk(write.handle, chunk)
+        val writeStarted = TimeSource.Monotonic.markNow()
+        val wrote = platformOperations.writeFileChunk(write.handle, chunk, offset, length)
+        write.platformWriteNanos += writeStarted.elapsedNow().inWholeNanoseconds
         if (wrote is FileOperationResult.Success) {
-            write.bytesWritten += chunk.size
-            write.hasher.update(chunk)
-            currentIncomingWrittenBytes += chunk.size
+            write.bytesWritten += length
+            val hashStarted = TimeSource.Monotonic.markNow()
+            write.hasher.update(chunk, offset, length)
+            write.hashNanos += hashStarted.elapsedNow().inWholeNanoseconds
+            currentIncomingWrittenBytes += length
             val percent = ((currentIncomingWrittenBytes.toDouble() / currentIncomingTotalBytes.toDouble()) * 99)
                 .toInt()
                 .coerceIn(1, 99)
+            val progressStarted = TimeSource.Monotonic.markNow()
             currentIncomingProgressCallback?.invoke(percent)
+            write.progressNanos += progressStarted.elapsedNow().inWholeNanoseconds
+            write.progressCallbacks += 1
+            write.distinctProgressPercents += percent
+            write.chunkCount += 1
         }
         if (wrote is FileOperationResult.Failure) {
             synchronized(incomingFailures) {
@@ -114,7 +176,9 @@ class FileTransferManager(
     fun completeIncomingFileWrite(offerId: String, fileIndex: Int): String? {
         val key = "${offerId}_$fileIndex"
         val write = synchronized(activeIncomingWrites) { activeIncomingWrites.remove(key) } ?: return null
+        val digestStarted = TimeSource.Monotonic.markNow()
         val receivedSha256 = write.hasher.digestHex()
+        write.hashNanos += digestStarted.elapsedNow().inWholeNanoseconds
         if (
             write.bytesWritten != write.expectedBytes ||
             !receivedSha256.equals(write.expectedSha256, ignoreCase = true)
@@ -123,9 +187,17 @@ class FileTransferManager(
                 incomingFailures[key] = IncomingUploadFailure.INTEGRITY
             }
             platformOperations.cancelFileWrite(write.handle)
+            write.logSummary(
+                offerId = offerId,
+                fileIndex = fileIndex,
+                outcome = "integrity_failure",
+                finalizeNanos = 0L
+            )
             return null
         }
+        val finalizeStarted = TimeSource.Monotonic.markNow()
         val finishResult = platformOperations.finishFileWrite(write.handle)
+        val finalizeNanos = finalizeStarted.elapsedNow().inWholeNanoseconds
         val path = (finishResult as? FileOperationResult.Success<*>)?.value as? String
         if (path == null) {
             val error = (finishResult as? FileOperationResult.Failure)?.error
@@ -133,6 +205,12 @@ class FileTransferManager(
                 incomingFailures[key] = error.toIncomingUploadFailure()
             }
         }
+        write.logSummary(
+            offerId = offerId,
+            fileIndex = fileIndex,
+            outcome = if (path == null) "finalize_failure" else "success",
+            finalizeNanos = finalizeNanos
+        )
         return path
     }
 
@@ -141,6 +219,12 @@ class FileTransferManager(
         val write = synchronized(activeIncomingWrites) { activeIncomingWrites.remove(key) }
         if (write != null) {
             platformOperations.cancelFileWrite(write.handle)
+            write.logSummary(
+                offerId = offerId,
+                fileIndex = fileIndex,
+                outcome = "write_error",
+                finalizeNanos = 0L
+            )
         }
     }
 
@@ -162,52 +246,154 @@ class FileTransferManager(
         synchronized(incomingFailures) { incomingFailures.clear() }
     }
 
-    suspend fun uploadOutgoingFiles(
+    suspend fun uploadOutgoingFilesRaw(
+        rawTransport: RawFileByteSender,
         serverIp: String,
         serverPort: Int,
         offerId: String,
+        transferToken: String,
         files: List<PickedFile>,
-        sessionToken: String,
         onProgress: (percent: Int) -> Unit
     ): HttpTransportResult = withContext(Dispatchers.IO) {
+        val batchStarted = TimeSource.Monotonic.markNow()
         val totalBytes = files.sumOf { it.sizeBytes }.coerceAtLeast(1L)
         var bytesUploaded = 0L
-        var failure: HttpTransportResult.Failure? = null
+        var result: HttpTransportResult = HttpTransportResult.Success(200)
 
         files.forEachIndexed { index, file ->
-            if (failure != null) return@forEachIndexed
-            val authFields = SessionAuth.create(
-                sessionToken = sessionToken,
-                purpose = "file_upload",
-                parts = listOf(offerId, index.toString())
-            )
-            
-            val result = httpClient.uploadFileChunked(
-                ip = serverIp,
-                targetPort = serverPort,
-                offerId = offerId,
-                fileIndex = index,
+            if (result is HttpTransportResult.Failure) return@forEachIndexed
+            val rawResult = rawTransport.send(
+                host = serverIp,
+                port = serverPort,
+                header = RawTcpFileHeader(
+                    transferToken = transferToken,
+                    transferId = offerId,
+                    fileIndex = index,
+                    contentLength = file.sizeBytes,
+                    fileIdentifier = file.name
+                ),
                 file = file,
-                sessionToken = sessionToken,
-                authFields = authFields,
                 platformOperations = platformOperations
             ) { bytesSent ->
                 bytesUploaded += bytesSent
-                val percent = ((bytesUploaded.toDouble() / totalBytes.toDouble()) * 95).toInt().coerceIn(1, 95)
+                val percent = ((bytesUploaded.toDouble() / totalBytes.toDouble()) * 95)
+                    .toInt()
+                    .coerceIn(1, 95)
                 onProgress(percent)
             }
-            
-            if (result is HttpTransportResult.Failure) {
-                failure = result
+            if (rawResult is RawTcpSendResult.Success) {
+                TransferDiagnostics.log(
+                    stage = "sender_file_transport_result",
+                    bytes = rawResult.bytesSent,
+                    elapsedNanos = 0L,
+                    bufferBytes = RawTcpFileTransferConfig.BUFFER_BYTES,
+                    dispatcher = "Dispatchers.IO",
+                    streamed = true,
+                    fullFileInMemory = false,
+                    base64 = false,
+                    stringEncoding = false,
+                    json = false,
+                    multipart = false,
+                    details = "transferId=$offerId fileIndex=$index transport=raw_tcp" +
+                        " outcome=success fallbackAttempted=false"
+                )
+                result = HttpTransportResult.Success(200)
+                return@forEachIndexed
             }
+
+            val rawFailure = rawResult as RawTcpSendResult.Failure
+            TransferDiagnostics.log(
+                stage = "sender_file_transport_result",
+                bytes = rawFailure.bytesSent,
+                elapsedNanos = 0L,
+                bufferBytes = RawTcpFileTransferConfig.BUFFER_BYTES,
+                dispatcher = "Dispatchers.IO",
+                streamed = true,
+                fullFileInMemory = false,
+                base64 = false,
+                stringEncoding = false,
+                json = false,
+                multipart = false,
+                details = "transferId=$offerId fileIndex=$index transport=raw_tcp" +
+                    " outcome=${rawFailure.reason.logCode()} fallbackAttempted=false"
+            )
+            result = rawFailure.toHttpTransportFailure()
         }
 
-        failure ?: HttpTransportResult.Success(200)
+        TransferDiagnostics.log(
+            stage = "sender_raw_tcp_batch",
+            bytes = bytesUploaded,
+            elapsedNanos = batchStarted.elapsedNow().inWholeNanoseconds,
+            bufferBytes = RawTcpFileTransferConfig.BUFFER_BYTES,
+            dispatcher = "Dispatchers.IO + raw TCP socket",
+            streamed = true,
+            fullFileInMemory = false,
+            base64 = false,
+            stringEncoding = false,
+            json = false,
+            multipart = false,
+            details = "files=${files.size} transferId=$offerId" +
+                " outcome=${if (result is HttpTransportResult.Success) "success" else "failure"}"
+        )
+        result
     }
 
     private companion object {
         const val HASH_CHUNK_SIZE_BYTES = 1024 * 1024
+        const val NANOS_PER_MILLISECOND = 1_000_000L
     }
+}
+
+private fun RawTcpSendResult.Failure.toHttpTransportFailure(): HttpTransportResult.Failure {
+    val error = when (reason) {
+        RawTcpFailure.SOURCE_READ_FAILED -> HttpTransportError.SOURCE_READ_FAILED
+        RawTcpFailure.HASH_MISMATCH,
+        RawTcpFailure.SIZE_MISMATCH -> HttpTransportError.INTEGRITY_FAILED
+        RawTcpFailure.RECEIVER_STORAGE_FULL -> HttpTransportError.REMOTE_STORAGE_FULL
+        RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE -> HttpTransportError.REMOTE_STORAGE_UNAVAILABLE
+        RawTcpFailure.RECEIVER_WRITE_FAILED -> HttpTransportError.UNKNOWN
+        RawTcpFailure.TIMEOUT -> HttpTransportError.TIMEOUT
+        RawTcpFailure.CONNECT_TIMEOUT,
+        RawTcpFailure.READ_TIMEOUT -> HttpTransportError.TIMEOUT
+        RawTcpFailure.LISTENER_START_FAILED,
+        RawTcpFailure.PORT_BIND_FAILED,
+        RawTcpFailure.ACCEPT_TIMEOUT,
+        RawTcpFailure.CONNECTION_REFUSED,
+        RawTcpFailure.RECEIVER_UNAVAILABLE,
+        RawTcpFailure.TOKEN_INVALID,
+        RawTcpFailure.HEADER_INVALID,
+        RawTcpFailure.WRITE_FAILED,
+        RawTcpFailure.PARTIAL_TRANSFER,
+        RawTcpFailure.CANCELLED,
+        RawTcpFailure.IO_ERROR -> HttpTransportError.UNREACHABLE
+    }
+    return HttpTransportResult.Failure(
+        error = error,
+        detail = "rawTcpFailure=${reason.name} bytesSent=$bytesSent"
+    )
+}
+
+private fun RawTcpFailure.logCode(): String = when (this) {
+    RawTcpFailure.LISTENER_START_FAILED -> "raw_tcp_listener_start_failed"
+    RawTcpFailure.PORT_BIND_FAILED -> "raw_tcp_port_bind_failed"
+    RawTcpFailure.ACCEPT_TIMEOUT -> "raw_tcp_accept_timeout"
+    RawTcpFailure.CONNECTION_REFUSED -> "raw_tcp_connection_refused"
+    RawTcpFailure.CONNECT_TIMEOUT -> "raw_tcp_connect_timeout"
+    RawTcpFailure.READ_TIMEOUT -> "raw_tcp_read_timeout"
+    RawTcpFailure.WRITE_FAILED -> "raw_tcp_write_failed"
+    RawTcpFailure.TOKEN_INVALID -> "raw_tcp_token_invalid"
+    RawTcpFailure.HEADER_INVALID -> "raw_tcp_header_invalid"
+    RawTcpFailure.SIZE_MISMATCH -> "raw_tcp_size_mismatch"
+    RawTcpFailure.HASH_MISMATCH -> "raw_tcp_hash_mismatch"
+    RawTcpFailure.CANCELLED -> "raw_tcp_cancelled"
+    RawTcpFailure.RECEIVER_UNAVAILABLE -> "raw_tcp_receiver_unavailable"
+    RawTcpFailure.PARTIAL_TRANSFER -> "raw_tcp_partial_transfer"
+    RawTcpFailure.TIMEOUT -> "raw_tcp_timeout"
+    RawTcpFailure.RECEIVER_STORAGE_FULL -> "raw_tcp_receiver_storage_full"
+    RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE -> "raw_tcp_receiver_storage_unavailable"
+    RawTcpFailure.RECEIVER_WRITE_FAILED -> "raw_tcp_receiver_write_failed"
+    RawTcpFailure.SOURCE_READ_FAILED -> "raw_tcp_source_read_failed"
+    RawTcpFailure.IO_ERROR -> "raw_tcp_io_error"
 }
 
 enum class IncomingUploadFailure {
@@ -233,6 +419,103 @@ private data class IncomingFileWrite(
     val handle: String,
     val expectedBytes: Long,
     val expectedSha256: String,
+    val dispatcher: String,
+    val executionContext: String,
     val hasher: Sha256Hasher = Sha256Hasher(),
-    var bytesWritten: Long = 0L
+    val startedAt: TimeMark = TimeSource.Monotonic.markNow(),
+    var bytesWritten: Long = 0L,
+    var chunkCount: Long = 0L,
+    var platformWriteNanos: Long = 0L,
+    var hashNanos: Long = 0L,
+    var progressNanos: Long = 0L,
+    var progressCallbacks: Long = 0L,
+    val distinctProgressPercents: MutableSet<Int> = mutableSetOf()
 )
+
+private fun IncomingFileWrite.logSummary(
+    offerId: String,
+    fileIndex: Int,
+    outcome: String,
+    finalizeNanos: Long
+) {
+    val commonDetails =
+        "transferId=$offerId fileIndex=$fileIndex chunks=$chunkCount outcome=$outcome"
+    TransferDiagnostics.log(
+        stage = "receiver_platform_write",
+        bytes = bytesWritten,
+        elapsedNanos = platformWriteNanos,
+        bufferBytes = FILE_STREAM_BUFFER_BYTES,
+        dispatcher = dispatcher,
+        streamed = true,
+        fullFileInMemory = false,
+        base64 = false,
+        stringEncoding = false,
+        json = false,
+        multipart = false,
+        executionContext = executionContext,
+        details = commonDetails
+    )
+    TransferDiagnostics.log(
+        stage = "receiver_sha256",
+        bytes = bytesWritten,
+        elapsedNanos = hashNanos,
+        bufferBytes = FILE_STREAM_BUFFER_BYTES,
+        dispatcher = dispatcher,
+        streamed = true,
+        fullFileInMemory = false,
+        base64 = false,
+        stringEncoding = false,
+        json = false,
+        multipart = false,
+        executionContext = executionContext,
+        details = commonDetails
+    )
+    TransferDiagnostics.log(
+        stage = "receiver_file_finalize",
+        bytes = bytesWritten,
+        elapsedNanos = finalizeNanos,
+        bufferBytes = FILE_STREAM_BUFFER_BYTES,
+        dispatcher = dispatcher,
+        streamed = true,
+        fullFileInMemory = false,
+        base64 = false,
+        stringEncoding = false,
+        json = false,
+        multipart = false,
+        executionContext = executionContext,
+        details = commonDetails
+    )
+    TransferDiagnostics.log(
+        stage = "receiver_progress_callbacks",
+        bytes = bytesWritten,
+        elapsedNanos = progressNanos,
+        bufferBytes = FILE_STREAM_BUFFER_BYTES,
+        dispatcher = dispatcher,
+        streamed = true,
+        fullFileInMemory = false,
+        base64 = false,
+        stringEncoding = false,
+        json = false,
+        multipart = false,
+        executionContext = executionContext,
+        details = "$commonDetails progressCallbacks=$progressCallbacks" +
+            " distinctProgress=${distinctProgressPercents.size}"
+    )
+    TransferDiagnostics.log(
+        stage = "receiver_file_total",
+        bytes = bytesWritten,
+        elapsedNanos = startedAt.elapsedNow().inWholeNanoseconds,
+        bufferBytes = FILE_STREAM_BUFFER_BYTES,
+        dispatcher = dispatcher,
+        streamed = true,
+        fullFileInMemory = false,
+        base64 = false,
+        stringEncoding = false,
+        json = false,
+        multipart = false,
+        executionContext = executionContext,
+        details = commonDetails
+    )
+}
+
+private const val FILE_STREAM_BUFFER_BYTES = 1024 * 1024

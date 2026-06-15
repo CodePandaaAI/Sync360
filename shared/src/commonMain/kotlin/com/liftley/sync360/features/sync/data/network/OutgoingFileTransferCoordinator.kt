@@ -4,14 +4,17 @@ import com.liftley.sync360.core.security.SessionAuth
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FilePreviewDto
+import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
+import kotlin.time.TimeSource
 
 class OutgoingFileTransferCoordinator(
     private val localDevice: DeviceProfile,
     private val httpClient: HttpSyncClient,
-    private val fileTransferManager: FileTransferManager
+    private val fileTransferManager: FileTransferManager,
+    private val rawTcpFileTransport: RawTcpFileTransport = RawTcpFileTransport()
 ) {
     fun previews(files: List<PickedFile>): List<TransferFilePreview> {
         return files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) }
@@ -26,8 +29,29 @@ class OutgoingFileTransferCoordinator(
         onProgress: (percent: Int) -> Unit,
         onVerifying: () -> Unit
     ): FileSendResult {
+        val transferStarted = TimeSource.Monotonic.markNow()
+        val totalBytes = files.sumOf { it.sizeBytes }
+        fun logEndToEnd(outcome: String) {
+            TransferDiagnostics.log(
+                stage = "sender_transfer_end_to_end",
+                bytes = totalBytes,
+                elapsedNanos = transferStarted.elapsedNow().inWholeNanoseconds,
+                bufferBytes = TRANSFER_BUFFER_BYTES,
+                dispatcher = "Repository CoroutineScope(Dispatchers.Default) + nested IO/CIO",
+                streamed = true,
+                fullFileInMemory = false,
+                base64 = false,
+                stringEncoding = false,
+                json = false,
+                multipart = false,
+                details = "transferId=$offerId files=${files.size} outcome=$outcome"
+            )
+        }
         val preparedFiles = fileTransferManager.prepareOutgoingFiles(files)
-            ?: return FileSendResult.Failure(FileSendFailure.SOURCE_UNAVAILABLE)
+            ?: run {
+                logEndToEnd("prepare_failure")
+                return FileSendResult.Failure(FileSendFailure.SOURCE_UNAVAILABLE)
+            }
         val offerAuth = SessionAuth.create(
             sessionToken = sessionToken,
             purpose = "file_offer",
@@ -46,18 +70,43 @@ class OutgoingFileTransferCoordinator(
             signature = offerAuth.signature
         )
 
+        val offerStarted = TimeSource.Monotonic.markNow()
         val notified = httpClient.sendFileOffer(peerHost, peerPort, offer)
-        if (notified is HttpTransportResult.Failure) return notified.toFileSendFailure()
-
-        val uploaded = fileTransferManager.uploadOutgoingFiles(
-            peerHost,
-            peerPort,
-            offerId,
-            preparedFiles.map { it.file },
-            sessionToken,
-            onProgress
+        val offerAccepted = notified as? FileOfferTransportResult.Accepted
+        TransferDiagnostics.log(
+            stage = "sender_file_offer_control",
+            bytes = 0L,
+            elapsedNanos = offerStarted.elapsedNow().inWholeNanoseconds,
+            bufferBytes = 0,
+            dispatcher = "Ktor CIO client",
+            streamed = false,
+            fullFileInMemory = false,
+            base64 = false,
+            stringEncoding = false,
+            json = true,
+            multipart = false,
+            details = "transferId=$offerId files=${files.size}" +
+                " outcome=${if (offerAccepted != null) "success" else "failure"}"
         )
-        if (uploaded is HttpTransportResult.Failure) return uploaded.toFileSendFailure()
+        if (offerAccepted == null) {
+            logEndToEnd("offer_failure")
+            return (notified as FileOfferTransportResult.Failure).transport.toFileSendFailure()
+        }
+
+        val endpoint = offerAccepted.response
+        val uploaded = fileTransferManager.uploadOutgoingFilesRaw(
+            rawTransport = rawTcpFileTransport,
+            serverIp = requireNotNull(endpoint.rawTcpHost),
+            serverPort = requireNotNull(endpoint.rawTcpPort),
+            offerId = offerId,
+            transferToken = requireNotNull(endpoint.transferToken),
+            files = preparedFiles.map { it.file },
+            onProgress = onProgress
+        )
+        if (uploaded is HttpTransportResult.Failure) {
+            logEndToEnd("upload_failure")
+            return uploaded.toFileSendFailure()
+        }
         onVerifying()
 
         val completeAuth = SessionAuth.create(
@@ -65,6 +114,7 @@ class OutgoingFileTransferCoordinator(
             purpose = "file_complete",
             parts = listOf(offerId, localDevice.id)
         )
+        val completeStarted = TimeSource.Monotonic.markNow()
         val completed = httpClient.sendFileComplete(
             peerHost,
             peerPort,
@@ -77,9 +127,26 @@ class OutgoingFileTransferCoordinator(
                 signature = completeAuth.signature
             )
         )
+        TransferDiagnostics.log(
+            stage = "sender_file_complete_control",
+            bytes = 0L,
+            elapsedNanos = completeStarted.elapsedNow().inWholeNanoseconds,
+            bufferBytes = 0,
+            dispatcher = "Ktor CIO client",
+            streamed = false,
+            fullFileInMemory = false,
+            base64 = false,
+            stringEncoding = false,
+            json = true,
+            multipart = false,
+            details = "transferId=$offerId" +
+                " outcome=${if (completed is HttpTransportResult.Success) "success" else "failure"}"
+        )
         return if (completed is HttpTransportResult.Success) {
+            logEndToEnd("success")
             FileSendResult.Success
         } else {
+            logEndToEnd("complete_failure")
             (completed as HttpTransportResult.Failure).toFileSendFailure()
         }
     }
@@ -96,6 +163,10 @@ class OutgoingFileTransferCoordinator(
                 listOf(file.name, file.mimeType, file.sizeBytes.toString(), prepared.sha256)
             }
     }
+
+    private companion object {
+        const val TRANSFER_BUFFER_BYTES = 1024 * 1024
+    }
 }
 
 sealed interface FileSendResult {
@@ -108,6 +179,8 @@ enum class FileSendFailure {
     REMOTE_STORAGE_FULL,
     REMOTE_STORAGE_UNAVAILABLE,
     INTEGRITY_FAILED,
+    TIMED_OUT,
+    RECEIVER_UNAVAILABLE,
     NETWORK_FAILED
 }
 
@@ -117,6 +190,8 @@ private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Fail
         HttpTransportError.REMOTE_STORAGE_FULL -> FileSendFailure.REMOTE_STORAGE_FULL
         HttpTransportError.REMOTE_STORAGE_UNAVAILABLE -> FileSendFailure.REMOTE_STORAGE_UNAVAILABLE
         HttpTransportError.INTEGRITY_FAILED -> FileSendFailure.INTEGRITY_FAILED
+        HttpTransportError.TIMEOUT -> FileSendFailure.TIMED_OUT
+        HttpTransportError.UNREACHABLE -> FileSendFailure.RECEIVER_UNAVAILABLE
         else -> FileSendFailure.NETWORK_FAILED
     }
     return FileSendResult.Failure(reason)

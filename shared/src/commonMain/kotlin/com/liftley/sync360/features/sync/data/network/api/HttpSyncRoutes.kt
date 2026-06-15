@@ -12,7 +12,4 @@ internal object HttpSyncRoutes {
     const val TextMessage = "/api/message/text"
     const val FileOffer = "/api/file/offer"
     const val FileComplete = "/api/file/complete"
-    const val FileUploadPattern = "/api/file/upload/{offerId}/{fileIndex}"
-
-    fun fileUpload(offerId: String, fileIndex: Int): String = "/api/file/upload/$offerId/$fileIndex"
 }

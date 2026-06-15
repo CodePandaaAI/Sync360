@@ -187,20 +187,6 @@ internal class SessionAuthenticator(
         )
     }
 
-    fun verifyFileUpload(
-        sessionToken: String,
-        authFields: SessionAuthFields,
-        offerId: String,
-        fileIndex: Int
-    ): Boolean {
-        return verifyAuth(
-            fields = authFields,
-            sessionToken = sessionToken,
-            purpose = FILE_UPLOAD,
-            parts = listOf(offerId, fileIndex.toString())
-        )
-    }
-
     fun clearReplayHistory() {
         untrustedConnectReplayCache.clear()
         approvedSessionReplayCache.clear()
@@ -244,7 +230,6 @@ internal class SessionAuthenticator(
         const val TEXT_MESSAGE = "text_message"
         const val FILE_OFFER = "file_offer"
         const val FILE_COMPLETE = "file_complete"
-        const val FILE_UPLOAD = "file_upload"
     }
 }
 

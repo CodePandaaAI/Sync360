@@ -9,6 +9,10 @@ actual class Sha256Hasher actual constructor() {
         digest.update(bytes)
     }
 
+    actual fun update(bytes: ByteArray, offset: Int, length: Int) {
+        digest.update(bytes, offset, length)
+    }
+
     actual fun digestHex(): String =
         digest.digest().joinToString("") { byte -> "%02x".format(byte.toInt() and 0xff) }
 }

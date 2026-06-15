@@ -1,11 +1,11 @@
 package com.liftley.sync360.features.sync.data.network.api
 
 object SyncProtocol {
-    const val VERSION = 1
+    const val VERSION = 2
 
     val capabilities = listOf(
         "text",
-        "file-stream",
+        "raw-file-v1",
         "sha256"
     )
 
