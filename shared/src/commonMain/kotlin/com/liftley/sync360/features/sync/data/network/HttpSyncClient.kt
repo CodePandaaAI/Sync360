@@ -1,7 +1,7 @@
 package com.liftley.sync360.features.sync.data.network
 
-import com.liftley.sync360.core.debug.agentDebugLog
 import com.liftley.sync360.features.sync.data.network.api.*
+import com.liftley.sync360.core.security.SessionAuthFields
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.HttpTimeout
@@ -35,7 +35,7 @@ class HttpSyncClient(private val port: Int = 8080) {
         }
     }
 
-    /** Binary content client - no ContentNegotiation to prevent body buffering. */
+    /** Binary content client: no ContentNegotiation, so file bodies stream as raw bytes. */
     private val binaryHttpClient = HttpClient(CIO) {
         install(HttpTimeout) {
             requestTimeoutMillis = HttpTimeout.INFINITE_TIMEOUT_MS
@@ -50,22 +50,22 @@ class HttpSyncClient(private val port: Int = 8080) {
     private fun buildUrl(ip: String, path: String): String = "http://$ip:$port$path"
 
     suspend fun sendConnectRequest(ip: String, request: ConnectRequestDto): Boolean =
-        post(ip, "/api/connect/request", request)
+        post(ip, HttpSyncRoutes.ConnectRequest, request)
 
     suspend fun sendConnectAccept(ip: String, accept: ConnectAcceptDto): Boolean =
-        post(ip, "/api/connect/accept", accept)
+        post(ip, HttpSyncRoutes.ConnectAccept, accept)
 
-    suspend fun sendConnectReject(ip: String): Boolean =
-        post(ip, "/api/connect/reject", "") // Empty body
+    suspend fun sendConnectReject(ip: String, reject: ConnectRejectDto): Boolean =
+        post(ip, HttpSyncRoutes.ConnectReject, reject)
 
     suspend fun sendTextMessage(ip: String, message: MessageDto): Boolean =
-        post(ip, "/api/message/text", message)
+        post(ip, HttpSyncRoutes.TextMessage, message)
 
     suspend fun sendFileOffer(ip: String, offer: FileOfferDto): Boolean =
-        post(ip, "/api/file/offer", offer)
+        post(ip, HttpSyncRoutes.FileOffer, offer)
 
     suspend fun sendFileComplete(ip: String, complete: FileCompleteDto): Boolean =
-        post(ip, "/api/file/complete", complete)
+        post(ip, HttpSyncRoutes.FileComplete, complete)
 
     private suspend inline fun <reified T> post(ip: String, path: String, body: T): Boolean {
         return try {
@@ -85,20 +85,18 @@ class HttpSyncClient(private val port: Int = 8080) {
         offerId: String,
         fileIndex: Int,
         file: com.liftley.sync360.features.sync.domain.model.PickedFile,
+        sessionToken: String,
+        authFields: SessionAuthFields,
         platformOperations: com.liftley.sync360.core.platform.PlatformOperations,
         onProgress: (bytesSent: Int) -> Unit
     ): Boolean {
-        // #region agent log
-        agentDebugLog(
-            location = "HttpSyncClient.kt:uploadFileChunked",
-            message = "upload start",
-            hypothesisId = "A",
-            data = mapOf("fileName" to file.name, "fileSize" to file.sizeBytes.toString())
-        )
-        // #endregion
         return try {
-            val url = buildUrl(ip, "/api/file/upload/$offerId/$fileIndex")
+            val url = buildUrl(ip, HttpSyncRoutes.fileUpload(offerId, fileIndex))
             val response = binaryHttpClient.post(url) {
+                header(HttpSyncRoutes.SessionTokenHeader, sessionToken)
+                header(HttpSyncRoutes.IssuedAtHeader, authFields.issuedAtMillis.toString())
+                header(HttpSyncRoutes.NonceHeader, authFields.nonce)
+                header(HttpSyncRoutes.SignatureHeader, authFields.signature)
                 setBody(object : OutgoingContent.WriteChannelContent() {
                     override val contentType = ContentType.Application.OctetStream
                     override val contentLength = file.sizeBytes
@@ -111,24 +109,8 @@ class HttpSyncClient(private val port: Int = 8080) {
                     }
                 })
             }
-            // #region agent log
-            agentDebugLog(
-                location = "HttpSyncClient.kt:uploadFileChunked",
-                message = "upload finished",
-                hypothesisId = "A",
-                data = mapOf("fileName" to file.name, "status" to response.status.value.toString())
-            )
-            // #endregion
             response.status.isSuccess()
         } catch (e: Exception) {
-            // #region agent log
-            agentDebugLog(
-                location = "HttpSyncClient.kt:uploadFileChunked",
-                message = "upload exception",
-                hypothesisId = "A",
-                data = mapOf("fileName" to file.name, "error" to (e.message ?: e::class.simpleName.orEmpty()))
-            )
-            // #endregion
             println("HttpSyncClient: Upload failed for file ${file.name} to $ip - ${e.message}")
             false
         }

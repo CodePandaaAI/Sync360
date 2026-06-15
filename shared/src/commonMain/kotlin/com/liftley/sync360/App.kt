@@ -13,6 +13,8 @@ import com.liftley.sync360.core.designsystem.AppTheme
 import com.liftley.sync360.features.sync.presentation.DesktopDashboard
 import com.liftley.sync360.features.sync.presentation.SyncScreen
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
+import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationViewModel
+import com.liftley.sync360.features.sync.presentation.navigation.SyncRoute
 import org.koin.compose.KoinContext
 import org.koin.compose.koinInject
 import org.koin.core.parameter.parametersOf
@@ -37,18 +39,26 @@ fun App(
                         )
                 ) {
                     val viewModel: SyncViewModel = koinInject { parametersOf(isDesktop) }
+                    val navigationViewModel: SyncNavigationViewModel = koinInject()
                     val uiState by viewModel.uiState.collectAsState()
+                    val backStack by navigationViewModel.backStack.collectAsState()
 
-                    if (isDesktop) {
-                        DesktopDashboard(
-                            uiState = uiState,
-                            onEvent = { viewModel.onEvent(it) }
-                        )
-                    } else {
-                        SyncScreen(
-                            uiState = uiState,
-                            onEvent = { viewModel.onEvent(it) }
-                        )
+                    when (backStack.last()) {
+                        SyncRoute.Home -> {
+                            if (isDesktop) {
+                                DesktopDashboard(
+                                    uiState = uiState,
+                                    uiEffects = viewModel.uiEffects,
+                                    onEvent = { viewModel.onEvent(it) }
+                                )
+                            } else {
+                                SyncScreen(
+                                    uiState = uiState,
+                                    uiEffects = viewModel.uiEffects,
+                                    onEvent = { viewModel.onEvent(it) }
+                                )
+                            }
+                        }
                     }
                 }
             }

@@ -14,21 +14,21 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.components.*
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun DesktopDashboard(
     uiState: SyncUiState,
+    uiEffects: Flow<SyncUiEffect>,
     onEvent: (SyncEvent) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -43,10 +43,11 @@ fun DesktopDashboard(
         }
     }
 
-    LaunchedEffect(uiState.userMessage) {
-        uiState.userMessage?.let { msg ->
-            copiedFeedbackText = msg
-            onEvent(SyncEvent.ClearUserMessage)
+    LaunchedEffect(uiEffects) {
+        uiEffects.collect { effect ->
+            when (effect) {
+                is SyncUiEffect.ShowMessage -> copiedFeedbackText = effect.message
+            }
         }
     }
 
@@ -58,15 +59,15 @@ fun DesktopDashboard(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(28.dp),
-            horizontalArrangement = Arrangement.spacedBy(24.dp)
+                .padding(24.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Column(
                 modifier = Modifier
                     .weight(1.35f)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(22.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 DesktopHero(activeDevice = activeDevice)
 
@@ -80,9 +81,6 @@ fun DesktopDashboard(
                         onScan = { onEvent(SyncEvent.TriggerScan) }
                     )
                 } else {
-                    uiState.incomingFileOffer?.let { offer ->
-                        IncomingFileOfferCard(offer = offer, onEvent = onEvent)
-                    }
                     uiState.receivedFileBatch?.let { batch ->
                         ReceivedFileBatchCard(batch = batch, onEvent = onEvent)
                     }
@@ -103,7 +101,7 @@ fun DesktopDashboard(
                     .widthIn(min = 360.dp, max = 460.dp)
                     .fillMaxHeight()
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(18.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 DesktopDevicesPanel(
                     uiState = uiState,
@@ -114,9 +112,8 @@ fun DesktopDashboard(
                 if (activeDevice != null) {
                     ClipboardHistorySection(
                         textsList = activeStream?.latestTexts ?: emptyList(),
-                        onCopyClick = { clipboard ->
+                        onCopyClick = { _ ->
                             onEvent(SyncEvent.CopyClipboard(activeDevice.id))
-                            copiedFeedbackText = clipboard.text
                         }
                     )
                 }
@@ -152,19 +149,13 @@ fun DesktopDashboard(
 
 @Composable
 private fun DesktopHero(activeDevice: DeviceProfile?) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = "Sync360",
-            style = MaterialTheme.typography.displayMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurface,
-            letterSpacing = 0.sp
-        )
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Sync360TopBarTitle(title = "Sync360")
         Text(
             text = activeDevice?.let { "Connected with ${it.name}" }
-                ?: "Choose a nearby device to share privately over your local network.",
+                ?: "Choose a nearby device or connect by IP.",
             style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurface
         )
     }
 }
@@ -175,18 +166,14 @@ private fun SectionLabel(text: String) {
         text = text,
         style = MaterialTheme.typography.titleSmall,
         fontWeight = FontWeight.Bold,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
+        color = MaterialTheme.colorScheme.onSurface
     )
 }
 
 @Composable
 private fun DesktopIdentityCard(serverIp: String) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        color = colorScheme.surface
-    ) {
+    Sync360Surface(cornerRadius = 24.dp) {
         Row(
             modifier = Modifier.padding(18.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -198,7 +185,7 @@ private fun DesktopIdentityCard(serverIp: String) {
                 }
             }
             Column(Modifier.weight(1f)) {
-                Text("This desktop", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text("This desktop", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                 Text(
                     text = "Visible on local Wi-Fi",
                     style = MaterialTheme.typography.bodyMedium,
@@ -224,13 +211,9 @@ private fun DesktopReadySurface(
     onScan: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        color = colorScheme.surface
-    ) {
+    Sync360Surface(cornerRadius = 24.dp) {
         Column(
-            modifier = Modifier.padding(36.dp),
+            modifier = Modifier.padding(32.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(18.dp)
         ) {
@@ -246,12 +229,13 @@ private fun DesktopReadySurface(
             Text(
                 text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
                 style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Text(
                 text = "Keep Sync360 open on your other device. Found devices appear in the panel on the right.",
                 style = MaterialTheme.typography.bodyLarge,
-                color = colorScheme.onSurfaceVariant
+                color = colorScheme.onSurface
             )
             Button(
                 onClick = onScan,
@@ -273,14 +257,11 @@ private fun DesktopDevicesPanel(
     onEvent: (SyncEvent) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
-    val nearby = uiState.nearbyDevices.filter { it.id !in pairedIds }
+    var manualHost by remember { mutableStateOf("") }
+    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
+    val nearby = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(30.dp),
-        color = colorScheme.surface
-    ) {
+    Sync360Surface(cornerRadius = 24.dp) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -288,28 +269,34 @@ private fun DesktopDevicesPanel(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column {
-                    Text("Devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text("Devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         text = if (activeDevice == null) "Pick a nearby device" else "Connected session",
                         style = MaterialTheme.typography.bodyMedium,
-                        color = colorScheme.onSurfaceVariant
+                        color = colorScheme.onSurface
                     )
                 }
-                FilledTonalButton(
-                    onClick = { onEvent(SyncEvent.TriggerScan) },
-                    shape = CircleShape,
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp)
-                ) {
-                    if (uiState.isScanningForDevices) {
+                if (uiState.isScanningForDevices) {
+                    Sync360Surface(
+                        modifier = Modifier.size(48.dp),
+                        cornerRadius = 100.dp,
+                        fillMaxWidth = false,
+                        color = colorScheme.surface
+                    ) {
                         CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                    } else {
-                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                     }
+                } else {
+                    Sync360IconButton(
+                        onClick = { onEvent(SyncEvent.TriggerScan) },
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Scan again",
+                        colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)
+                    )
                 }
             }
 
             if (uiState.connectedDevices.isNotEmpty()) {
-                DeviceGroup("Paired this session") {
+                DeviceGroup("This session") {
                     uiState.connectedDevices.forEach { device ->
                         DesktopDeviceListRow(
                             device = device,
@@ -325,12 +312,12 @@ private fun DesktopDevicesPanel(
 
             DeviceGroup("Nearby devices") {
                 if (nearby.isEmpty()) {
-                    Surface(shape = RoundedCornerShape(22.dp), color = colorScheme.surfaceContainer) {
+                    Sync360Surface(cornerRadius = 24.dp, color = colorScheme.surfaceContainer) {
                         Text(
                             text = if (uiState.isScanningForDevices) "Searching local network..." else "No nearby devices found.",
                             modifier = Modifier.padding(16.dp),
                             style = MaterialTheme.typography.bodyMedium,
-                            color = colorScheme.onSurfaceVariant
+                            color = colorScheme.onSurface
                         )
                     }
                 } else {
@@ -345,11 +332,34 @@ private fun DesktopDevicesPanel(
                 }
             }
 
+            DeviceGroup("Connect by IP") {
+                OutlinedTextField(
+                    value = manualHost,
+                    onValueChange = { manualHost = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("IP address") },
+                    shape = RoundedCornerShape(24.dp)
+                )
+                Button(
+                    onClick = {
+                        onEvent(SyncEvent.RequestConnectByHost(manualHost))
+                        manualHost = ""
+                    },
+                    enabled = manualHost.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    contentPadding = PaddingValues(vertical = 12.dp)
+                ) {
+                    Text("Connect", fontWeight = FontWeight.Bold)
+                }
+            }
+
             if (activeDevice != null) {
                 OutlinedButton(
                     onClick = { onEvent(SyncEvent.Disconnect) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(24.dp),
                     contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Text("Disconnect", fontWeight = FontWeight.Bold)
@@ -369,7 +379,7 @@ private fun DeviceGroup(
             text = title,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurface
         )
         content()
     }
@@ -383,12 +393,10 @@ private fun DesktopDeviceListRow(
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
+    Sync360Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(22.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(22.dp),
+        cornerRadius = 24.dp,
         color = if (selected) colorScheme.primaryContainer else colorScheme.surfaceContainer
     ) {
         Row(

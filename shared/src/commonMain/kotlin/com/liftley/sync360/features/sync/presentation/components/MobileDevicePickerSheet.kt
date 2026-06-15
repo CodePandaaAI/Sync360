@@ -10,12 +10,16 @@ import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.Spacing
 import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
@@ -34,14 +38,14 @@ private fun isActivelyConnected(device: DeviceProfile, uiState: SyncUiState): Bo
         (!device.connectionHost.isNullOrBlank() && device.connectionHost == activeDevice.connectionHost)
 }
 
-private fun isPairedDevice(device: DeviceProfile, uiState: SyncUiState): Boolean {
+private fun isSessionDevice(device: DeviceProfile, uiState: SyncUiState): Boolean {
     return uiState.connectedDevices.any { it.id == device.id }
 }
 
 private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): String {
     return when {
         isActivelyConnected(device, uiState) -> "Connected"
-        isPairedDevice(device, uiState) -> "Use"
+        isSessionDevice(device, uiState) -> "Use"
         else -> "Connect"
     }
 }
@@ -50,13 +54,15 @@ private fun deviceActionLabel(device: DeviceProfile, uiState: SyncUiState): Stri
 fun MobileDevicePickerSheet(
     uiState: SyncUiState,
     onDismiss: () -> Unit,
-    onSelectPaired: (String) -> Unit,
+    onSelectSessionDevice: (String) -> Unit,
     onPairNearby: (String) -> Unit,
+    onManualConnect: (String) -> Unit,
     onDisconnect: () -> Unit
 ) {
-    val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
+    var manualHost by remember { mutableStateOf("") }
+    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
     val connectedDevices = uiState.connectedDevices
-    val nearbyOnly = uiState.nearbyDevices.filter { it.id !in pairedIds }
+    val nearbyOnly = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -67,9 +73,9 @@ fun MobileDevicePickerSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = Spacing.lg)
-                .padding(bottom = Spacing.xl),
-            verticalArrangement = Arrangement.spacedBy(Spacing.md)
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = if (uiState.activeDeviceId == null) "Nearby devices" else "Connected device",
@@ -80,7 +86,7 @@ fun MobileDevicePickerSheet(
             if (connectedDevices.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     Text(
-                        text = "Paired Devices",
+                        text = "This session",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Medium
@@ -94,8 +100,8 @@ fun MobileDevicePickerSheet(
                             enabled = !activelyConnected,
                             onClick = {
                                 if (activelyConnected) return@DeviceRowItem
-                                if (isPairedDevice(device, uiState)) {
-                                    onSelectPaired(device.id)
+                                if (isSessionDevice(device, uiState)) {
+                                    onSelectSessionDevice(device.id)
                                 } else {
                                     onPairNearby(device.id)
                                 }
@@ -109,7 +115,7 @@ fun MobileDevicePickerSheet(
                         onDismiss()
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(SyncDimens.cornerSmall),
+                    shape = RoundedCornerShape(24.dp),
                     contentPadding = PaddingValues(vertical = Spacing.sm + Spacing.xs)
                 ) {
                     Text("Disconnect", fontWeight = FontWeight.SemiBold)
@@ -133,7 +139,7 @@ fun MobileDevicePickerSheet(
                 )
                 if (nearbyOnly.isEmpty()) {
                     Text(
-                        text = "Searching for nearby devices…",
+                        text = "Searching for nearby devices...",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -149,6 +155,36 @@ fun MobileDevicePickerSheet(
                     }
                 }
             }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+            Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                Text(
+                    text = "Connect by IP",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.Medium
+                )
+                OutlinedTextField(
+                    value = manualHost,
+                    onValueChange = { manualHost = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text("IP address") },
+                    shape = RoundedCornerShape(24.dp)
+                )
+                Button(
+                    onClick = {
+                        onManualConnect(manualHost)
+                        onDismiss()
+                    },
+                    enabled = manualHost.isNotBlank(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text("Connect", fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
@@ -162,15 +198,13 @@ private fun DeviceRowItem(
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
+    Sync360Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(SyncDimens.cornerMedium))
             .then(
                 if (enabled) Modifier.clickable(onClick = onClick)
                 else Modifier
             ),
-        shape = RoundedCornerShape(SyncDimens.cornerMedium),
+        cornerRadius = 24.dp,
         color = if (isSelected) colorScheme.primaryContainer else colorScheme.surfaceContainerHigh
     ) {
         Row(

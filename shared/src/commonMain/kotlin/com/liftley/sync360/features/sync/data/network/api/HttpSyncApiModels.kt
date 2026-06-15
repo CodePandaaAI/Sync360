@@ -7,7 +7,13 @@ data class ConnectRequestDto(
     val deviceId: String,
     val deviceName: String,
     val deviceType: String,
-    val senderIp: String
+    val senderIp: String,
+    val sessionToken: String,
+    val issuedAtMillis: Long,
+    val nonce: String,
+    val signature: String,
+    val protocolVersion: Int = 1,
+    val publicKey: String? = null
 )
 
 @Serializable
@@ -15,7 +21,22 @@ data class ConnectAcceptDto(
     val deviceId: String,
     val deviceName: String,
     val deviceType: String,
-    val senderIp: String
+    val senderIp: String,
+    val sessionToken: String,
+    val issuedAtMillis: Long,
+    val nonce: String,
+    val signature: String,
+    val protocolVersion: Int = 1,
+    val publicKey: String? = null
+)
+
+@Serializable
+data class ConnectRejectDto(
+    val senderDeviceId: String,
+    val sessionToken: String? = null,
+    val issuedAtMillis: Long = 0L,
+    val nonce: String = "",
+    val signature: String = ""
 )
 
 @Serializable
@@ -24,7 +45,11 @@ data class MessageDto(
     val senderDeviceId: String,
     val senderName: String,
     val content: String,
-    val timestamp: Long
+    val timestamp: Long,
+    val sessionToken: String,
+    val issuedAtMillis: Long,
+    val nonce: String,
+    val signature: String
 )
 
 @Serializable
@@ -39,23 +64,19 @@ data class FileOfferDto(
     val offerId: String,
     val senderDeviceId: String,
     val senderName: String,
-    val files: List<FilePreviewDto>
-)
-
-@Serializable
-data class FileAcceptDto(
-    val offerId: String,
-    val senderDeviceId: String
-)
-
-@Serializable
-data class FileRejectDto(
-    val offerId: String,
-    val senderDeviceId: String
+    val files: List<FilePreviewDto>,
+    val sessionToken: String,
+    val issuedAtMillis: Long,
+    val nonce: String,
+    val signature: String
 )
 
 @Serializable
 data class FileCompleteDto(
     val offerId: String,
-    val senderDeviceId: String
+    val senderDeviceId: String,
+    val sessionToken: String,
+    val issuedAtMillis: Long,
+    val nonce: String,
+    val signature: String
 )

@@ -28,6 +28,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         try {
             val intent = Intent().apply {
                 setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
+                putExtra("sync360_service_mode", hostIp)
             }
             context.startForegroundService(intent)
         } catch (e: Exception) {

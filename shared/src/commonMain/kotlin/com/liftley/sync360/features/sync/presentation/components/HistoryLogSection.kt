@@ -3,7 +3,6 @@ package com.liftley.sync360.features.sync.presentation.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Icon
@@ -13,11 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.Spacing
-import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 
 @Composable
@@ -40,14 +38,10 @@ fun ClipboardHistorySection(
         )
 
         if (received.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(SyncDimens.cornerMedium),
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
+            Sync360Surface(color = MaterialTheme.colorScheme.surface) {
                 Text(
                     text = "Received clipboard text will appear here.",
-                    modifier = Modifier.padding(Spacing.md),
+                    modifier = Modifier.padding(Spacing.lg),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -72,12 +66,10 @@ private fun ClipboardItemCard(
     isReceived: Boolean,
     onCopyClick: (ClipboardEntry) -> Unit
 ) {
-    Surface(
+    Sync360Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(SyncDimens.cornerMedium))
             .clickable { onCopyClick(clipboard) },
-        shape = RoundedCornerShape(SyncDimens.cornerMedium),
+        cornerRadius = 24.dp,
         color = if (isReceived) {
             MaterialTheme.colorScheme.surfaceContainerHigh
         } else {
@@ -121,7 +113,7 @@ private fun ClipboardItemCard(
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant
                 },
-                modifier = Modifier.size(SyncDimens.touchTarget * 0.65f)
+                modifier = Modifier.size(36.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(

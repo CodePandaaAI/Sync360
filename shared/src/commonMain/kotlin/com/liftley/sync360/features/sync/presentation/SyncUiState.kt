@@ -3,8 +3,8 @@ package com.liftley.sync360.features.sync.presentation
 import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceStream
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.IncomingFileOffer
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
+import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
@@ -20,17 +20,16 @@ data class SyncUiState(
     val outgoingText: String = "",
     val latestTexts: List<ClipboardEntry> = emptyList(),
     val selectedFiles: List<PickedFile> = emptyList(),
-    val incomingFileOffer: IncomingFileOffer? = null,
     val fileTransferProgress: FileTransferProgress? = null,
+    val fileTransferFailure: FileTransferFailure? = null,
     val receivedFileBatch: ReceivedFileBatch? = null,
-    val userMessage: String? = null,
     val localNetworkHealthy: Boolean = true
 ) {
     // Computed legacy compatibility layer to avoid breaking UI components
     val connectedDevices: List<DeviceProfile> get() = activeDevice?.let { listOf(it) } ?: emptyList()
     val activeDeviceId: String? get() = activeDevice?.id
     val activeClientCount: Int get() = if (activeDevice != null) 1 else 0
-    val pendingPairingRequests: List<DeviceProfile> get() = pendingIncomingRequest?.let { listOf(it) } ?: emptyList()
+    val pendingConnectionRequests: List<DeviceProfile> get() = pendingIncomingRequest?.let { listOf(it) } ?: emptyList()
     val pendingConnectDevice: DeviceProfile? get() = pendingOutgoingRequest
 
     val deviceStreams: Map<String, DeviceStream> get() = activeDevice?.let { device ->

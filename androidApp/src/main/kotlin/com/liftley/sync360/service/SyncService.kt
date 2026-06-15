@@ -18,13 +18,15 @@ class SyncService : Service() {
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var multicastLock: WifiManager.MulticastLock? = null
+    private var serviceMode: String = MODE_CONNECTED
 
     override fun onCreate() {
         super.onCreate()
-        acquireLocks()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        serviceMode = intent?.getStringExtra(EXTRA_MODE)?.takeIf { it.isNotBlank() } ?: MODE_CONNECTED
+        acquireLocks()
         createNotificationChannel()
         val notification = createNotification()
         startForeground(NOTIFICATION_ID, notification)
@@ -39,9 +41,10 @@ class SyncService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     private fun acquireLocks() {
+        releaseLocks()
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "Sync360:WakeLock").apply {
-            acquire(15 * 60 * 1000L /*15 minutes fallback limit*/)
+            acquire(if (serviceMode == MODE_TRANSFER) TRANSFER_WAKE_LOCK_TIMEOUT_MS else SESSION_WAKE_LOCK_TIMEOUT_MS)
         }
 
         val wifiManager = applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
@@ -81,9 +84,15 @@ class SyncService : Service() {
             PendingIntent.FLAG_IMMUTABLE
         )
 
+        val text = if (serviceMode == MODE_TRANSFER) {
+            "Keeping file transfer active in background."
+        } else {
+            "Keeping active sharing session stable in background."
+        }
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Sync360 Active")
-            .setContentText("Keeping active sharing session stable in background.")
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentIntent(pendingIntent)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -93,5 +102,10 @@ class SyncService : Service() {
     companion object {
         private const val CHANNEL_ID = "sync360_service_channel"
         private const val NOTIFICATION_ID = 5001
+        private const val EXTRA_MODE = "sync360_service_mode"
+        private const val MODE_CONNECTED = "connected"
+        private const val MODE_TRANSFER = "transfer"
+        private const val SESSION_WAKE_LOCK_TIMEOUT_MS = 15 * 60 * 1000L
+        private const val TRANSFER_WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000L
     }
 }

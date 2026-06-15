@@ -4,6 +4,7 @@ import com.liftley.sync360.features.sync.data.repository.SyncRepositoryImpl
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
 import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
+import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationViewModel
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
 import com.liftley.sync360.core.platform.PlatformOperations
 import org.koin.core.context.startKoin
@@ -25,6 +26,7 @@ val commonModule = module {
 
     factory { ClearAllDataUseCase(get()) }
     factory { DisconnectAllUseCase(get()) }
+    factory { SyncNavigationViewModel() }
 
     factory { (isDesktop: Boolean) ->
         SyncViewModel(

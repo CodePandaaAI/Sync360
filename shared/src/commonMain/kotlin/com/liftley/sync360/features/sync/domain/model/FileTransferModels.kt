@@ -4,21 +4,13 @@ data class PickedFile(
     val id: String,
     val name: String,
     val mimeType: String,
-    val sizeBytes: Long,
-    val content: ByteArray? = null
+    val sizeBytes: Long
 )
 
 data class TransferFilePreview(
     val name: String,
     val mimeType: String,
     val sizeBytes: Long
-)
-
-data class IncomingFileOffer(
-    val offerId: String,
-    val senderDeviceId: String,
-    val senderName: String,
-    val files: List<TransferFilePreview>
 )
 
 data class ReceivedFileBatch(
@@ -31,6 +23,13 @@ data class FileTransferProgress(
     val peerName: String,
     val files: List<TransferFilePreview>,
     val percent: Int,
+    val direction: TransferDirection
+)
+
+data class FileTransferFailure(
+    val peerName: String,
+    val message: String,
+    val failedFileName: String? = null,
     val direction: TransferDirection
 )
 

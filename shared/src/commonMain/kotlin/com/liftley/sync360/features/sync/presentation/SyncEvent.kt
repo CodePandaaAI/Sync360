@@ -7,11 +7,12 @@ sealed interface SyncEvent {
     object Disconnect : SyncEvent
     data class SendMessage(val text: String) : SyncEvent
     data class SwitchDevice(val deviceId: String) : SyncEvent
-    data class AcceptPairing(val deviceId: String) : SyncEvent
-    data class DeclinePairing(val deviceId: String) : SyncEvent
+    data class AcceptConnection(val deviceId: String) : SyncEvent
+    data class DeclineConnection(val deviceId: String) : SyncEvent
     data class CopyClipboard(val deviceId: String) : SyncEvent
     data class UpdateOutgoingText(val text: String) : SyncEvent
     data class RequestConnect(val deviceId: String) : SyncEvent
+    data class RequestConnectByHost(val hostAddress: String) : SyncEvent
     object ConfirmConnect : SyncEvent
     object DismissConnectRequest : SyncEvent
     object PasteFromClipboard : SyncEvent
@@ -19,10 +20,8 @@ sealed interface SyncEvent {
     data class AddSelectedFiles(val files: List<PickedFile>) : SyncEvent
     object SendSelectedFiles : SyncEvent
     object ClearSelectedFiles : SyncEvent
-    data class AcceptFileOffer(val offerId: String) : SyncEvent
-    data class DeclineFileOffer(val offerId: String) : SyncEvent
     object DismissReceivedFiles : SyncEvent
-    object ClearUserMessage : SyncEvent
+    object DismissTransferFailure : SyncEvent
     data class OpenFile(val path: String) : SyncEvent
     object TriggerScan : SyncEvent
 }

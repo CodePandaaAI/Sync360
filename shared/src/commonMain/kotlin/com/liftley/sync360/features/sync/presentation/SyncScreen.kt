@@ -1,42 +1,71 @@
 package com.liftley.sync360.features.sync.presentation
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.CenterAlignedTopAppBar
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.core.designsystem.Spacing
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
-import com.liftley.sync360.features.sync.presentation.components.*
+import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
+import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
+import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
+import com.liftley.sync360.features.sync.presentation.components.MobileDevicePickerSheet
+import com.liftley.sync360.features.sync.presentation.components.ReceivedFileBatchCard
+import com.liftley.sync360.features.sync.presentation.components.SharePanel
+import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
+import kotlinx.coroutines.flow.Flow
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SyncScreen(
     uiState: SyncUiState,
+    uiEffects: Flow<SyncUiEffect>,
     onEvent: (SyncEvent) -> Unit
 ) {
     val activeDevice = uiState.activeDevice()
     val activeStream = uiState.activeDeviceId?.let { uiState.deviceStreams[it] }
     var showDevicePicker by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val pairedIds = uiState.connectedDevices.map { it.id }.toSet()
-    val visibleNearby = uiState.nearbyDevices.filter { it.id !in pairedIds }
+    val sessionDeviceIds = uiState.connectedDevices.map { it.id }.toSet()
+    val visibleNearby = uiState.nearbyDevices.filter { it.id !in sessionDeviceIds }
 
     LaunchedEffect(uiState.activeDeviceId) {
         if (uiState.activeDeviceId == null) {
@@ -44,17 +73,11 @@ fun SyncScreen(
         }
     }
 
-    var copiedFeedbackTrigger by remember { androidx.compose.runtime.mutableIntStateOf(0) }
-    LaunchedEffect(copiedFeedbackTrigger) {
-        if (copiedFeedbackTrigger > 0) {
-            snackbarHostState.showSnackbar("Copied to clipboard")
-        }
-    }
-
-    LaunchedEffect(uiState.userMessage) {
-        uiState.userMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
-            onEvent(SyncEvent.ClearUserMessage)
+    LaunchedEffect(uiEffects) {
+        uiEffects.collect { effect ->
+            when (effect) {
+                is SyncUiEffect.ShowMessage -> snackbarHostState.showSnackbar(effect.message)
+            }
         }
     }
 
@@ -79,20 +102,14 @@ fun SyncScreen(
                 .fillMaxSize()
                 .padding(innerPadding),
             contentPadding = PaddingValues(
-                horizontal = Spacing.md,
-                vertical = Spacing.md
+                top = 16.dp,
+                start = 16.dp,
+                end = 16.dp,
+                bottom = 32.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            item {
-                Text(
-                    text = "Sync360",
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
             item {
                 Text(
                     text = "You'll appear as",
@@ -121,15 +138,6 @@ fun SyncScreen(
                     )
                 }
             } else {
-                uiState.incomingFileOffer?.let { offer ->
-                    item {
-                        IncomingFileOfferCard(
-                            offer = offer,
-                            onEvent = onEvent
-                        )
-                    }
-                }
-
                 uiState.receivedFileBatch?.let { batch ->
                     item {
                         ReceivedFileBatchCard(
@@ -159,7 +167,6 @@ fun SyncScreen(
                         textsList = activeStream?.latestTexts ?: emptyList(),
                         onCopyClick = { _ ->
                             onEvent(SyncEvent.CopyClipboard(activeDevice.id))
-                            copiedFeedbackTrigger++
                         }
                     )
                 }
@@ -171,13 +178,16 @@ fun SyncScreen(
         MobileDevicePickerSheet(
             uiState = uiState,
             onDismiss = { showDevicePicker = false },
-            onSelectPaired = {
+            onSelectSessionDevice = {
                 onEvent(SyncEvent.SwitchDevice(it))
                 showDevicePicker = false
             },
             onPairNearby = {
                 onEvent(SyncEvent.RequestConnect(it))
                 showDevicePicker = false
+            },
+            onManualConnect = {
+                onEvent(SyncEvent.RequestConnectByHost(it))
             },
             onDisconnect = { onEvent(SyncEvent.Disconnect) }
         )
@@ -199,7 +209,7 @@ private fun SyncTopBar(
 
     CenterAlignedTopAppBar(
         title = {
-            DevicePill(
+            DeviceSelectorPill(
                 uiState = uiState,
                 activeDevice = activeDevice,
                 nearbyCount = nearbyCount,
@@ -215,7 +225,7 @@ private fun SyncTopBar(
 }
 
 @Composable
-private fun DevicePill(
+private fun DeviceSelectorPill(
     uiState: SyncUiState,
     activeDevice: DeviceProfile?,
     nearbyCount: Int,
@@ -227,18 +237,17 @@ private fun DevicePill(
         activeDevice != null -> activeDevice.name
         isScanning -> "Scanning"
         nearbyCount > 0 -> "$nearbyCount nearby"
-        else -> "Nearby devices"
+        else -> "Sync360"
     }
-    Surface(
+    Sync360Surface(
         modifier = Modifier
-            .clip(CircleShape)
             .clickable(onClick = onClick),
-        shape = CircleShape,
+        cornerRadius = 100.dp,
         color = colorScheme.surface,
-        tonalElevation = 1.dp
+        fillMaxWidth = false
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
@@ -278,11 +287,7 @@ private fun DevicePill(
 @Composable
 private fun LocalDeviceCard(serverIp: String) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = colorScheme.surface
-    ) {
+    Sync360Surface {
         Row(
             modifier = Modifier.padding(16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -313,15 +318,11 @@ private fun ReadyReceiveSurface(
     onOpenDevices: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onOpenDevices),
-        shape = RoundedCornerShape(28.dp),
-        color = colorScheme.surface
+    Sync360Surface(
+        modifier = Modifier.clickable(onClick = onOpenDevices)
     ) {
         Column(
-            modifier = Modifier.padding(vertical = 44.dp, horizontal = 18.dp),
+            modifier = Modifier.padding(vertical = 40.dp, horizontal = 18.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
@@ -345,7 +346,7 @@ private fun ReadyReceiveSurface(
                 color = colorScheme.onSurface
             )
             Text(
-                text = "Tap the device pill to choose who to connect with.",
+                text = "Tap the top pill to connect with another device.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant
             )

@@ -137,7 +137,7 @@ class DesktopPlatformOperations : PlatformOperations {
             val downloadsDir = File(System.getProperty("user.home"), "Downloads")
             val syncDir = File(downloadsDir, "Sync360")
             syncDir.mkdirs()
-            val selectedFile = File(syncDir, name)
+            val selectedFile = uniqueFile(syncDir, name)
             val output = selectedFile.outputStream()
             val handle = selectedFile.absolutePath
             synchronized(activeFileWrites) {
@@ -242,6 +242,21 @@ class DesktopPlatformOperations : PlatformOperations {
 
     override fun getIncomingMessagesFlow(): Flow<String>? {
         return emptyFlow()
+    }
+
+    private fun uniqueFile(directory: File, fileName: String): File {
+        val cleanName = fileName.ifBlank { "received_file" }
+        val dotIndex = cleanName.lastIndexOf('.').takeIf { it > 0 }
+        val baseName = dotIndex?.let { cleanName.substring(0, it) } ?: cleanName
+        val extension = dotIndex?.let { cleanName.substring(it) }.orEmpty()
+
+        var candidate = File(directory, cleanName)
+        var index = 1
+        while (candidate.exists()) {
+            candidate = File(directory, "$baseName ($index)$extension")
+            index += 1
+        }
+        return candidate
     }
 }
 

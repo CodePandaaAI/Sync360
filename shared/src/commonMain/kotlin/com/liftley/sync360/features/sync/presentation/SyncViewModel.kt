@@ -7,6 +7,7 @@ import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
@@ -25,6 +26,8 @@ class SyncViewModel(
         )
     )
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
+    private val _uiEffects = Channel<SyncUiEffect>(Channel.BUFFERED)
+    val uiEffects: Flow<SyncUiEffect> = _uiEffects.receiveAsFlow()
 
     init {
         repository.startSync()
@@ -32,9 +35,9 @@ class SyncViewModel(
         viewModelScope.launch {
             combine(
                 repository.activeDeviceId,
-                repository.pairedDevices
-            ) { activeId, paired ->
-                paired.firstOrNull { it.id == activeId }
+                repository.sessionDevices
+            ) { activeId, sessionDevices ->
+                sessionDevices.firstOrNull { it.id == activeId }
             }.collect { active ->
                 _uiState.update { it.copy(activeDevice = active) }
             }
@@ -65,13 +68,16 @@ class SyncViewModel(
             }
         }
         viewModelScope.launch {
-            repository.incomingFileOffer.collect { offer ->
-                _uiState.update { it.copy(incomingFileOffer = offer) }
+            repository.fileTransferProgress.collect { progress ->
+                _uiState.update { it.copy(fileTransferProgress = progress) }
             }
         }
         viewModelScope.launch {
-            repository.fileTransferProgress.collect { progress ->
-                _uiState.update { it.copy(fileTransferProgress = progress) }
+            repository.fileTransferFailure.collect { failure ->
+                _uiState.update { it.copy(fileTransferFailure = failure) }
+                if (failure != null) {
+                    showMessage(failure.message)
+                }
             }
         }
         viewModelScope.launch {
@@ -80,7 +86,7 @@ class SyncViewModel(
             }
         }
         viewModelScope.launch {
-            repository.conversationMessages.collect { messages ->
+            repository.sessionMessages.collect { messages ->
                 val texts = messages.filter { !it.isFile && !it.isFromMe }
                     .takeLast(3) // LATEST_TEXT_LIMIT = 3
                     .asReversed()
@@ -118,16 +124,17 @@ class SyncViewModel(
                 val device = findDevice(event.deviceId) ?: return
                 repository.requestConnect(device)
             }
+            is SyncEvent.RequestConnectByHost -> repository.requestConnectByHost(event.hostAddress)
             is SyncEvent.ConfirmConnect -> repository.confirmOutgoingConnect()
             is SyncEvent.DismissConnectRequest -> repository.dismissOutgoingConnect()
-            is SyncEvent.AcceptPairing -> repository.acceptIncomingConnect(event.deviceId)
-            is SyncEvent.DeclinePairing -> repository.declineIncomingConnect(event.deviceId)
+            is SyncEvent.AcceptConnection -> repository.acceptIncomingConnect(event.deviceId)
+            is SyncEvent.DeclineConnection -> repository.declineIncomingConnect(event.deviceId)
             is SyncEvent.SwitchDevice -> repository.switchActiveDevice(event.deviceId)
             is SyncEvent.CopyClipboard -> {
                 val latest = _uiState.value.latestTexts.firstOrNull()?.text
                 if (!latest.isNullOrBlank()) {
                     platformOperations.writeClipboard(latest)
-                    _uiState.update { it.copy(userMessage = "Copied to clipboard") }
+                    showMessage("Copied to clipboard")
                 }
             }
             is SyncEvent.PasteFromClipboard -> {
@@ -149,23 +156,15 @@ class SyncViewModel(
                 val selected = _uiState.value.selectedFiles
                 if (selected.isNotEmpty()) {
                     repository.offerFiles(selected)
+                    showMessage("Request sent")
                 }
-                _uiState.update {
-                    it.copy(
-                        selectedFiles = emptyList(),
-                        userMessage = if (selected.isEmpty()) null else "Request sent"
-                    )
-                }
+                _uiState.update { it.copy(selectedFiles = emptyList()) }
             }
             SyncEvent.ClearSelectedFiles -> {
                 _uiState.update { it.copy(selectedFiles = emptyList()) }
             }
-            is SyncEvent.AcceptFileOffer -> repository.acceptFileOffer(event.offerId)
-            is SyncEvent.DeclineFileOffer -> repository.declineFileOffer(event.offerId)
             SyncEvent.DismissReceivedFiles -> repository.dismissReceivedFiles()
-            is SyncEvent.ClearUserMessage -> {
-                _uiState.update { it.copy(userMessage = null) }
-            }
+            SyncEvent.DismissTransferFailure -> repository.dismissTransferFailure()
             is SyncEvent.OpenFile -> {
                 if (event.path.isNotBlank()) {
                     platformOperations.openFile(event.path)
@@ -177,6 +176,10 @@ class SyncViewModel(
 
     private fun findDevice(deviceId: String): DeviceProfile? =
         _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
+
+    private fun showMessage(message: String) {
+        _uiEffects.trySend(SyncUiEffect.ShowMessage(message))
+    }
 
     companion object {
         private const val MAX_SELECTED_FILES = 12

@@ -1,7 +1,7 @@
 package com.liftley.sync360.features.sync.data.network
 
-import com.liftley.sync360.core.debug.agentDebugLog
 import com.liftley.sync360.features.sync.data.network.api.*
+import com.liftley.sync360.core.security.SessionAuthFields
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.cio.*
@@ -11,19 +11,23 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.serialization.kotlinx.json.*
-import io.ktor.utils.io.ByteReadChannel
 import kotlinx.serialization.json.Json
 
 interface SyncServerListener {
     fun onConnectRequest(request: ConnectRequestDto)
     fun onConnectAccept(accept: ConnectAcceptDto)
-    fun onConnectReject()
-    fun onTextMessage(message: MessageDto)
-    fun onFileOffer(offer: FileOfferDto)
-    fun onFileComplete(complete: FileCompleteDto)
+    fun onConnectReject(reject: ConnectRejectDto): Boolean
+    fun onTextMessage(message: MessageDto): Boolean
+    fun onFileOffer(offer: FileOfferDto): Boolean
+    fun onFileComplete(complete: FileCompleteDto): Boolean
 
     // Handlers for receiving uploaded stream chunks directly on the server
-    fun onIncomingFileChunkInit(offerId: String, fileIndex: Int)
+    fun onIncomingFileChunkInit(
+        offerId: String,
+        fileIndex: Int,
+        sessionToken: String,
+        authFields: SessionAuthFields
+    ): Boolean
     fun onIncomingFileChunkReceived(offerId: String, fileIndex: Int, chunk: ByteArray): Boolean
     fun onIncomingFileChunkComplete(offerId: String, fileIndex: Int): String?
     fun onIncomingFileChunkError(offerId: String, fileIndex: Int)
@@ -50,70 +54,85 @@ class HttpSyncServer(private val port: Int = 8080) {
                 }
                 
                 routing {
-                    post("/api/connect/request") {
+                    post(HttpSyncRoutes.ConnectRequest) {
                         val request = call.receive<ConnectRequestDto>()
                         listener?.onConnectRequest(request)
                         call.respond(HttpStatusCode.OK)
                     }
                     
-                    post("/api/connect/accept") {
+                    post(HttpSyncRoutes.ConnectAccept) {
                         val accept = call.receive<ConnectAcceptDto>()
                         listener?.onConnectAccept(accept)
                         call.respond(HttpStatusCode.OK)
                     }
                     
-                    post("/api/connect/reject") {
-                        listener?.onConnectReject()
-                        call.respond(HttpStatusCode.OK)
+                    post(HttpSyncRoutes.ConnectReject) {
+                        val reject = call.receive<ConnectRejectDto>()
+                        if (listener?.onConnectReject(reject) == true) {
+                            call.respond(HttpStatusCode.OK)
+                        } else {
+                            call.respond(HttpStatusCode.Forbidden)
+                        }
                     }
                     
-                    post("/api/message/text") {
+                    post(HttpSyncRoutes.TextMessage) {
                         val message = call.receive<MessageDto>()
-                        listener?.onTextMessage(message)
-                        call.respond(HttpStatusCode.OK)
+                        if (listener?.onTextMessage(message) == true) {
+                            call.respond(HttpStatusCode.OK)
+                        } else {
+                            call.respond(HttpStatusCode.Forbidden)
+                        }
                     }
                     
-                    post("/api/file/offer") {
+                    post(HttpSyncRoutes.FileOffer) {
                         val offer = call.receive<FileOfferDto>()
-                        listener?.onFileOffer(offer)
-                        call.respond(HttpStatusCode.OK)
+                        if (listener?.onFileOffer(offer) == true) {
+                            call.respond(HttpStatusCode.OK)
+                        } else {
+                            call.respond(HttpStatusCode.Forbidden)
+                        }
                     }
                     
-                    post("/api/file/complete") {
+                    post(HttpSyncRoutes.FileComplete) {
                         val complete = call.receive<FileCompleteDto>()
-                        listener?.onFileComplete(complete)
-                        call.respond(HttpStatusCode.OK)
+                        if (listener?.onFileComplete(complete) == true) {
+                            call.respond(HttpStatusCode.OK)
+                        } else {
+                            call.respond(HttpStatusCode.Forbidden)
+                        }
                     }
                     
-                    post("/api/file/upload/{offerId}/{fileIndex}") {
+                    post(HttpSyncRoutes.FileUploadPattern) {
                         val offerId = call.parameters["offerId"]
                         val fileIndex = call.parameters["fileIndex"]?.toIntOrNull()
+                        val sessionToken = call.request.headers[HttpSyncRoutes.SessionTokenHeader]
+                        val issuedAt = call.request.headers[HttpSyncRoutes.IssuedAtHeader]?.toLongOrNull()
+                        val nonce = call.request.headers[HttpSyncRoutes.NonceHeader]
+                        val signature = call.request.headers[HttpSyncRoutes.SignatureHeader]
                         val activeListener = listener
-                        // #region agent log
-                        agentDebugLog(
-                            location = "HttpSyncServer.kt:POST/api/file/upload",
-                            message = "file upload stream init",
-                            hypothesisId = "B",
-                            data = mapOf(
-                                "offerId" to (offerId ?: "null"),
-                                "fileIndex" to (fileIndex?.toString() ?: "null"),
-                                "hasListener" to (activeListener != null).toString()
-                            )
-                        )
-                        // #endregion
                         
-                        if (offerId == null || fileIndex == null || activeListener == null) {
+                        if (
+                            offerId == null ||
+                            fileIndex == null ||
+                            sessionToken == null ||
+                            issuedAt == null ||
+                            nonce == null ||
+                            signature == null ||
+                            activeListener == null
+                        ) {
                             call.respond(HttpStatusCode.BadRequest)
                             return@post
                         }
 
-                        // Read the incoming binary stream from Ktor's ByteReadChannel
                         val channel = call.receiveChannel()
                         val buffer = ByteArray(1024 * 1024)
-                        var totalRead = 0L
 
                         try {
-                            activeListener.onIncomingFileChunkInit(offerId, fileIndex)
+                            val authFields = SessionAuthFields(issuedAt, nonce, signature)
+                            if (!activeListener.onIncomingFileChunkInit(offerId, fileIndex, sessionToken, authFields)) {
+                                call.respond(HttpStatusCode.Forbidden)
+                                return@post
+                            }
 
                             while (!channel.isClosedForRead) {
                                 if (channel.availableForRead == 0) {
@@ -127,55 +146,21 @@ class HttpSyncServer(private val port: Int = 8080) {
                                     val chunk = buffer.copyOf(read)
                                     val wrote = activeListener.onIncomingFileChunkReceived(offerId, fileIndex, chunk)
                                     if (!wrote) {
-                                        // #region agent log
-                                        agentDebugLog(
-                                            location = "HttpSyncServer.kt:POST/api/file/upload",
-                                            message = "file chunk write failed",
-                                            hypothesisId = "D",
-                                            data = mapOf("offerId" to offerId, "fileIndex" to fileIndex.toString())
-                                        )
-                                        // #endregion
                                         call.respond(HttpStatusCode.InternalServerError)
                                         return@post
                                     }
-                                    totalRead += read
                                 } else if (read == -1) {
                                     break
                                 }
                             }
                             
                             val savedPath = activeListener.onIncomingFileChunkComplete(offerId, fileIndex)
-                            // #region agent log
-                            agentDebugLog(
-                                location = "HttpSyncServer.kt:POST/api/file/upload",
-                                message = "file upload stream complete",
-                                hypothesisId = "C",
-                                data = mapOf(
-                                    "offerId" to offerId,
-                                    "fileIndex" to fileIndex.toString(),
-                                    "totalRead" to totalRead.toString(),
-                                    "savedPath" to (savedPath ?: "null")
-                                )
-                            )
-                            // #endregion
                             if (savedPath == null) {
                                 call.respond(HttpStatusCode.InternalServerError)
                             } else {
                                 call.respond(HttpStatusCode.OK)
                             }
-                        } catch (e: Exception) {
-                            // #region agent log
-                            agentDebugLog(
-                                location = "HttpSyncServer.kt:POST/api/file/upload",
-                                message = "file upload stream error",
-                                hypothesisId = "E",
-                                data = mapOf(
-                                    "offerId" to offerId,
-                                    "fileIndex" to fileIndex.toString(),
-                                    "error" to (e.message ?: e::class.simpleName.orEmpty())
-                                )
-                            )
-                            // #endregion
+                        } catch (_: Exception) {
                             activeListener.onIncomingFileChunkError(offerId, fileIndex)
                             call.respond(HttpStatusCode.InternalServerError)
                         }

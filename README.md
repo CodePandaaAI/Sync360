@@ -4,29 +4,57 @@
 
 This README preserves the original product vision below, but this section is the current handoff for agents and tools working on the live codebase.
 
-Current Sync360 is an Android + JVM Desktop Kotlin Multiplatform / Compose Multiplatform app. The UI should be preserved unless a change fixes a clear bug. The current refactor goal is to modularize, remove duplicate logic, keep layers clean, and fix transfer/connection issues without redesigning the app.
+Last updated: June 15, 2026.
+
+Current Sync360 is an Android + JVM Desktop Kotlin Multiplatform / Compose Multiplatform app. The current refactor goal is to modularize, remove duplicate logic, keep layers clean, and fix transfer/connection issues without changing the product's simple connect-share-leave behavior. The UI now intentionally follows the lightweight Habitrek Compose style: `surfaceContainer` screen backgrounds, reusable rounded surfaces, compact title/device pills, restrained nesting, and consistent spacing across Android and Desktop.
+
+Product philosophy:
+
+* **Session-first, Quick Share-style:** Sync360 is not a chat app and not a long-term device ledger. Each app launch starts fresh. Devices are approved for the current app session, users send text/files as needed, then leave.
+* **Ephemeral messages/devices:** Sent and received text can live in memory while connected. Device approval and message lists should not be persisted as history.
+* **Transfer reliability:** While a file is actively sending or receiving, avoid disconnecting/tearing down the active peer session unless the transfer fails or the app is actually killed.
+* **File naming:** Desktop receives use duplicate-safe names like `file (1).ext`; Android writes through MediaStore.
+* **Manual IP fallback:** Discovery is the normal path, but users can connect by IP. Manual IP uses the same connect approval/session-token/HMAC flow as discovered devices.
+* **Failure state:** Transfer errors should produce a session-only failure state/snackbar instead of silently disappearing.
+* **One approval per session:** File offers are not separately accepted or declined. Once the device connection is approved for the current session, files from that peer are received automatically.
+* **One-shot UI messages:** Snackbars and desktop feedback are emitted through `SyncUiEffect` using a buffered coroutine `Channel`. Transient messages are not stored in `SyncUiState` or duplicated by screen-local message state.
 
 Current local-network architecture:
 
 * **Discovery:** Android uses `NsdManager`; Desktop uses `JmDNS`. Devices advertise and discover Sync360 peers on the same LAN.
-* **Control channel:** Ktor WebSocket remains the live bidirectional lane for pairing, connect/disconnect, clipboard/control payloads, file offers, accept/reject messages, transfer-start, transfer-complete, and status/reconnect signals.
-* **File byte channel:** Large file bytes should move over raw HTTP streaming, not WebSocket chunks. The sender exposes `GET /files/{offerId}/{fileIndex}` from the embedded Ktor server. The receiver downloads bytes with Ktor Client and writes them directly to platform storage.
+* **Control channel:** Ktor HTTP JSON endpoints carry connection request/accept/reject, explicit text sharing, file offers, and transfer-complete signals. Do not add WebSocket paths back unless the product direction changes.
+* **File byte channel:** Large file bytes move over raw HTTP streaming, not WebSocket chunks and not JSON/base64/protobuf payloads. The current push model posts bytes to `/api/file/upload/{offerId}/{fileIndex}` on the receiver's embedded Ktor server.
 * **Android storage:** Android receives files through `MediaStore.Downloads`, targeting `Downloads/Sync360`, using `IS_PENDING = 1` during writes and `IS_PENDING = 0` after finalization.
+* **Android foreground reliability:** Active transfers start the Android foreground service in `transfer` mode, with a transfer-specific notification and longer wake-lock fallback.
 * **Progress semantics:** Receiving progress should mean bytes successfully written to the destination output. Do not show successful completion until platform storage finalization returns a saved path.
-* **Legacy fallback:** Older WebSocket chunk receive paths may still exist as fallback while HTTP streaming is stabilized. Do not expand WebSocket file chunking as the primary file transport.
+* **Session approval:** Approve device identity for the current app session, not permanently. IP is only the current route to reach an approved device and can change between networks.
+* **HTTP session gate:** Unknown devices may request connection approval, but text/file endpoints should reject unapproved senders. Approved devices share an in-memory session token for the current app run. Control requests and file upload headers are HMAC-signed with timestamp + nonce replay checks.
 
-If both sender and receiver stay at `1%`, WebSocket control likely worked but HTTP file streaming did not start. Check the reachable LAN host in the download URL, the sender's `/files/{offerId}/{fileIndex}` route, Android cleartext/network permissions, and whether the sender still has the matching `offerId`/`fileIndex` in memory.
+Current code organization:
+
+* `SyncRepositoryImpl` remains the integration boundary, while focused collaborators own session devices, temporary text, authentication, incoming transfers, and outgoing transfers.
+* `DeviceSessionStore` owns active and pending connection state; `DeviceRegistry` owns approved devices and their in-memory session tokens.
+* `SessionTextStore` owns temporary text for the current runtime only. There is no persisted conversation or device history.
+* `IncomingFileTransferCoordinator` and `OutgoingFileTransferCoordinator` own the two transfer directions; `FileTransferManager` owns streaming progress and platform file handles.
+* `SyncUiState` contains durable render state. `SyncUiEffect` contains one-time presentation events such as snackbar messages.
+* `SyncNavigationViewModel` owns an explicit `List<SyncRoute>` back stack, following Navigation 3's state-owned back-stack model. Navigation 3's `NavDisplay` dependency is not currently needed because Sync360 has only the `Home` route.
+* Shared UI primitives live in `Sync360Surfaces.kt`, and `AppShapes` supplies consistent Habitrek-inspired shape defaults on Android and JVM.
+
+If both sender and receiver stay at `1%`, the file offer likely arrived but the HTTP upload stream did not start or could not write to platform storage. Check the peer's reachable LAN host, `/api/file/upload/{offerId}/{fileIndex}`, Android cleartext/network permissions, and whether `beginFileWrite()` returned a valid handle.
 
 Recommended architecture going forward:
 
 ```text
 NSD/JmDNS discovery
-WebSocket + small serialized control messages
-HTTP raw streaming for file bytes
+HTTP JSON control endpoints
+HTTP raw upload streaming for file bytes
+Session-approved device identity, with IP as a route only
 Android MediaStore / Desktop filesystem for final writes
 ```
 
 Sync360 is a lightweight, cloud-free, multiplatform ecosystem designed to solve the clunky friction of moving clipboards, media, and files across multiple personal devices. Built using Kotlin Multiplatform (KMP) and Compose Multiplatform (CMP), it bridges Android, iOS, and Desktop (Windows, Mac, Linux) into a single, cohesive, ultra-fast environment.
+
+> **Implementation status:** The sections below preserve the original long-term vision and roadmap. They are not a description of the current runtime. Current Sync360 targets Android and JVM Desktop, uses ephemeral in-memory sessions, does not use Room for device/message history, does not use WebRTC, and transfers selected files directly rather than synchronizing historical device libraries.
 
 ---
 
@@ -60,8 +88,10 @@ Broadcasting gigabytes of raw, high-resolution 4K videos or raw images automatic
 * **On-Demand Fetching:** These lightweight previews are immediately broadcast to all connected devices. The recipient devices render the thumbnails with an explicit `"Not Fetched"` indicator. The moment a user clicks on an item, a dedicated network socket fetches the high-quality raw file on demand.
 
 ### 4. Hybrid Network Transport (LAN + WebRTC)
+Current status: the LAN HTTP path is implemented. WebRTC/STUN/TURN and automatic cross-network traversal remain historical roadmap ideas and are not present in the current codebase.
+
 Sync360 is built to run entirely peer-to-peer without risking data privacy on external cloud servers, operating intelligently based on network conditions:
-* **Local LAN Network Sync (Same Wi-Fi):** Devices discover each other effortlessly without requiring manual IP entry using **Network Service Discovery (NSD)**. Once paired, data transfers execute over high-speed direct **WebSockets and HTTP servers embedded inside the apps** (powered by Ktor). On a typical local Wi-Fi router, transfers bypass internet speed limits completely, achieving blazing local throughput (often 30–100+ MB/s) to shift gigabyte files in seconds.
+* **Local LAN Network Sync (Same Wi-Fi):** Devices discover each other effortlessly without requiring manual IP entry using **Network Service Discovery (NSD)**. Once paired, data transfers execute over high-speed direct **HTTP servers embedded inside the apps** (powered by Ktor). On a typical local Wi-Fi router, transfers bypass internet speed limits completely, achieving blazing local throughput (often 30–100+ MB/s) to shift gigabyte files in seconds.
 * **Cross-Network Sync (Cellular / Direct Internet):** If a mobile device moves onto a 4G/5G cellular data network while the PC remains on home Wi-Fi, traditional IP socket binding fails due to strict router firewalls (NAT). Sync360 implements **WebRTC Data Channels**. Utilizing lightweight STUN/TURN servers strictly for discovery and hole-punching, it builds an encrypted, cloud-free direct peer-to-peer bridge to pass metadata and file chunks directly between cellular and remote networks.
 
 ---
@@ -75,7 +105,7 @@ Sync360 is built with a highly cohesive Kotlin ecosystem to share up to 90% of b
 | **Cross-Platform Engine** | **Kotlin Multiplatform (KMP)** | Unifies data streams, network bindings, and system states into a single shared core logic module. |
 | **UI Rendering Framework** | **Compose Multiplatform (CMP)** | Deploys identical, reactive, highly performant Declarative UIs natively to Android, iOS, and Desktop platforms. |
 | **Local Persistence Database** | **Room KMP** | Manages relational tables for device IDs, historical clipboards, metadata caching, and transfer states cleanly using native Room architectures. |
-| **Networking & Async I/O** | **Ktor (Client & Server)** | Embedded Ktor servers handle direct local LAN file pipelines; Ktor Client handles WebSocket orchestration. |
+| **Networking & Async I/O** | **Ktor (Client & Server)** | Embedded Ktor servers and clients handle direct local LAN control requests and raw file pipelines. |
 | **Asynchronous Streaming** | **Kotlin Coroutines & Flows** | Powers non-blocking reactive background operations, transfer tracking, and immediate UI state emissions. |
 | **Data Parsing Engine** | **kotlinx.serialization** | Encodes and decodes complex payload metadata arrays into super-dense JSON frames over network sockets. |
 
@@ -83,7 +113,9 @@ Sync360 is built with a highly cohesive Kotlin ecosystem to share up to 90% of b
 
 ## 🗄️ Database Architecture (Room Schema)
 
-To power the device-driven UI, the shared Room Database uses a clean relational structure:
+Current status: this schema is retained as an original design proposal only. The current app intentionally keeps approved devices and received text in memory for the active runtime and does not persist conversation/device history through Room.
+
+To power the originally proposed device-driven UI, the shared Room Database design used this relational structure:
 
 ### 1. `DeviceEntity` (Tracks connected hardware)
 * `deviceId`: `String` (Primary Key - Unique hardware UUID)
@@ -109,7 +141,7 @@ To prevent scope creep, construction is split into clear development increments:
 
 ### Phase 1: The Local Text Bridge (MVP)
 * Configure the base KMP/CMP multiplatform project template for Android and Desktop targets.
-* Set up a hardcoded IP connection using an embedded Ktor HTTP/WebSocket server.
+* Set up a hardcoded IP connection using embedded Ktor HTTP servers.
 * Verify successful text emissions: press a button on Android, see the text instantaneously display on the Desktop app shell.
 
 ### Phase 2: System Clipboard & Floating Dock

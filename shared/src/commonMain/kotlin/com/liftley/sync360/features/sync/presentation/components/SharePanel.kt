@@ -31,11 +31,7 @@ fun SharePanel(
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(if (isDesktop) 24.dp else 28.dp),
-        color = colorScheme.surface
-    ) {
+    Sync360Surface(cornerRadius = 24.dp) {
         Column(
             modifier = Modifier.padding(if (isDesktop) 20.dp else 18.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -143,12 +139,11 @@ private fun FileAction(
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
+    Sync360Surface(
         modifier = modifier
-            .clip(RoundedCornerShape(18.dp))
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = colorScheme.surfaceContainer
+        cornerRadius = 24.dp,
+        color = colorScheme.surface
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -157,7 +152,7 @@ private fun FileAction(
         ) {
             Icon(icon, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
         }
     }
 }
@@ -171,11 +166,7 @@ private fun SelectedFilesPanel(
     onAddFiles: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = colorScheme.surfaceContainer
-    ) {
+    Sync360Surface(color = colorScheme.surfaceContainer, cornerRadius = 24.dp) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             TransferSummaryRow(
                 title = "${files.size} file${if (files.size == 1) "" else "s"} selected",
@@ -223,7 +214,7 @@ fun TransferPreviewSummaryRow(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Surface(shape = RoundedCornerShape(16.dp), color = colorScheme.primaryContainer) {
+        Surface(shape = RoundedCornerShape(18.dp), color = colorScheme.primaryContainer) {
             Box(modifier = Modifier.size(58.dp), contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = if (files.any { it.mimeType.startsWith("image/") || it.mimeType.startsWith("video/") }) {

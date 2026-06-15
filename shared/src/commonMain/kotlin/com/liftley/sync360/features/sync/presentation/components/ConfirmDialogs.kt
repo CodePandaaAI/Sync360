@@ -4,7 +4,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.text.font.FontWeight
-import com.liftley.sync360.core.designsystem.SyncDimens
+import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 
@@ -13,10 +13,10 @@ fun ConfirmDialogs(
     uiState: SyncUiState,
     onEvent: (SyncEvent) -> Unit
 ) {
-    uiState.pendingPairingRequests.firstOrNull()?.let { device ->
+    uiState.pendingConnectionRequests.firstOrNull()?.let { device ->
         AlertDialog(
-            onDismissRequest = { onEvent(SyncEvent.DeclinePairing(device.id)) },
-            shape = RoundedCornerShape(SyncDimens.cornerMedium),
+            onDismissRequest = { onEvent(SyncEvent.DeclineConnection(device.id)) },
+            shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Text(
@@ -34,14 +34,14 @@ fun ConfirmDialogs(
             },
             confirmButton = {
                 Button(
-                    onClick = { onEvent(SyncEvent.AcceptPairing(device.id)) },
-                    shape = RoundedCornerShape(SyncDimens.cornerSmall)
+                    onClick = { onEvent(SyncEvent.AcceptConnection(device.id)) },
+                    shape = RoundedCornerShape(24.dp)
                 ) {
                     Text("Accept", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
-                TextButton(onClick = { onEvent(SyncEvent.DeclinePairing(device.id)) }) {
+                TextButton(onClick = { onEvent(SyncEvent.DeclineConnection(device.id)) }) {
                     Text("Decline", fontWeight = FontWeight.Bold)
                 }
             }
@@ -52,7 +52,7 @@ fun ConfirmDialogs(
     uiState.pendingConnectDevice?.let { device ->
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.DismissConnectRequest) },
-            shape = RoundedCornerShape(SyncDimens.cornerMedium),
+            shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
             title = {
                 Text(
@@ -63,7 +63,7 @@ fun ConfirmDialogs(
             },
             text = {
                 Text(
-                    text = "Do you want to pair and connect with ${device.name} over your local Wi-Fi network?",
+                    text = "Do you want to connect with ${device.name} for this Sync360 session?",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -71,7 +71,7 @@ fun ConfirmDialogs(
             confirmButton = {
                 Button(
                     onClick = { onEvent(SyncEvent.ConfirmConnect) },
-                    shape = RoundedCornerShape(SyncDimens.cornerSmall)
+                    shape = RoundedCornerShape(24.dp)
                 ) {
                     Text("Connect", fontWeight = FontWeight.Bold)
                 }
