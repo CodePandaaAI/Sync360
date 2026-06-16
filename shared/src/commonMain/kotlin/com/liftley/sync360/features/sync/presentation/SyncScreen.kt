@@ -46,13 +46,12 @@ import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
 import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
-import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
-import com.liftley.sync360.features.sync.presentation.components.FileTransferErrorCard
 import com.liftley.sync360.features.sync.presentation.components.MobileDevicePickerSheet
-import com.liftley.sync360.features.sync.presentation.components.ReceivedFileBatchCard
+import com.liftley.sync360.features.sync.presentation.components.ReadyTransferHomeCard
 import com.liftley.sync360.features.sync.presentation.components.RuntimeSecurityBanner
 import com.liftley.sync360.features.sync.presentation.components.SharePanel
 import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
+import com.liftley.sync360.features.sync.presentation.components.TransferLifecycleCard
 import kotlinx.coroutines.flow.Flow
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,12 +65,6 @@ fun SyncScreen(
     var showDevicePicker by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val visibleNearby = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
-
-    LaunchedEffect(activeDevice?.id) {
-        if (activeDevice == null) {
-            showDevicePicker = true
-        }
-    }
 
     LaunchedEffect(uiEffects) {
         uiEffects.collect { effect ->
@@ -141,8 +134,11 @@ fun SyncScreen(
 
             if (activeDevice == null) {
                 item {
-                    ReadyReceiveSurface(
+                    ReadyTransferHomeCard(
                         isScanning = uiState.isScanningForDevices,
+                        nearbyDevices = visibleNearby,
+                        onDeviceClick = { onEvent(SyncEvent.RequestConnect(it)) },
+                        onScan = { onEvent(SyncEvent.TriggerScan) },
                         onOpenDevices = {
                             if (!uiState.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
                             showDevicePicker = true
@@ -150,29 +146,17 @@ fun SyncScreen(
                     )
                 }
             } else {
-                uiState.receivedFileBatch?.let { batch ->
+                if (
+                    uiState.fileTransferProgress != null ||
+                    uiState.fileTransferFailure != null ||
+                    uiState.receivedFileBatch != null
+                ) {
                     item {
-                        ReceivedFileBatchCard(
-                            batch = batch,
+                        TransferLifecycleCard(
+                            progress = uiState.fileTransferProgress,
+                            receivedBatch = uiState.receivedFileBatch,
+                            failure = uiState.fileTransferFailure,
                             onEvent = onEvent
-                        )
-                    }
-                }
-
-                uiState.fileTransferFailure?.let { failure ->
-                    item {
-                        FileTransferErrorCard(
-                            failure = failure,
-                            onEvent = onEvent
-                        )
-                    }
-                }
-
-                uiState.fileTransferProgress?.let { progress ->
-                    item {
-                        FileTransferProgressCard(
-                            progress = progress,
-                            onCancel = { onEvent(SyncEvent.CancelTransfer) }
                         )
                     }
                 }
@@ -328,65 +312,6 @@ private fun LocalDeviceCard(serverIp: String) {
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReadyReceiveSurface(
-    isScanning: Boolean,
-    onOpenDevices: () -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    Sync360Surface(
-        modifier = Modifier.clickable(onClick = onOpenDevices)
-    ) {
-        Row(
-            modifier = Modifier.padding(18.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(58.dp)) {
-                if (isScanning) {
-                    Box(contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(28.dp),
-                            strokeWidth = 3.dp,
-                            color = colorScheme.primary
-                        )
-                    }
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Wifi, contentDescription = null, tint = colorScheme.primary)
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = if (isScanning) "Searching nearby" else "Ready to receive",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurface
-                )
-                Text(
-                    text = if (isScanning) "Looking on your local Wi-Fi." else "Tap to choose a device.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = colorScheme.onSurfaceVariant
-                )
-                if (!isScanning) {
-                    androidx.compose.material3.Button(
-                        onClick = onOpenDevices,
-                        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
-                    ) {
-                        Text("Search devices", fontWeight = FontWeight.SemiBold)
-                    }
-                }
             }
         }
     }

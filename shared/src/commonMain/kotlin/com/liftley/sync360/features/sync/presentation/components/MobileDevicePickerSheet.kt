@@ -62,7 +62,7 @@ fun MobileDevicePickerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Sync360TopBarTitle(
-                    title = if (activeDevice == null) "Devices" else "Connected",
+                    title = if (activeDevice == null) "Connect" else "Connected",
                     modifier = Modifier
                 )
                 if (uiState.isScanningForDevices) {
@@ -113,15 +113,6 @@ fun MobileDevicePickerSheet(
                 ) {
                     Text("Disconnect", fontWeight = FontWeight.SemiBold)
                 }
-            } else {
-                Sync360Surface(color = MaterialTheme.colorScheme.surface, cornerRadius = 24.dp) {
-                    Text(
-                        text = "Open Sync360 on another device connected to the same Wi-Fi.",
-                        modifier = Modifier.padding(16.dp),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
@@ -131,7 +122,7 @@ fun MobileDevicePickerSheet(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Nearby on Local Wi-Fi",
+                        text = "Nearby devices",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = FontWeight.Bold
@@ -154,13 +145,28 @@ fun MobileDevicePickerSheet(
                     }
                 }
                 if (nearbyOnly.isEmpty()) {
-                    Sync360Surface(color = MaterialTheme.colorScheme.surface, cornerRadius = 24.dp) {
-                        Text(
-                            text = if (uiState.isScanningForDevices) "Searching for nearby devices..." else "No devices found.",
+                    Sync360Surface(
+                        modifier = Modifier.clickable(onClick = onScan),
+                        color = MaterialTheme.colorScheme.surface,
+                        cornerRadius = 24.dp
+                    ) {
+                        Row(
                             modifier = Modifier.padding(16.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (uiState.isScanningForDevices) "Searching..." else "No devices found. Scan again",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 } else {
                     nearbyOnly.forEachIndexed { index, device ->

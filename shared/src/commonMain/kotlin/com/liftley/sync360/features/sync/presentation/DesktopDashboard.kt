@@ -81,21 +81,24 @@ fun DesktopDashboard(
 
                 SectionLabel(if (activeDevice == null) "Ready to receive" else "Sharing with you")
                 if (activeDevice == null) {
-                    DesktopReadySurface(
+                    ReadyTransferHomeCard(
                         isScanning = uiState.isScanningForDevices,
-                        onScan = { onEvent(SyncEvent.TriggerScan) }
+                        nearbyDevices = uiState.nearbyDevices,
+                        onDeviceClick = { onEvent(SyncEvent.RequestConnect(it)) },
+                        onScan = { onEvent(SyncEvent.TriggerScan) },
+                        onOpenDevices = { onEvent(SyncEvent.TriggerScan) }
                     )
                 } else {
-                    uiState.receivedFileBatch?.let { batch ->
-                        ReceivedFileBatchCard(batch = batch, onEvent = onEvent)
-                    }
-                    uiState.fileTransferFailure?.let { failure ->
-                        FileTransferErrorCard(failure = failure, onEvent = onEvent)
-                    }
-                    uiState.fileTransferProgress?.let { progress ->
-                        FileTransferProgressCard(
-                            progress = progress,
-                            onCancel = { onEvent(SyncEvent.CancelTransfer) }
+                    if (
+                        uiState.fileTransferProgress != null ||
+                        uiState.fileTransferFailure != null ||
+                        uiState.receivedFileBatch != null
+                    ) {
+                        TransferLifecycleCard(
+                            progress = uiState.fileTransferProgress,
+                            receivedBatch = uiState.receivedFileBatch,
+                            failure = uiState.fileTransferFailure,
+                            onEvent = onEvent
                         )
                     }
                     SharePanel(
@@ -212,63 +215,6 @@ private fun DesktopIdentityCard(serverIp: String) {
                     color = colorScheme.primary,
                     fontWeight = FontWeight.Bold
                 )
-            }
-        }
-    }
-}
-
-@Composable
-private fun DesktopReadySurface(
-    isScanning: Boolean,
-    onScan: () -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    Sync360Surface(cornerRadius = 24.dp) {
-        Row(
-            modifier = Modifier.padding(20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(18.dp)
-        ) {
-            Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(72.dp)) {
-                if (isScanning) {
-                    Box(contentAlignment = Alignment.Center) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(34.dp),
-                            strokeWidth = 3.dp,
-                            color = colorScheme.primary
-                        )
-                    }
-                } else {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(Icons.Default.Wifi, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(32.dp))
-                    }
-                }
-            }
-
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = if (isScanning) "Scanning your local Wi-Fi." else "Found devices appear in the panel on the right.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = colorScheme.onSurfaceVariant
-                )
-                Button(
-                    onClick = onScan,
-                    shape = RoundedCornerShape(18.dp),
-                    contentPadding = PaddingValues(horizontal = 22.dp, vertical = 10.dp)
-                ) {
-                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Scan again", fontWeight = FontWeight.Bold)
-                }
             }
         }
     }

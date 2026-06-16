@@ -31,84 +31,104 @@ fun SharePanel(
 ) {
     val colorScheme = MaterialTheme.colorScheme
 
-    Sync360Surface(cornerRadius = 24.dp) {
-        Column(
-            modifier = Modifier.padding(if (isDesktop) 20.dp else 18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                DeviceGlyph(activeDevice.name)
-                Spacer(Modifier.width(12.dp))
-                Column(Modifier.weight(1f)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Sync360Surface(cornerRadius = 24.dp) {
+            Column(
+                modifier = Modifier.padding(if (isDesktop) 20.dp else 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    DeviceGlyph(activeDevice.name)
+                    Spacer(Modifier.width(12.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(
+                            text = "Send files",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = colorScheme.onSurface
+                        )
+                        Text(
+                            text = "To ${activeDevice.name}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                if (uiState.selectedFiles.isEmpty()) {
+                    FilePickerActions(onEvent = onEvent)
+                } else {
+                    SelectedFilesPanel(
+                        files = uiState.selectedFiles,
+                        onSend = { onEvent(SyncEvent.SendSelectedFiles) },
+                        onClear = { onEvent(SyncEvent.ClearSelectedFiles) },
+                        onAddFiles = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) }
+                    )
+                }
+            }
+        }
+
+        Sync360Surface(cornerRadius = 24.dp) {
+            Column(
+                modifier = Modifier.padding(if (isDesktop) 18.dp else 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp)
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = activeDevice.name,
+                        text = "Text clipboard",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
-                        color = colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        color = colorScheme.onSurface
                     )
                     Text(
-                        text = "Ready to share",
+                        text = "Paste current clipboard or copy text",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colorScheme.onSurfaceVariant
                     )
                 }
-            }
 
-            OutlinedTextField(
-                value = uiState.outgoingText,
-                onValueChange = { onEvent(SyncEvent.UpdateOutgoingText(it)) },
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text("Type or paste text") },
-                minLines = if (isDesktop) 3 else 2,
-                maxLines = 5,
-                shape = RoundedCornerShape(18.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = colorScheme.primary,
-                    unfocusedBorderColor = colorScheme.outlineVariant,
-                    focusedContainerColor = colorScheme.surfaceContainer,
-                    unfocusedContainerColor = colorScheme.surfaceContainer
-                )
-            )
-
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                OutlinedButton(
-                    onClick = { onEvent(SyncEvent.PasteFromClipboard) },
+                OutlinedTextField(
+                    value = uiState.outgoingText,
+                    onValueChange = { onEvent(SyncEvent.UpdateOutgoingText(it)) },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Paste", fontWeight = FontWeight.SemiBold)
-                }
-                Button(
-                    onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
-                    enabled = uiState.outgoingText.isNotBlank(),
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Send", fontWeight = FontWeight.SemiBold)
-                }
-            }
-
-            HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.45f))
-
-            if (uiState.selectedFiles.isEmpty()) {
-                FilePickerActions(onEvent = onEvent)
-            } else {
-                SelectedFilesPanel(
-                    files = uiState.selectedFiles,
-                    onSend = { onEvent(SyncEvent.SendSelectedFiles) },
-                    onClear = { onEvent(SyncEvent.ClearSelectedFiles) },
-                    onAddFiles = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) }
+                    placeholder = { Text("Paste copied text") },
+                    minLines = if (isDesktop) 3 else 2,
+                    maxLines = 5,
+                    shape = RoundedCornerShape(18.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = colorScheme.primary,
+                        unfocusedBorderColor = colorScheme.outlineVariant,
+                        focusedContainerColor = colorScheme.surfaceContainer,
+                        unfocusedContainerColor = colorScheme.surfaceContainer
+                    )
                 )
-            }
 
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                    OutlinedButton(
+                        onClick = { onEvent(SyncEvent.PasteFromClipboard) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Paste", fontWeight = FontWeight.SemiBold)
+                    }
+                    Button(
+                        onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
+                        enabled = uiState.outgoingText.isNotBlank(),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        contentPadding = PaddingValues(vertical = 12.dp)
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(8.dp))
+                        Text("Send", fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
         }
     }
 }
@@ -132,19 +152,31 @@ private fun FileAction(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Sync360Surface(
-        modifier = modifier.clip(RoundedCornerShape(24.dp))
+        modifier = modifier
+            .clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick),
         cornerRadius = 24.dp,
         color = colorScheme.surfaceContainer
     ) {
-        Row(
-            modifier = Modifier.padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        Column(
+            modifier = Modifier.padding(vertical = 22.dp, horizontal = 16.dp).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(icon, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = MaterialTheme.colorScheme.onSurface)
+            Surface(
+                shape = CircleShape,
+                color = colorScheme.primaryContainer
+            ) {
+                Box(Modifier.size(54.dp), contentAlignment = Alignment.Center) {
+                    Icon(icon, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(26.dp))
+                }
+            }
+            Text(
+                label,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
@@ -157,27 +189,32 @@ private fun SelectedFilesPanel(
     onAddFiles: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Sync360Surface(color = colorScheme.surfaceContainer, cornerRadius = 24.dp) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            TransferSummaryRow(
-                title = "${files.size} file${if (files.size == 1) "" else "s"} selected",
-                subtitle = formatBytes(files.sumOf { it.sizeBytes }),
-                files = files
-            )
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                FilledTonalButton(onClick = onAddFiles, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add files")
-                }
-                OutlinedButton(onClick = onClear, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Clear files")
-                }
-                Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                    Text("Send", fontWeight = FontWeight.Bold)
-                }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(colorScheme.surfaceContainer)
+            .padding(14.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        TransferSummaryRow(
+            title = "${files.size} file${if (files.size == 1) "" else "s"} selected",
+            subtitle = formatBytes(files.sumOf { it.sizeBytes }),
+            files = files
+        )
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+            FilledTonalButton(onClick = onAddFiles, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Add files")
+            }
+            OutlinedButton(onClick = onClear, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.DeleteOutline, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(8.dp))
+                Text("Clear files")
+            }
+            Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                Text("Send", fontWeight = FontWeight.Bold)
             }
         }
     }
