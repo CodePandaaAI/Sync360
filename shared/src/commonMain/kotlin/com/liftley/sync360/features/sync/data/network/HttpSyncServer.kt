@@ -8,6 +8,7 @@ import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
 import com.liftley.sync360.features.sync.data.network.api.HttpSyncRoutes
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import com.liftley.sync360.features.sync.data.network.api.MessageResponseDto
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -32,8 +33,8 @@ interface SyncServerListener {
     fun onConnectRequest(request: ConnectRequestDto, remoteHost: String): ConnectRequestOutcome
     fun onConnectAccept(accept: ConnectAcceptDto, remoteHost: String): Boolean
     fun onConnectReject(reject: ConnectRejectDto, remoteHost: String): Boolean
-    fun onTextMessage(message: MessageDto, remoteHost: String): Boolean
-    fun onFileOffer(offer: FileOfferDto, remoteHost: String): FileOfferResponseDto
+    suspend fun onTextMessage(message: MessageDto, remoteHost: String): MessageResponseDto
+    suspend fun onFileOffer(offer: FileOfferDto, remoteHost: String): FileOfferResponseDto
     fun onFileComplete(complete: FileCompleteDto, remoteHost: String): Boolean
 }
 
@@ -110,11 +111,17 @@ class HttpSyncServer(private val port: Int = 8080) {
                     post(HttpSyncRoutes.TextMessage) {
                         if (call.rejectRateLimited(controlRateLimiter)) return@post
                         if (call.rejectOversizedControlBody()) return@post
-                        val accepted = listener?.onTextMessage(
+                        val response = listener?.onTextMessage(
                             call.receive<MessageDto>(),
                             call.request.origin.remoteHost
-                        ) == true
-                        call.respond(if (accepted) HttpStatusCode.OK else HttpStatusCode.Forbidden)
+                        ) ?: MessageResponseDto(
+                            accepted = false,
+                            failureReason = "receiver_unavailable"
+                        )
+                        call.respond(
+                            if (response.accepted) HttpStatusCode.OK else HttpStatusCode.Forbidden,
+                            response
+                        )
                     }
 
                     post(HttpSyncRoutes.FileOffer) {

@@ -57,6 +57,12 @@ data class MessageDto(
 )
 
 @Serializable
+data class MessageResponseDto(
+    val accepted: Boolean,
+    val failureReason: String? = null
+)
+
+@Serializable
 data class FilePreviewDto(
     val fileName: String,
     val mimeType: String,

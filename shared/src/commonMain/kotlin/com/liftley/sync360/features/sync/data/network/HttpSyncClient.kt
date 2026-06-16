@@ -8,6 +8,7 @@ import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
 import com.liftley.sync360.features.sync.data.network.api.HttpSyncRoutes
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import com.liftley.sync360.features.sync.data.network.api.MessageResponseDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -69,7 +70,30 @@ class HttpSyncClient(private val port: Int = 8080) {
         ip: String,
         targetPort: Int,
         message: MessageDto
-    ): HttpTransportResult = post(ip, targetPort, HttpSyncRoutes.TextMessage, message)
+    ): HttpTransportResult {
+        if (isClosed) return HttpTransportResult.Failure(HttpTransportError.CLIENT_CLOSED)
+        return try {
+            val response = httpClient.post(buildUrl(ip, targetPort, HttpSyncRoutes.TextMessage)) {
+                contentType(ContentType.Application.Json)
+                setBody(message)
+            }
+            if (response.status.isSuccess()) {
+                HttpTransportResult.Success(response.status.value)
+            } else {
+                val rejection = runCatching {
+                    response.body<MessageResponseDto>()
+                }.getOrNull()
+                response.toTransportResult().let {
+                    (it as HttpTransportResult.Failure).copy(detail = rejection?.failureReason)
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            println("HttpSyncClient: Error posting to ${HttpSyncRoutes.TextMessage} at $ip - ${error.message}")
+            error.toTransportFailure()
+        }
+    }
 
     suspend fun sendFileOffer(
         ip: String,

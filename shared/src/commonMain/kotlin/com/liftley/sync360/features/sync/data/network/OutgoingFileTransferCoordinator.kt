@@ -191,16 +191,22 @@ enum class FileSendFailure {
 }
 
 private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Failure {
-    val reason = when (error) {
-        HttpTransportError.SOURCE_READ_FAILED -> FileSendFailure.SOURCE_UNAVAILABLE
-        HttpTransportError.REMOTE_STORAGE_FULL -> FileSendFailure.REMOTE_STORAGE_FULL
-        HttpTransportError.REMOTE_STORAGE_UNAVAILABLE -> FileSendFailure.REMOTE_STORAGE_UNAVAILABLE
-        HttpTransportError.INTEGRITY_FAILED -> FileSendFailure.INTEGRITY_FAILED
-        HttpTransportError.TIMEOUT -> FileSendFailure.TIMED_OUT
-        HttpTransportError.TRANSFER_INTERRUPTED -> FileSendFailure.TRANSFER_INTERRUPTED
-        HttpTransportError.RECEIVER_CANCELLED -> FileSendFailure.RECEIVER_CANCELLED
-        HttpTransportError.UNREACHABLE -> FileSendFailure.RECEIVER_UNAVAILABLE
-        else -> FileSendFailure.NETWORK_FAILED
+    val reason = when {
+        error == HttpTransportError.REJECTED && detail == "receiver_declined" ->
+            FileSendFailure.RECEIVER_CANCELLED
+        error == HttpTransportError.REJECTED && detail == "receiver_timeout" ->
+            FileSendFailure.TIMED_OUT
+        else -> when (error) {
+            HttpTransportError.SOURCE_READ_FAILED -> FileSendFailure.SOURCE_UNAVAILABLE
+            HttpTransportError.REMOTE_STORAGE_FULL -> FileSendFailure.REMOTE_STORAGE_FULL
+            HttpTransportError.REMOTE_STORAGE_UNAVAILABLE -> FileSendFailure.REMOTE_STORAGE_UNAVAILABLE
+            HttpTransportError.INTEGRITY_FAILED -> FileSendFailure.INTEGRITY_FAILED
+            HttpTransportError.TIMEOUT -> FileSendFailure.TIMED_OUT
+            HttpTransportError.TRANSFER_INTERRUPTED -> FileSendFailure.TRANSFER_INTERRUPTED
+            HttpTransportError.RECEIVER_CANCELLED -> FileSendFailure.RECEIVER_CANCELLED
+            HttpTransportError.UNREACHABLE -> FileSendFailure.RECEIVER_UNAVAILABLE
+            else -> FileSendFailure.NETWORK_FAILED
+        }
     }
     return FileSendResult.Failure(reason)
 }

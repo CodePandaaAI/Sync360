@@ -25,6 +25,7 @@ import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
+import com.liftley.sync360.features.sync.data.network.api.MessageResponseDto
 import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
 import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
@@ -73,6 +74,7 @@ class SyncRepositoryImpl(
     private val deviceRegistry = DeviceRegistry()
     private val sessionTokens = SessionTokenStore()
     private val events = MutableSharedFlow<ConnectionEvent>(extraBufferCapacity = 8)
+    private val incomingOfferDecisions = IncomingOfferDecisionStore()
     private val sessionAuthenticator = SessionAuthenticator(
         localDevice = localDevice,
         localAddressForPeer = { peerHost ->
@@ -129,6 +131,8 @@ class SyncRepositoryImpl(
     override val connectionEvents: Flow<ConnectionEvent> = events.asSharedFlow()
     override val connectionSnapshot: Flow<ConnectionSnapshot> = connectionEngine.connectionSnapshot
     override val sessionSnapshot: Flow<SessionSnapshot> = connectionEngine.sessionSnapshot
+    override val quickSaveEnabled = incomingOfferDecisions.quickSaveEnabled
+    override val pendingIncomingOffer = incomingOfferDecisions.pendingOffer
     override val sessionMessages: Flow<List<SyncMessage>> = messageEngine.messages
     override val transferSnapshot: Flow<TransferSnapshot> = transferEngine.snapshot
 
@@ -212,6 +216,20 @@ class SyncRepositoryImpl(
     override fun declineIncomingConnect(deviceId: String) =
         connectionEngine.declineIncoming(deviceId)
 
+    override fun setQuickSaveEnabled(enabled: Boolean) =
+        incomingOfferDecisions.setQuickSaveEnabled(enabled)
+
+    override fun acceptIncomingOffer(offerId: String) {
+        incomingOfferDecisions.accept(offerId)
+    }
+
+    override fun declineIncomingOffer(offerId: String) {
+        incomingOfferDecisions.decline(offerId)
+    }
+
+    override fun hasPeerGrantFor(deviceId: String): Boolean =
+        deviceRegistry.hasGrantFor(deviceId)
+
     override fun switchActiveDevice(deviceId: String) =
         connectionEngine.switchActive(deviceId)
 
@@ -240,7 +258,13 @@ class SyncRepositoryImpl(
 
     override fun sendText(text: String) = messageEngine.send(text)
 
+    override fun sendTextTo(deviceId: String, text: String) =
+        messageEngine.sendTo(deviceId, text)
+
     override fun offerFiles(files: List<PickedFile>) = transferEngine.offer(files)
+
+    override fun offerFilesTo(deviceId: String, files: List<PickedFile>) =
+        transferEngine.offerTo(deviceId, files)
 
     override fun dismissReceivedFiles() = transferEngine.dismissReceivedFiles()
 
@@ -262,19 +286,66 @@ class SyncRepositoryImpl(
     override fun onConnectReject(reject: ConnectRejectDto, remoteHost: String): Boolean =
         connectionEngine.onConnectReject(reject, remoteHost)
 
-    override fun onTextMessage(message: MessageDto, remoteHost: String): Boolean =
-        messageEngine.receive(message, remoteHost)
+    override suspend fun onTextMessage(message: MessageDto, remoteHost: String): MessageResponseDto {
+        val pending = messageEngine.pendingIncomingText(message, remoteHost)
+            ?: return MessageResponseDto(accepted = false, failureReason = "invalid_request")
+        if (quickSaveEnabled.value) {
+            messageEngine.acceptValidatedIncomingText(message)
+            return MessageResponseDto(accepted = true)
+        }
+        return when (incomingOfferDecisions.awaitDecision(pending)) {
+            IncomingOfferDecision.Accept -> {
+                messageEngine.acceptValidatedIncomingText(message)
+                MessageResponseDto(accepted = true)
+            }
+            IncomingOfferDecision.TimedOut -> {
+                events.emit(ConnectionEvent.Failed(UserFacingFailure.INCOMING_REQUEST_EXPIRED))
+                MessageResponseDto(accepted = false, failureReason = "receiver_timeout")
+            }
+            IncomingOfferDecision.Decline ->
+                MessageResponseDto(accepted = false, failureReason = "receiver_declined")
+            IncomingOfferDecision.Busy ->
+                MessageResponseDto(accepted = false, failureReason = "receiver_busy")
+        }
+    }
 
-    override fun onFileOffer(
+    override suspend fun onFileOffer(
         offer: FileOfferDto,
         remoteHost: String
     ): FileOfferResponseDto {
-        if (!transferEngine.receiveOffer(offer, remoteHost)) {
+        val prepared = transferEngine.prepareIncomingOffer(offer, remoteHost) ?: run {
             return FileOfferResponseDto(
                 accepted = false,
                 failureReason = "raw_tcp_receiver_unavailable"
             )
         }
+        if (!quickSaveEnabled.value) {
+            when (incomingOfferDecisions.awaitDecision(transferEngine.pendingIncomingOffer(prepared))) {
+                IncomingOfferDecision.Accept -> Unit
+                IncomingOfferDecision.Decline -> return FileOfferResponseDto(
+                    accepted = false,
+                    failureReason = "receiver_declined"
+                )
+                IncomingOfferDecision.TimedOut -> {
+                    events.emit(ConnectionEvent.Failed(UserFacingFailure.INCOMING_REQUEST_EXPIRED))
+                    return FileOfferResponseDto(
+                        accepted = false,
+                        failureReason = "receiver_timeout"
+                    )
+                }
+                IncomingOfferDecision.Busy -> return FileOfferResponseDto(
+                    accepted = false,
+                    failureReason = "receiver_busy"
+                )
+            }
+        }
+        if (transferEngine.isActive) {
+            return FileOfferResponseDto(
+                accepted = false,
+                failureReason = "receiver_busy"
+            )
+        }
+        transferEngine.startPreparedIncomingOffer(prepared)
         rawTcpFileTransport.listener = this
         val listener = rawTcpFileTransport.startDynamic()
         if (listener is RawTcpListenerStartResult.Failure) {

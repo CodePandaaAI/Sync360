@@ -8,58 +8,69 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 internal class DeviceRegistry {
-    private val _approvedSessions = MutableStateFlow<List<ApprovedSession>>(emptyList())
-    val approvedSessions: StateFlow<List<ApprovedSession>> = _approvedSessions.asStateFlow()
+    // Peer grants are internal route + token records. They are not user-facing
+    // connected sessions; nearby devices remain send targets and transfers are events.
+    private val _peerGrants = MutableStateFlow<List<PeerGrant>>(emptyList())
+    val peerGrants: StateFlow<List<PeerGrant>> = _peerGrants.asStateFlow()
 
-    private val _approvedDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
-    val approvedDevices: StateFlow<List<DeviceProfile>> = _approvedDevices.asStateFlow()
+    private val _grantedPeers = MutableStateFlow<List<DeviceProfile>>(emptyList())
+    val grantedPeers: StateFlow<List<DeviceProfile>> = _grantedPeers.asStateFlow()
 
     fun upsert(device: DeviceProfile, sessionToken: String) {
-        val existing = _approvedSessions.value.firstOrNull { it.identity.deviceId == device.id }
+        val existing = _peerGrants.value.firstOrNull { it.identity.deviceId == device.id }
         val route = device.hostAddress?.let { PeerRoute(it, device.port) } ?: existing?.route ?: return
-        val approved = ApprovedSession(
+        val grant = PeerGrant(
             identity = PeerIdentity(device.id, device.name, device.type),
             route = route,
             sessionToken = sessionToken
         )
-        _approvedSessions.value = _approvedSessions.value
-            .filterNot { it.identity.deviceId == device.id } + approved
+        _peerGrants.value = _peerGrants.value
+            .filterNot { it.identity.deviceId == device.id } + grant
         publishDevices()
     }
 
     fun delete(deviceId: String) {
-        _approvedSessions.value =
-            _approvedSessions.value.filterNot { it.identity.deviceId == deviceId }
+        _peerGrants.value =
+            _peerGrants.value.filterNot { it.identity.deviceId == deviceId }
         publishDevices()
     }
 
-    fun hasValidSession(deviceId: String, sessionToken: String): Boolean {
-        return sessionFor(deviceId)?.sessionToken == sessionToken
+    fun hasValidGrant(deviceId: String, sessionToken: String): Boolean {
+        return grantFor(deviceId)?.sessionToken == sessionToken
     }
 
-    fun sessionTokenFor(deviceId: String): String? = sessionFor(deviceId)?.sessionToken
+    fun sessionTokenFor(deviceId: String): String? = grantFor(deviceId)?.sessionToken
 
-    fun routeFor(deviceId: String): PeerRoute? = sessionFor(deviceId)?.route
+    fun routeFor(deviceId: String): PeerRoute? = grantFor(deviceId)?.route
 
-    fun sessionFor(deviceId: String): ApprovedSession? {
-        return _approvedSessions.value.firstOrNull { it.identity.deviceId == deviceId }
+    fun grantFor(deviceId: String): PeerGrant? {
+        return _peerGrants.value.firstOrNull { it.identity.deviceId == deviceId }
     }
+
+    fun hasGrantFor(deviceId: String): Boolean = grantFor(deviceId) != null
+
+    @Deprecated("Use hasValidGrant; session wording is kept only for Phase 2 compatibility.")
+    fun hasValidSession(deviceId: String, sessionToken: String): Boolean =
+        hasValidGrant(deviceId, sessionToken)
+
+    @Deprecated("Use grantFor; session wording is kept only for Phase 2 compatibility.")
+    fun sessionFor(deviceId: String): PeerGrant? = grantFor(deviceId)
 
     private fun publishDevices() {
-        _approvedDevices.value = _approvedSessions.value.map { session ->
+        _grantedPeers.value = _peerGrants.value.map { grant ->
             DeviceProfile(
-                id = session.identity.deviceId,
-                name = session.identity.name,
-                type = session.identity.type,
-                hostAddress = session.route.host,
-                port = session.route.port,
+                id = grant.identity.deviceId,
+                name = grant.identity.name,
+                type = grant.identity.type,
+                hostAddress = grant.route.host,
+                port = grant.route.port,
                 isOnline = true
             )
         }
     }
 }
 
-internal data class ApprovedSession(
+internal data class PeerGrant(
     val identity: PeerIdentity,
     val route: PeerRoute,
     val sessionToken: String

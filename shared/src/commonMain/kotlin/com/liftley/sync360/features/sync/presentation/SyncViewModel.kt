@@ -40,6 +40,8 @@ class SyncViewModel(
     private val _uiEffects = Channel<SyncUiEffect>(Channel.BUFFERED)
     val uiEffects: Flow<SyncUiEffect> = _uiEffects.receiveAsFlow()
 
+    private var pendingDraftTargetId: String? = null
+
     init {
         viewModelScope.launch {
             var lastTransferFailure: com.liftley.sync360.features.sync.domain.model.FileTransferFailure? = null
@@ -68,6 +70,8 @@ class SyncViewModel(
                             ?.securityMode
                             ?: com.liftley.sync360.features.sync.domain.model.SessionSecurityMode.TRUSTED_LAN_PLAINTEXT,
                         pendingIncomingRequest = snapshot.connection.pendingIncoming.firstOrNull(),
+                        pendingIncomingOffer = snapshot.pendingIncomingOffer,
+                        quickSaveEnabled = snapshot.quickSaveEnabled,
                         pendingOutgoingRequest = pendingOutgoing,
                         connectionState = snapshot.connection.state,
                         fileTransferProgress = snapshot.transfer.progress,
@@ -78,6 +82,25 @@ class SyncViewModel(
                             it.isScanningForDevices
                     )
                 }
+                
+                if (activeDevice != null && activeDevice.id == pendingDraftTargetId) {
+                    val targetId = pendingDraftTargetId!!
+                    pendingDraftTargetId = null
+                    
+                    val state = _uiState.value
+                    if (state.selectedFiles.isNotEmpty()) {
+                        transferController.sendTo(targetId, state.selectedFiles)
+                        _uiState.update { it.copy(selectedFiles = emptyList()) }
+                    } else if (state.outgoingText.isNotBlank()) {
+                        repository.sendTextTo(targetId, state.outgoingText)
+                        _uiState.update { it.copy(outgoingText = "") }
+                    }
+                }
+                
+                snapshot.connection.pendingIncoming.firstOrNull()?.let { device ->
+                    connectionController.acceptIncoming(device.id)
+                }
+                
                 // Let the UI handle the failure card via uiState.fileTransferFailure
                 lastTransferFailure = snapshot.transfer.failure
             }
@@ -179,6 +202,54 @@ class SyncViewModel(
                 }
                 _uiState.update { it.copy(selectedFiles = emptyList()) }
             }
+            is SyncEvent.SendDraftTo -> {
+                val state = _uiState.value
+                if (state.selectedFiles.isNotEmpty()) {
+                    onEvent(SyncEvent.SendSelectedFilesTo(event.deviceId))
+                } else if (state.outgoingText.isNotBlank()) {
+                    onEvent(SyncEvent.SendTextTo(event.deviceId))
+                }
+            }
+            is SyncEvent.SendSelectedFilesTo -> {
+                val selected = _uiState.value.selectedFiles
+                if (selected.isEmpty()) {
+                    showMessage("Select files first")
+                    return
+                }
+                if (!repository.hasPeerGrantFor(event.deviceId)) {
+                    val device = findDevice(event.deviceId)
+                    if (device != null) {
+                        pendingDraftTargetId = event.deviceId
+                        connectionController.request(device)
+                        connectionController.confirmRequest()
+                    } else {
+                        showMessage("Device is not ready. Try again.")
+                    }
+                    return
+                }
+                transferController.sendTo(event.deviceId, selected)
+                _uiState.update { it.copy(selectedFiles = emptyList()) }
+            }
+            is SyncEvent.SendTextTo -> {
+                val text = _uiState.value.outgoingText
+                if (text.isBlank()) {
+                    showMessage("Enter text first")
+                    return
+                }
+                if (!repository.hasPeerGrantFor(event.deviceId)) {
+                    val device = findDevice(event.deviceId)
+                    if (device != null) {
+                        pendingDraftTargetId = event.deviceId
+                        connectionController.request(device)
+                        connectionController.confirmRequest()
+                    } else {
+                        showMessage("Device is not ready. Try again.")
+                    }
+                    return
+                }
+                repository.sendTextTo(event.deviceId, text)
+                _uiState.update { it.copy(outgoingText = "") }
+            }
             SyncEvent.ClearSelectedFiles -> {
                 _uiState.update { it.copy(selectedFiles = emptyList()) }
             }
@@ -203,6 +274,9 @@ class SyncViewModel(
                 runtimeController.restart()
                 showMessage("Restarted local sharing")
             }
+            is SyncEvent.AcceptIncomingOffer -> repository.acceptIncomingOffer(event.offerId)
+            is SyncEvent.DeclineIncomingOffer -> repository.declineIncomingOffer(event.offerId)
+            SyncEvent.ToggleQuickSave -> repository.setQuickSaveEnabled(!_uiState.value.quickSaveEnabled)
         }
     }
 
@@ -241,6 +315,10 @@ private fun com.liftley.sync360.features.sync.domain.model.ConnectionEvent.Faile
             "Text is empty or too large"
         com.liftley.sync360.features.sync.domain.model.UserFacingFailure.TEXT_DELIVERY_FAILED ->
             "Text could not be delivered"
+        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.INCOMING_REQUEST_EXPIRED ->
+            "Incoming request expired"
+        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.RECEIVER_DECLINED ->
+            "$target declined the request"
         com.liftley.sync360.features.sync.domain.model.UserFacingFailure.UNKNOWN ->
             "Connection failed"
     }

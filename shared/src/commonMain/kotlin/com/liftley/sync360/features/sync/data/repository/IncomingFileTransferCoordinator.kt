@@ -22,12 +22,21 @@ internal class IncomingFileTransferCoordinator(
 
     fun startOffer(
         offer: FileOfferDto,
-        isApprovedSession: Boolean,
+        hasPeerGrant: Boolean,
         hasActiveTransfer: Boolean,
         onProgress: (bytes: Long) -> Unit
     ): IncomingOfferStart? {
+        val prepared = prepareOffer(offer, hasPeerGrant, hasActiveTransfer) ?: return null
+        return startPreparedOffer(prepared, onProgress)
+    }
+
+    fun prepareOffer(
+        offer: FileOfferDto,
+        hasPeerGrant: Boolean,
+        hasActiveTransfer: Boolean
+    ): PreparedIncomingFileOffer? {
         if (hasActiveTransfer) return null
-        if (!isApprovedSession) return null
+        if (!hasPeerGrant) return null
         if (!sessionAuthenticator.verifyFileOffer(offer)) return null
         if (offer.files.isEmpty() || offer.files.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) return null
 
@@ -58,31 +67,45 @@ internal class IncomingFileTransferCoordinator(
         val previews = offer.files.map {
             TransferFilePreview(it.fileName, it.mimeType, it.fileSize, it.sha256)
         }
-        incomingTransferSession.start(
+        return PreparedIncomingFileOffer(
             offerId = offer.offerId,
             senderDeviceId = offer.senderDeviceId,
+            senderName = offer.senderName,
             sessionToken = offer.sessionToken,
-            senderName = offer.senderName,
-            files = previews
-        )
-        fileTransferManager.registerIncomingTotalSize(totalBytes, onProgress)
-
-        return IncomingOfferStart(
-            progress = FileTransferProgress(
-                peerName = offer.senderName,
-                files = previews,
-                bytesTransferred = 0L,
-                totalBytes = totalBytes,
-                direction = TransferDirection.RECEIVING,
-                stage = TransferStage.TRANSFERRING
-            ),
-            senderName = offer.senderName,
-            fileCount = offer.files.size
+            files = previews,
+            totalBytes = totalBytes
         )
     }
 
-    fun completeSignal(complete: FileCompleteDto, isApprovedSession: Boolean): Boolean {
-        if (!isApprovedSession) return false
+    fun startPreparedOffer(
+        prepared: PreparedIncomingFileOffer,
+        onProgress: (bytes: Long) -> Unit
+    ): IncomingOfferStart {
+        incomingTransferSession.start(
+            offerId = prepared.offerId,
+            senderDeviceId = prepared.senderDeviceId,
+            sessionToken = prepared.sessionToken,
+            senderName = prepared.senderName,
+            files = prepared.files
+        )
+        fileTransferManager.registerIncomingTotalSize(prepared.totalBytes, onProgress)
+
+        return IncomingOfferStart(
+            progress = FileTransferProgress(
+                peerName = prepared.senderName,
+                files = prepared.files,
+                bytesTransferred = 0L,
+                totalBytes = prepared.totalBytes,
+                direction = TransferDirection.RECEIVING,
+                stage = TransferStage.TRANSFERRING
+            ),
+            senderName = prepared.senderName,
+            fileCount = prepared.files.size
+        )
+    }
+
+    fun completeSignal(complete: FileCompleteDto, hasPeerGrant: Boolean): Boolean {
+        if (!hasPeerGrant) return false
         if (!sessionAuthenticator.verifyFileComplete(complete)) return false
         return incomingTransferSession.isComplete(complete.offerId, complete.senderDeviceId)
     }
@@ -145,6 +168,15 @@ internal data class IncomingOfferStart(
     val progress: FileTransferProgress,
     val senderName: String,
     val fileCount: Int
+)
+
+internal data class PreparedIncomingFileOffer(
+    val offerId: String,
+    val senderDeviceId: String,
+    val senderName: String,
+    val sessionToken: String,
+    val files: List<TransferFilePreview>,
+    val totalBytes: Long
 )
 
 internal data class IncomingFileWriteComplete(

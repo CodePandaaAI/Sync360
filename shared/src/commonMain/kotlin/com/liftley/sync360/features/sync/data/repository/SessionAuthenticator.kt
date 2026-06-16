@@ -19,7 +19,7 @@ internal class SessionAuthenticator(
     private val localPort: Int
 ) {
     private val untrustedConnectReplayCache = SessionReplayCache()
-    private val approvedSessionReplayCache = SessionReplayCache()
+    private val peerGrantReplayCache = SessionReplayCache()
 
     fun newSessionToken(): String = SessionCrypto.secureToken()
 
@@ -189,7 +189,7 @@ internal class SessionAuthenticator(
 
     fun clearReplayHistory() {
         untrustedConnectReplayCache.clear()
-        approvedSessionReplayCache.clear()
+        peerGrantReplayCache.clear()
     }
 
     private fun authFields(sessionToken: String, purpose: String, parts: List<String>): SessionAuthFields {
@@ -201,7 +201,7 @@ internal class SessionAuthenticator(
         sessionToken: String,
         purpose: String,
         parts: List<String>,
-        replayCache: SessionReplayCache = approvedSessionReplayCache
+        replayCache: SessionReplayCache = peerGrantReplayCache
     ): Boolean {
         return SessionAuth.verify(fields, sessionToken, purpose, parts, replayCache)
     }

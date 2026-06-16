@@ -8,6 +8,9 @@ class SyncTransferController(
 ) {
     fun send(files: List<PickedFile>) = repository.offerFiles(files)
 
+    fun sendTo(deviceId: String, files: List<PickedFile>) =
+        repository.offerFilesTo(deviceId, files)
+
     fun dismissReceived() = repository.dismissReceivedFiles()
 
     fun dismissFailure() = repository.dismissTransferFailure()

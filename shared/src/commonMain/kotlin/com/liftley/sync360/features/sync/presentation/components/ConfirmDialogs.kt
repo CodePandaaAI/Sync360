@@ -8,27 +8,62 @@ import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.presentation.SyncEvent
 import com.liftley.sync360.features.sync.presentation.SyncUiState
 import com.liftley.sync360.features.sync.domain.model.ConnectionState
+import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
 
 @Composable
 fun ConfirmDialogs(
     uiState: SyncUiState,
     onEvent: (SyncEvent) -> Unit
 ) {
-    uiState.pendingIncomingRequest?.let { device ->
+    if (uiState.pendingIncomingOffer != null) {
+        val offer = uiState.pendingIncomingOffer
         AlertDialog(
-            onDismissRequest = { onEvent(SyncEvent.DeclineConnection(device.id)) },
+            onDismissRequest = { onEvent(SyncEvent.DeclineIncomingOffer(offer.offerId)) },
             shape = RoundedCornerShape(24.dp),
             containerColor = MaterialTheme.colorScheme.surface,
             title = {
                 Text(
-                    text = "Connection request",
+                    text = "Receive from ${offer.senderName}?",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "${device.name} wants to connect on your local network.",
+                    text = offer.description(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = { onEvent(SyncEvent.AcceptIncomingOffer(offer.offerId)) },
+                    shape = RoundedCornerShape(24.dp)
+                ) {
+                    Text("Accept", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onEvent(SyncEvent.DeclineIncomingOffer(offer.offerId)) }) {
+                    Text("Decline", fontWeight = FontWeight.Bold)
+                }
+            }
+        )
+    } else uiState.pendingIncomingRequest?.let { device ->
+        AlertDialog(
+            onDismissRequest = { onEvent(SyncEvent.DeclineConnection(device.id)) },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surface,
+            title = {
+                Text(
+                    text = "Device request",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = "${device.name} wants to become available on your local network.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -49,7 +84,7 @@ fun ConfirmDialogs(
         )
     }
 
-    // Outgoing connect confirmation
+    // Outgoing peer-grant confirmation kept for compatibility.
     uiState.pendingOutgoingRequest
         ?.takeIf { uiState.connectionState is ConnectionState.ResolvingRoute }
         ?.let { device ->
@@ -59,14 +94,14 @@ fun ConfirmDialogs(
             containerColor = MaterialTheme.colorScheme.surface,
             title = {
                 Text(
-                    text = "Connect to device?",
+                    text = "Make device available?",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
             },
             text = {
                 Text(
-                    text = "Do you want to connect with ${device.name} for this Sync360 session?",
+                    text = "Allow ${device.name} as a nearby send target for this Sync360 run?",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -76,7 +111,7 @@ fun ConfirmDialogs(
                     onClick = { onEvent(SyncEvent.ConfirmConnect) },
                     shape = RoundedCornerShape(24.dp)
                 ) {
-                    Text("Connect", fontWeight = FontWeight.Bold)
+                    Text("Allow", fontWeight = FontWeight.Bold)
                 }
             },
             dismissButton = {
@@ -85,5 +120,27 @@ fun ConfirmDialogs(
                 }
             }
         )
+    }
+}
+
+private fun PendingIncomingOffer.description(): String = when (this) {
+    is PendingIncomingOffer.Files ->
+        "$fileCount file${if (fileCount == 1) "" else "s"} - ${totalBytes.formatBytes()}"
+    is PendingIncomingOffer.Text ->
+        "Text: ${preview.ifBlank { "(empty)" }}"
+}
+
+private fun Long.formatBytes(): String {
+    val units = listOf("B", "KB", "MB", "GB")
+    var value = toDouble()
+    var index = 0
+    while (value >= 1024.0 && index < units.lastIndex) {
+        value /= 1024.0
+        index += 1
+    }
+    return if (index == 0) {
+        "${toLong()} ${units[index]}"
+    } else {
+        "${(value * 10).toInt() / 10.0} ${units[index]}"
     }
 }

@@ -8,6 +8,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
+// Phase 2 compatibility store for old connected-device UI state.
+// Peer route/token authorization lives in DeviceRegistry as PeerGrant records.
 internal class DeviceSessionStore {
     private val _snapshot = MutableStateFlow(ConnectionSnapshot())
     val snapshot: StateFlow<ConnectionSnapshot> = _snapshot.asStateFlow()

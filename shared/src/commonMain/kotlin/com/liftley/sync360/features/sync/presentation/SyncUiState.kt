@@ -5,6 +5,7 @@ import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.model.SessionSecurityMode
@@ -18,6 +19,8 @@ data class SyncUiState(
     val activeDevice: DeviceProfile? = null,
     val nearbyDevices: List<DeviceProfile> = emptyList(),
     val pendingIncomingRequest: DeviceProfile? = null,
+    val pendingIncomingOffer: PendingIncomingOffer? = null,
+    val quickSaveEnabled: Boolean = false,
     val pendingOutgoingRequest: DeviceProfile? = null,
     val isScanningForDevices: Boolean = true,
     val outgoingText: String = "",

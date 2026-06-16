@@ -38,13 +38,27 @@ class SyncRuntimeController(
     private val _state = MutableStateFlow<SyncRuntimeState>(SyncRuntimeState.Stopped)
     private var lastForegroundStatus: SyncForegroundServiceStatus? = null
     val state: StateFlow<SyncRuntimeState> = _state.asStateFlow()
+    private val incomingDecisionState = combine(
+        repository.quickSaveEnabled,
+        repository.pendingIncomingOffer
+    ) { quickSaveEnabled, pendingIncomingOffer ->
+        quickSaveEnabled to pendingIncomingOffer
+    }
     val snapshot: StateFlow<SyncSnapshot> = combine(
         state,
         repository.connectionSnapshot,
         repository.sessionSnapshot,
-        repository.transferSnapshot
-    ) { runtime, connection, session, transfer ->
-        SyncSnapshot(runtime, connection, session, transfer)
+        repository.transferSnapshot,
+        incomingDecisionState
+    ) { runtime, connection, session, transfer, incomingDecision ->
+        SyncSnapshot(
+            runtime = runtime,
+            connection = connection,
+            session = session,
+            transfer = transfer,
+            quickSaveEnabled = incomingDecision.first,
+            pendingIncomingOffer = incomingDecision.second
+        )
     }.stateIn(
         scope = scope,
         started = SharingStarted.Eagerly,
@@ -230,7 +244,7 @@ class SyncRuntimeController(
             )
             is SyncRuntimeState.Degraded -> SyncForegroundServiceStatus(
                 mode = SyncForegroundServiceMode.ERROR,
-                detail = "Discovery is limited. Manual connection is still available."
+                detail = "Discovery is limited. Manual IP fallback is still available."
             )
             is SyncRuntimeState.Unavailable -> SyncForegroundServiceStatus(
                 mode = SyncForegroundServiceMode.ERROR,

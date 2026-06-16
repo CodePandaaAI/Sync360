@@ -34,6 +34,7 @@ fun DesktopDashboard(
     val colorScheme = MaterialTheme.colorScheme
     val activeDevice = uiState.activeDevice
     var copiedFeedbackText by remember { mutableStateOf<String?>(null) }
+    val hasDraftContent = uiState.selectedFiles.isNotEmpty() || uiState.outgoingText.isNotBlank()
 
     LaunchedEffect(copiedFeedbackText) {
         if (copiedFeedbackText != null) {
@@ -69,10 +70,21 @@ fun DesktopDashboard(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 DesktopHero(activeDevice = activeDevice)
+                QuickSaveCard(
+                    enabled = uiState.quickSaveEnabled,
+                    onToggle = { onEvent(SyncEvent.ToggleQuickSave) }
+                )
 
                 if (activeDevice == null) {
                     SectionLabel("You'll appear as")
                     DesktopIdentityCard(serverIp = uiState.serverIp)
+                    
+                    SharePanel(
+                        isDesktop = true,
+                        uiState = uiState,
+                        activeDevice = null,
+                        onEvent = onEvent
+                    )
                 }
 
                 SectionLabel(if (activeDevice == null) "Ready to receive" else "Sharing with you")
@@ -80,7 +92,10 @@ fun DesktopDashboard(
                     ReadyTransferHomeCard(
                         isScanning = uiState.isScanningForDevices,
                         nearbyDevices = uiState.nearbyDevices,
-                        onDeviceClick = { onEvent(SyncEvent.RequestConnect(it)) },
+                        targetActionLabel = if (hasDraftContent) "Send" else "Available",
+                        onDeviceClick = {
+                            onEvent(SyncEvent.SendDraftTo(it))
+                        },
                         onScan = { onEvent(SyncEvent.TriggerScan) },
                         onOpenDevices = { onEvent(SyncEvent.TriggerScan) }
                     )
@@ -171,8 +186,8 @@ private fun DesktopHero(activeDevice: DeviceProfile?) {
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Sync360TopBarTitle(title = "Sync360")
         Text(
-            text = activeDevice?.let { "Connected with ${it.name}" }
-                ?: "Choose a nearby device or connect by IP.",
+            text = activeDevice?.let { "${it.name} is available" }
+                ?: "Select files or text, then tap a nearby device.",
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurface
         )
@@ -244,7 +259,7 @@ private fun DesktopDevicesPanel(
                 Column {
                     Text("Devices", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        text = if (activeDevice == null) "Pick a nearby device" else "Connected session",
+                        text = if (activeDevice == null) "Nearby send targets" else "Current target",
                         style = MaterialTheme.typography.bodyMedium,
                         color = colorScheme.onSurface
                     )
@@ -269,22 +284,13 @@ private fun DesktopDevicesPanel(
             }
 
             if (activeDevice != null) {
-                DeviceGroup("This session") {
+                DeviceGroup("Current target") {
                     DesktopDeviceListRow(
                         device = activeDevice,
                         selected = true,
                         action = "Active",
                         onClick = {}
                     )
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = { onEvent(SyncEvent.Disconnect) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    Text("Disconnect", fontWeight = FontWeight.Bold)
                 }
             } else {
                 DeviceGroup("Nearby devices") {
@@ -299,11 +305,14 @@ private fun DesktopDevicesPanel(
                         }
                     } else {
                         nearby.forEach { device ->
+                            val hasDraft = uiState.selectedFiles.isNotEmpty() || uiState.outgoingText.isNotBlank()
                             DesktopDeviceListRow(
                                 device = device,
                                 selected = false,
-                                action = "Connect",
-                                onClick = { onEvent(SyncEvent.RequestConnect(device.id)) }
+                                action = if (hasDraft) "Send" else "Available",
+                                onClick = {
+                                    onEvent(SyncEvent.SendDraftTo(device.id))
+                                }
                             )
                         }
                     }
@@ -311,7 +320,7 @@ private fun DesktopDevicesPanel(
 
                 HorizontalDivider(color = colorScheme.outlineVariant.copy(alpha = 0.45f))
 
-                DeviceGroup("Connect by IP") {
+                DeviceGroup("Add by IP") {
                     OutlinedTextField(
                         value = manualHost,
                         onValueChange = { manualHost = it },
@@ -330,7 +339,7 @@ private fun DesktopDevicesPanel(
                         shape = RoundedCornerShape(24.dp),
                         contentPadding = PaddingValues(vertical = 12.dp)
                     ) {
-                        Text("Connect", fontWeight = FontWeight.Bold)
+                        Text("Add target", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -398,7 +407,7 @@ private fun DesktopDeviceListRow(
                 )
                 Text(
                     text = when {
-                        selected -> "Active connection"
+                        selected -> "Available"
                         device.isOnline -> "Available"
                         else -> device.hostAddress ?: "Offline"
                     },

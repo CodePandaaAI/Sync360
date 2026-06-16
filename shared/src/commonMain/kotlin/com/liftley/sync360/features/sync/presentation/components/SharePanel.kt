@@ -26,7 +26,7 @@ import com.liftley.sync360.features.sync.presentation.SyncUiState
 fun SharePanel(
     isDesktop: Boolean,
     uiState: SyncUiState,
-    activeDevice: DeviceProfile,
+    activeDevice: DeviceProfile?,
     onEvent: (SyncEvent) -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -37,24 +37,33 @@ fun SharePanel(
                 modifier = Modifier.padding(if (isDesktop) 20.dp else 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    DeviceGlyph(activeDevice.name)
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            text = "Send files",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = colorScheme.onSurface
-                        )
-                        Text(
-                            text = "To ${activeDevice.name}",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                if (activeDevice != null) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        DeviceGlyph(activeDevice.name)
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                text = "Send files",
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = colorScheme.onSurface
+                            )
+                            Text(
+                                text = "To ${activeDevice.name}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     }
+                } else {
+                    Text(
+                        text = "Select files to send",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = colorScheme.onSurface
+                    )
                 }
 
                 if (uiState.selectedFiles.isEmpty()) {
@@ -62,6 +71,7 @@ fun SharePanel(
                 } else {
                     SelectedFilesPanel(
                         files = uiState.selectedFiles,
+                        hasActiveDevice = activeDevice != null,
                         onSend = { onEvent(SyncEvent.SendSelectedFiles) },
                         onClear = { onEvent(SyncEvent.ClearSelectedFiles) },
                         onAddFiles = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) }
@@ -116,16 +126,18 @@ fun SharePanel(
                         Spacer(Modifier.width(8.dp))
                         Text("Paste", fontWeight = FontWeight.SemiBold)
                     }
-                    Button(
-                        onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
-                        enabled = uiState.outgoingText.isNotBlank(),
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp)
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(8.dp))
-                        Text("Send", fontWeight = FontWeight.SemiBold)
+                    if (activeDevice != null) {
+                        Button(
+                            onClick = { onEvent(SyncEvent.SendMessage(uiState.outgoingText)) },
+                            enabled = uiState.outgoingText.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(16.dp),
+                            contentPadding = PaddingValues(vertical = 12.dp)
+                        ) {
+                            Icon(Icons.AutoMirrored.Filled.Send, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(8.dp))
+                            Text("Send", fontWeight = FontWeight.SemiBold)
+                        }
                     }
                 }
             }
@@ -184,6 +196,7 @@ private fun FileAction(
 @Composable
 private fun SelectedFilesPanel(
     files: List<PickedFile>,
+    hasActiveDevice: Boolean,
     onSend: () -> Unit,
     onClear: () -> Unit,
     onAddFiles: () -> Unit
@@ -213,8 +226,10 @@ private fun SelectedFilesPanel(
                 Spacer(Modifier.width(8.dp))
                 Text("Clear files")
             }
-            Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
-                Text("Send", fontWeight = FontWeight.Bold)
+            if (hasActiveDevice) {
+                Button(onClick = onSend, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+                    Text("Send", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

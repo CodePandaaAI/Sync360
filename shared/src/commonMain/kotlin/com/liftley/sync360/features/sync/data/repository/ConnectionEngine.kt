@@ -48,21 +48,21 @@ internal class ConnectionEngine(
 
     val connectionSnapshot: Flow<ConnectionSnapshot> = deviceSession.snapshot
     val sessionSnapshot: Flow<SessionSnapshot> = combine(
-        deviceRegistry.approvedSessions,
+        deviceRegistry.peerGrants,
         deviceSession.snapshot
-    ) { sessions, connection ->
+    ) { grants, connection ->
         val activeId = when (val state = connection.state) {
             is ConnectionState.Connected -> state.deviceId
             is ConnectionState.Disconnecting -> state.deviceId
             else -> null
         }
-        val active = sessions.firstOrNull { it.identity.deviceId == activeId }
-        if (active == null) {
+        val activeGrant = grants.firstOrNull { it.identity.deviceId == activeId }
+        if (activeGrant == null) {
             SessionSnapshot.NoSession
         } else {
             SessionSnapshot.Approved(
-                identity = active.identity,
-                route = active.route,
+                identity = activeGrant.identity,
+                route = activeGrant.route,
                 securityMode = SessionSecurityMode.TRUSTED_LAN_PLAINTEXT
             )
         }
@@ -174,18 +174,18 @@ internal class ConnectionEngine(
 
     fun activePeerId(): String? = deviceSession.activeDeviceIdValue
 
-    fun isApprovedPeerAtRoute(
+    fun hasPeerGrantAtRoute(
         deviceId: String,
         sessionToken: String?,
         remoteHost: String
     ): Boolean {
         if (sessionToken == null) return false
-        val session = deviceRegistry.sessionFor(deviceId) ?: return false
-        return session.sessionToken == sessionToken && session.route.host == remoteHost
+        val grant = deviceRegistry.grantFor(deviceId) ?: return false
+        return grant.sessionToken == sessionToken && grant.route.host == remoteHost
     }
 
-    fun isApprovedTokenAtRoute(sessionToken: String, remoteHost: String): Boolean {
-        return deviceRegistry.approvedSessions.value.any {
+    fun hasPeerGrantTokenAtRoute(sessionToken: String, remoteHost: String): Boolean {
+        return deviceRegistry.peerGrants.value.any {
             it.sessionToken == sessionToken && it.route.host == remoteHost
         }
     }
@@ -219,7 +219,7 @@ internal class ConnectionEngine(
         ) {
             return ConnectRequestOutcome.BUSY
         }
-        if (deviceRegistry.hasValidSession(device.id, request.sessionToken)) {
+        if (deviceRegistry.hasValidGrant(device.id, request.sessionToken)) {
             deviceRegistry.upsert(device, request.sessionToken)
             deviceSession.connect(device.id)
             scope.launch {
@@ -243,7 +243,7 @@ internal class ConnectionEngine(
 
         val pending = deviceSession.pendingOutgoingValue
         val pendingToken = sessionTokens.get(accept.deviceId) ?: pending?.id?.let(sessionTokens::get)
-        val alreadyApproved = isApprovedPeerAtRoute(
+        val alreadyGranted = hasPeerGrantAtRoute(
             accept.deviceId,
             accept.sessionToken,
             remoteHost
@@ -255,7 +255,7 @@ internal class ConnectionEngine(
                 (it.id == accept.deviceId || it.id.startsWith(MANUAL_DEVICE_ID_PREFIX))
         } == true
         val acceptsPendingRequest = matchesPendingDevice && pendingToken == accept.sessionToken
-        if (!acceptsPendingRequest && !alreadyApproved) return false
+        if (!acceptsPendingRequest && !alreadyGranted) return false
         if (!sessionAuthenticator.verifyConnectAccept(accept)) return false
         if (!SyncProtocol.isCompatible(accept.protocolVersion, accept.capabilities)) {
             outgoing.cancel()
@@ -297,7 +297,7 @@ internal class ConnectionEngine(
         val pendingRouteMatches = pending?.let {
             it.hostAddress == remoteHost || it.id.startsWith(MANUAL_DEVICE_ID_PREFIX)
         } == true
-        val allowed = isApprovedPeerAtRoute(
+        val allowed = hasPeerGrantAtRoute(
             reject.senderDeviceId,
             reject.sessionToken,
             remoteHost

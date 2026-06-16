@@ -34,12 +34,12 @@ fun MobileDevicePickerSheet(
     onDismiss: () -> Unit,
     onPairNearby: (String) -> Unit,
     onManualConnect: (String) -> Unit,
-    onDisconnect: () -> Unit,
     onScan: () -> Unit
 ) {
     var manualHost by remember { mutableStateOf("") }
     val activeDevice = uiState.activeDevice
     val nearbyOnly = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
+    val hasDraftContent = uiState.selectedFiles.isNotEmpty() || uiState.outgoingText.isNotBlank()
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -62,7 +62,7 @@ fun MobileDevicePickerSheet(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Sync360TopBarTitle(
-                    title = if (activeDevice == null) "Connect" else "Connected",
+                    title = if (activeDevice == null) "Devices" else "Device available",
                     modifier = Modifier
                 )
                 if (uiState.isScanningForDevices) {
@@ -91,27 +91,16 @@ fun MobileDevicePickerSheet(
 
             if (activeDevice != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    SheetSectionLabel("This session")
+                    SheetSectionLabel("Current target")
                     DeviceRowItem(
                         device = activeDevice,
                         isSelected = true,
-                        actionLabel = "Connected",
+                        actionLabel = "Available",
                         enabled = false,
                         topRounding = 24.dp,
                         bottomRounding = 24.dp,
                         onClick = {}
                     )
-                }
-                OutlinedButton(
-                    onClick = {
-                        onDisconnect()
-                        onDismiss()
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    Text("Disconnect", fontWeight = FontWeight.SemiBold)
                 }
             }
 
@@ -173,7 +162,7 @@ fun MobileDevicePickerSheet(
                         DeviceRowItem(
                             device = device,
                             isSelected = false,
-                            actionLabel = "Connect",
+                            actionLabel = if (hasDraftContent) "Send" else "Available",
                             enabled = true,
                             topRounding = if (index == 0) 24.dp else 6.dp,
                             bottomRounding = if (index == nearbyOnly.lastIndex) 24.dp else 6.dp,
@@ -184,7 +173,7 @@ fun MobileDevicePickerSheet(
             }
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                SheetSectionLabel("Connect by IP")
+                SheetSectionLabel("Add by IP")
                 OutlinedTextField(
                     value = manualHost,
                     onValueChange = { manualHost = it },
@@ -202,7 +191,7 @@ fun MobileDevicePickerSheet(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp)
                 ) {
-                    Text("Connect", fontWeight = FontWeight.SemiBold)
+                    Text("Add target", fontWeight = FontWeight.SemiBold)
                 }
             }
         }
@@ -267,7 +256,7 @@ private fun DeviceRowItem(
                 )
                 Text(
                     text = when {
-                        isSelected -> "Active connection"
+                        isSelected -> "Available"
                         device.isOnline -> "Available"
                         else -> "Offline"
                     },

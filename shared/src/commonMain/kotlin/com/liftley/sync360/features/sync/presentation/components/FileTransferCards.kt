@@ -93,6 +93,7 @@ fun TransferLifecycleCard(
 fun ReadyTransferHomeCard(
     isScanning: Boolean,
     nearbyDevices: List<DeviceProfile>,
+    targetActionLabel: String = "Available",
     onDeviceClick: (String) -> Unit,
     onScan: () -> Unit,
     onOpenDevices: () -> Unit,
@@ -137,7 +138,7 @@ fun ReadyTransferHomeCard(
                         text = when {
                             hasNearbyDevices -> "${nearbyDevices.size} nearby device${if (nearbyDevices.size == 1) "" else "s"}"
                             isScanning -> "Searching nearby"
-                            else -> "Connect a device"
+                            else -> "Select something to send"
                         },
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
@@ -187,6 +188,7 @@ fun ReadyTransferHomeCard(
                     nearbyDevices.forEach { device ->
                         ReadyDeviceRow(
                             device = device,
+                            actionLabel = targetActionLabel,
                             onClick = { onDeviceClick(device.id) }
                         )
                     }
@@ -232,6 +234,7 @@ fun ReadyTransferHomeCard(
 @Composable
 private fun ReadyDeviceRow(
     device: DeviceProfile,
+    actionLabel: String,
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
@@ -277,7 +280,7 @@ private fun ReadyDeviceRow(
                 )
             }
             Text(
-                text = "Connect",
+                text = actionLabel,
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.primary
@@ -308,7 +311,7 @@ private fun ActiveTransferLifecycleCard(
         "Sending to"
     }
     val actionLine = when (progress.stage) {
-        TransferStage.PREPARING -> "Connecting to ${progress.peerName}..."
+        TransferStage.PREPARING -> "Preparing transfer with ${progress.peerName}..."
         TransferStage.TRANSFERRING -> if (progress.direction == TransferDirection.RECEIVING) {
             "${progress.peerName} is sending..."
         } else {
@@ -717,7 +720,7 @@ fun FileTransferProgressCard(
             )
             
             val stateText = when (progress.stage) {
-                TransferStage.PREPARING -> "Connecting..."
+                TransferStage.PREPARING -> "Preparing..."
                 TransferStage.TRANSFERRING -> if (progress.direction == TransferDirection.RECEIVING) "Receiving..." else "Sending..."
                 TransferStage.VERIFYING -> "Verifying file..."
             }
@@ -845,7 +848,7 @@ private fun FileTransferFailure.uiMessage(): String = when (reason) {
     TransferFailureReason.STORAGE_FULL -> "Not enough storage on this device."
     TransferFailureReason.STORAGE_UNAVAILABLE -> "This device cannot access storage."
     TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer."
-    TransferFailureReason.RECEIVER_CANCELLED -> "Receiver cancelled the transfer."
+    TransferFailureReason.RECEIVER_CANCELLED -> "Receiver declined the transfer."
     TransferFailureReason.SOURCE_UNAVAILABLE -> "The selected file could not be read."
     TransferFailureReason.INVALID_SELECTION -> "The selected files are invalid."
     TransferFailureReason.UNKNOWN -> message.takeIf { it.isNotBlank() } ?: "Something went wrong during transfer."
@@ -924,12 +927,12 @@ fun FileTransferErrorCard(
     val message = when (failure.reason) {
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_UNAVAILABLE -> "Device is busy or offline."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.TIMED_OUT -> "Couldn’t reach the device. Check that both devices are on the same Wi-Fi."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.NETWORK_FAILED -> "Transfer stopped responding or connection refused."
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.NETWORK_FAILED -> "Transfer stopped responding or the device refused the request."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.WRITE_FAILED -> "Couldn’t save file data."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTEGRITY_FAILED -> "File verification failed or size mismatch. Please try again."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.STORAGE_FULL -> "Not enough storage on the receiving device."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Receiver cancelled the transfer."
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Receiver declined the transfer."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTERRUPTED -> "The transfer was interrupted."
         else -> failure.message.takeIf { it.isNotBlank() } ?: "Something went wrong during transfer."
     }

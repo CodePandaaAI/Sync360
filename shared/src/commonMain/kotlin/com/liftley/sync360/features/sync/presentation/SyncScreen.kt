@@ -20,8 +20,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material.icons.filled.Wifi
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -32,7 +30,6 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -45,12 +42,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.core.platform.PlatformBackHandler
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
 import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
 import com.liftley.sync360.features.sync.presentation.components.MobileDevicePickerSheet
+import com.liftley.sync360.features.sync.presentation.components.QuickSaveCard
 import com.liftley.sync360.features.sync.presentation.components.ReadyTransferHomeCard
 import com.liftley.sync360.features.sync.presentation.components.RestartSharingCard
 import com.liftley.sync360.features.sync.presentation.components.RuntimeSecurityBanner
@@ -68,13 +65,9 @@ fun SyncScreen(
 ) {
     val activeDevice = uiState.activeDevice
     var showDevicePicker by remember { mutableStateOf(false) }
-    var showBackDisconnectDialog by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
     val visibleNearby = uiState.nearbyDevices.filter { it.id != activeDevice?.id }
-
-    PlatformBackHandler(enabled = activeDevice != null) {
-        showBackDisconnectDialog = true
-    }
+    val hasDraftContent = uiState.selectedFiles.isNotEmpty() || uiState.outgoingText.isNotBlank()
 
     LaunchedEffect(uiEffects) {
         uiEffects.collect { effect ->
@@ -126,7 +119,22 @@ fun SyncScreen(
                 }
             }
 
+            item {
+                QuickSaveCard(
+                    enabled = uiState.quickSaveEnabled,
+                    onToggle = { onEvent(SyncEvent.ToggleQuickSave) }
+                )
+            }
+
             if (activeDevice == null) {
+                item {
+                    SharePanel(
+                        isDesktop = false,
+                        uiState = uiState,
+                        activeDevice = null,
+                        onEvent = onEvent
+                    )
+                }
                 item {
                     Text(
                         text = "Ready to receive",
@@ -139,7 +147,10 @@ fun SyncScreen(
                     ReadyTransferHomeCard(
                         isScanning = uiState.isScanningForDevices,
                         nearbyDevices = visibleNearby,
-                        onDeviceClick = { onEvent(SyncEvent.RequestConnect(it)) },
+                        targetActionLabel = if (hasDraftContent) "Send" else "Available",
+                        onDeviceClick = {
+                            onEvent(SyncEvent.SendDraftTo(it))
+                        },
                         onScan = { onEvent(SyncEvent.TriggerScan) },
                         onOpenDevices = {
                             if (!uiState.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
@@ -210,55 +221,17 @@ fun SyncScreen(
             uiState = uiState,
             onDismiss = { showDevicePicker = false },
             onPairNearby = {
-                onEvent(SyncEvent.RequestConnect(it))
+                onEvent(SyncEvent.SendDraftTo(it))
                 showDevicePicker = false
             },
             onManualConnect = {
                 onEvent(SyncEvent.RequestConnectByHost(it))
             },
-            onDisconnect = { onEvent(SyncEvent.Disconnect) },
             onScan = { onEvent(SyncEvent.TriggerScan) }
         )
     }
 
     ConfirmDialogs(uiState = uiState, onEvent = onEvent)
-
-    activeDevice?.let { device ->
-        if (showBackDisconnectDialog) {
-            AlertDialog(
-                onDismissRequest = { showBackDisconnectDialog = false },
-                title = {
-                    Text(
-                        text = "Disconnect?",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-                text = {
-                    Text(
-                        text = "Disconnect from ${device.name} before leaving Sync360?",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showBackDisconnectDialog = false
-                            onEvent(SyncEvent.Disconnect)
-                        }
-                    ) {
-                        Text("Disconnect", fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showBackDisconnectDialog = false }) {
-                        Text("Stay", fontWeight = FontWeight.Bold)
-                    }
-                }
-            )
-        }
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

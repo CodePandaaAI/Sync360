@@ -1,11 +1,13 @@
 package com.liftley.sync360.features.sync.data.repository
 
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
+import com.liftley.sync360.features.sync.data.network.HttpTransportResult
 import com.liftley.sync360.features.sync.data.network.HttpSyncClient
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
 import com.liftley.sync360.features.sync.domain.model.ConnectionState
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import com.liftley.sync360.features.sync.domain.model.UserFacingFailure
@@ -54,13 +56,26 @@ internal class MessageEngine(
     }
 
     fun send(text: String) {
+        val peerId = deviceSession.activeDeviceIdValue ?: run {
+            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
+            return
+        }
+        sendTo(peerId, text)
+    }
+
+    fun sendTo(deviceId: String, text: String) {
         if (text.isBlank() || text.length > SyncProtocolLimits.MAX_TEXT_LENGTH) {
             events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.TEXT_INVALID))
             return
         }
-        val peerId = deviceSession.activeDeviceIdValue ?: return
-        val route = deviceRegistry.routeFor(peerId) ?: return
-        val sessionToken = deviceRegistry.sessionTokenFor(peerId) ?: return
+        val route = deviceRegistry.routeFor(deviceId) ?: run {
+            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
+            return
+        }
+        val sessionToken = deviceRegistry.sessionTokenFor(deviceId) ?: run {
+            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
+            return
+        }
         val message = MessageDto(
             messageId = newSyncItemId(),
             senderDeviceId = localDevice.id,
@@ -75,15 +90,31 @@ internal class MessageEngine(
         val signed = sessionAuthenticator.signTextMessage(message)
 
         scope.launch {
-            if (httpClient.sendTextMessage(route.host, route.port, signed).isSuccess) {
-                append(signed, peerId)
+            val result = httpClient.sendTextMessage(route.host, route.port, signed)
+            if (result.isSuccess) {
+                append(signed, deviceId)
             } else {
-                events.emit(ConnectionEvent.Failed(UserFacingFailure.TEXT_DELIVERY_FAILED))
+                val failure = result as HttpTransportResult.Failure
+                events.emit(
+                    ConnectionEvent.Failed(
+                        if (failure.detail == "receiver_declined") {
+                            UserFacingFailure.RECEIVER_DECLINED
+                        } else {
+                            UserFacingFailure.TEXT_DELIVERY_FAILED
+                        }
+                    )
+                )
             }
         }
     }
 
     fun receive(message: MessageDto, remoteHost: String): Boolean {
+        if (pendingIncomingText(message, remoteHost) == null) return false
+        acceptValidatedIncomingText(message)
+        return true
+    }
+
+    fun pendingIncomingText(message: MessageDto, remoteHost: String): PendingIncomingOffer.Text? {
         if (
             message.messageId.isBlank() ||
             message.messageId.length > SyncProtocolLimits.MAX_OFFER_ID_LENGTH ||
@@ -94,16 +125,24 @@ internal class MessageEngine(
             message.sessionToken.length > SyncProtocolLimits.MAX_SESSION_TOKEN_LENGTH ||
             message.nonce.length > SyncProtocolLimits.MAX_NONCE_LENGTH ||
             message.signature.length > SyncProtocolLimits.MAX_SIGNATURE_LENGTH
-        ) return false
-        val session = deviceRegistry.sessionFor(message.senderDeviceId) ?: return false
-        if (session.sessionToken != message.sessionToken || session.route.host != remoteHost) {
-            return false
+        ) return null
+        val grant = deviceRegistry.grantFor(message.senderDeviceId) ?: return null
+        if (grant.sessionToken != message.sessionToken || grant.route.host != remoteHost) {
+            return null
         }
-        if (!sessionAuthenticator.verifyTextMessage(message)) return false
+        if (!sessionAuthenticator.verifyTextMessage(message)) return null
 
+        return PendingIncomingOffer.Text(
+            offerId = message.messageId,
+            senderDeviceId = message.senderDeviceId,
+            senderName = message.senderName,
+            preview = message.content.take(120)
+        )
+    }
+
+    fun acceptValidatedIncomingText(message: MessageDto) {
         append(message, message.senderDeviceId)
         incomingNotifier.notifyIncoming(message.senderName, message.content.take(120), false)
-        return true
     }
 
     fun clearVisible() {

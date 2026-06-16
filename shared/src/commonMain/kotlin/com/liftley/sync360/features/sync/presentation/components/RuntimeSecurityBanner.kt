@@ -23,7 +23,7 @@ fun RuntimeSecurityBanner(
         SyncRuntimeState.Stopped -> "Sharing is stopped."
         SyncRuntimeState.Starting -> "Starting local sharing..."
         is SyncRuntimeState.Ready -> "Ready on your local network."
-        is SyncRuntimeState.Degraded -> "Manual IP connection is available; discovery is limited."
+        is SyncRuntimeState.Degraded -> "Manual IP fallback is available; discovery is limited."
         is SyncRuntimeState.Unavailable -> "Local sharing is unavailable."
         SyncRuntimeState.Stopping -> "Stopping local sharing..."
     }
@@ -72,7 +72,7 @@ fun RestartSharingCard(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = "Connection stuck?",
+                text = "Sharing stuck?",
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface
