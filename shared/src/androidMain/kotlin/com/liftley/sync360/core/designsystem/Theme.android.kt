@@ -23,7 +23,7 @@ actual fun AppTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = AppTypography,
+        typography = appTypography(),
         shapes = AppShapes,
         content = content
     )

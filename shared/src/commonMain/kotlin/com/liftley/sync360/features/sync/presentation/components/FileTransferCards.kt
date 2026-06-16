@@ -203,7 +203,16 @@ fun FileTransferErrorCard(
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.WRITE_FAILED -> "Couldn’t save file data."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTEGRITY_FAILED -> "File verification failed or size mismatch. Please try again."
         com.liftley.sync360.features.sync.domain.model.TransferFailureReason.STORAGE_FULL -> "Not enough storage on the receiving device."
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer."
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Receiver cancelled the transfer."
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTERRUPTED -> "The transfer was interrupted."
         else -> failure.message.takeIf { it.isNotBlank() } ?: "Something went wrong during transfer."
+    }
+    val title = when (failure.reason) {
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.SENDER_CANCELLED,
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Transfer cancelled"
+        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTERRUPTED -> "Transfer interrupted"
+        else -> "Transfer failed"
     }
 
     Sync360Surface(modifier = modifier, cornerRadius = 24.dp) {
@@ -219,7 +228,7 @@ fun FileTransferErrorCard(
                 tint = colorScheme.error
             )
             Text(
-                text = "Transfer failed",
+                text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.onSurface

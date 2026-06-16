@@ -6,6 +6,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Computer
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Smartphone
 import androidx.compose.material.icons.filled.Tablet
 import androidx.compose.material3.*
@@ -43,35 +44,61 @@ fun MobileDevicePickerSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-        containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
-        shape = RoundedCornerShape(topStart = SyncDimens.cornerMedium, topEnd = SyncDimens.cornerMedium)
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = RoundedCornerShape(topStart = 32.dp, topEnd = 32.dp),
+        dragHandle = null
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(top = 10.dp)
                 .padding(horizontal = 16.dp)
-                .padding(bottom = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            Text(
-                text = if (activeDevice == null) "Nearby devices" else "Connected device",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Sync360TopBarTitle(
+                    title = if (activeDevice == null) "Devices" else "Connected",
+                    modifier = Modifier
+                )
+                if (uiState.isScanningForDevices) {
+                    Sync360Surface(
+                        modifier = Modifier.size(48.dp),
+                        cornerRadius = 100.dp,
+                        color = MaterialTheme.colorScheme.surface,
+                        fillMaxWidth = false
+                    ) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(17.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
+                } else {
+                    Sync360IconButton(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Scan again",
+                        onClick = onScan
+                    )
+                }
+            }
 
             if (activeDevice != null) {
                 Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                    Text(
-                        text = "This session",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
-                    )
+                    SheetSectionLabel("This session")
                     DeviceRowItem(
                         device = activeDevice,
                         isSelected = true,
                         actionLabel = "Connected",
                         enabled = false,
+                        topRounding = 24.dp,
+                        bottomRounding = 24.dp,
                         onClick = {}
                     )
                 }
@@ -82,19 +109,20 @@ fun MobileDevicePickerSheet(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
-                    contentPadding = PaddingValues(vertical = Spacing.sm + Spacing.xs)
+                    contentPadding = PaddingValues(vertical = 12.dp)
                 ) {
                     Text("Disconnect", fontWeight = FontWeight.SemiBold)
                 }
             } else {
-                Text(
-                    text = "Open Sync360 on another device connected to the same Wi-Fi.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Sync360Surface(color = MaterialTheme.colorScheme.surface, cornerRadius = 24.dp) {
+                    Text(
+                        text = "Open Sync360 on another device connected to the same Wi-Fi.",
+                        modifier = Modifier.padding(16.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                 Row(
@@ -106,13 +134,14 @@ fun MobileDevicePickerSheet(
                         text = "Nearby on Local Wi-Fi",
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.Bold
                     )
                     if (uiState.isScanningForDevices) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(16.dp),
-                            strokeWidth = 2.dp,
-                            color = MaterialTheme.colorScheme.primary
+                        Text(
+                            text = "Scanning",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.Bold
                         )
                     } else {
                         Text(
@@ -125,33 +154,31 @@ fun MobileDevicePickerSheet(
                     }
                 }
                 if (nearbyOnly.isEmpty()) {
-                    Text(
-                        text = if (uiState.isScanningForDevices) "Searching for nearby devices..." else "Scan stopped. No devices found.",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Sync360Surface(color = MaterialTheme.colorScheme.surface, cornerRadius = 24.dp) {
+                        Text(
+                            text = if (uiState.isScanningForDevices) "Searching for nearby devices..." else "No devices found.",
+                            modifier = Modifier.padding(16.dp),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 } else {
-                    nearbyOnly.forEach { device ->
+                    nearbyOnly.forEachIndexed { index, device ->
                         DeviceRowItem(
                             device = device,
                             isSelected = false,
                             actionLabel = "Connect",
                             enabled = true,
+                            topRounding = if (index == 0) 24.dp else 6.dp,
+                            bottomRounding = if (index == nearbyOnly.lastIndex) 24.dp else 6.dp,
                             onClick = { onPairNearby(device.id) }
                         )
                     }
                 }
             }
 
-            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-
             Column(verticalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                Text(
-                    text = "Connect by IP",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.Medium
-                )
+                SheetSectionLabel("Connect by IP")
                 OutlinedTextField(
                     value = manualHost,
                     onValueChange = { manualHost = it },
@@ -182,20 +209,30 @@ private fun DeviceRowItem(
     isSelected: Boolean,
     actionLabel: String,
     enabled: Boolean,
+    topRounding: androidx.compose.ui.unit.Dp,
+    bottomRounding: androidx.compose.ui.unit.Dp,
     onClick: () -> Unit
 ) {
     val colorScheme = MaterialTheme.colorScheme
-    Sync360Surface(
+    Surface(
         modifier = Modifier
+            .fillMaxWidth()
             .then(
                 if (enabled) Modifier.clickable(onClick = onClick)
                 else Modifier
             ),
-        cornerRadius = 24.dp,
-        color = if (isSelected) colorScheme.primaryContainer else colorScheme.surfaceContainerHigh
+        shape = RoundedCornerShape(
+            topStart = topRounding,
+            topEnd = topRounding,
+            bottomStart = bottomRounding,
+            bottomEnd = bottomRounding
+        ),
+        color = if (isSelected) colorScheme.primaryContainer else colorScheme.surface
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = Spacing.md, vertical = Spacing.sm + Spacing.xs),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
@@ -239,11 +276,21 @@ private fun DeviceRowItem(
             Text(
                 text = actionLabel,
                 style = MaterialTheme.typography.labelMedium,
-                color = if (isSelected) colorScheme.primary else colorScheme.primary,
+                color = if (isSelected) colorScheme.onPrimaryContainer else colorScheme.primary,
                 fontWeight = FontWeight.SemiBold
             )
         }
     }
+}
+
+@Composable
+private fun SheetSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontWeight = FontWeight.Bold
+    )
 }
 
 private fun deviceTypeIcon(type: DeviceType): ImageVector = when (type) {

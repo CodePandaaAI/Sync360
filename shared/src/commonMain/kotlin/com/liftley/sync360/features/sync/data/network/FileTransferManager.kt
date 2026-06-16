@@ -352,6 +352,9 @@ private fun RawTcpSendResult.Failure.toHttpTransportFailure(): HttpTransportResu
         RawTcpFailure.TIMEOUT -> HttpTransportError.TIMEOUT
         RawTcpFailure.CONNECT_TIMEOUT,
         RawTcpFailure.READ_TIMEOUT -> HttpTransportError.TIMEOUT
+        RawTcpFailure.CANCELLED -> HttpTransportError.RECEIVER_CANCELLED
+        RawTcpFailure.WRITE_FAILED,
+        RawTcpFailure.PARTIAL_TRANSFER -> HttpTransportError.TRANSFER_INTERRUPTED
         RawTcpFailure.LISTENER_START_FAILED,
         RawTcpFailure.PORT_BIND_FAILED,
         RawTcpFailure.ACCEPT_TIMEOUT,
@@ -359,9 +362,6 @@ private fun RawTcpSendResult.Failure.toHttpTransportFailure(): HttpTransportResu
         RawTcpFailure.RECEIVER_UNAVAILABLE,
         RawTcpFailure.TOKEN_INVALID,
         RawTcpFailure.HEADER_INVALID,
-        RawTcpFailure.WRITE_FAILED,
-        RawTcpFailure.PARTIAL_TRANSFER,
-        RawTcpFailure.CANCELLED,
         RawTcpFailure.IO_ERROR -> HttpTransportError.UNREACHABLE
     }
     return HttpTransportResult.Failure(

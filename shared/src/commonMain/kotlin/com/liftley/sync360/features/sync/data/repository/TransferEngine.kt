@@ -252,6 +252,7 @@ internal class TransferEngine(
     ): IncomingUploadFailure? = incoming.consumeFileWriteFailure(offerId, fileIndex)
 
     fun cancel(updateService: Boolean = true) {
+        outgoing.cancelActiveTransfer()
         outgoingJob?.cancel()
         outgoingJob = null
         stopIncomingWatchdog()
@@ -428,6 +429,8 @@ private fun FileSendFailure.toFailureReason(): TransferFailureReason = when (thi
     FileSendFailure.TIMED_OUT -> TransferFailureReason.TIMED_OUT
     FileSendFailure.RECEIVER_UNAVAILABLE -> TransferFailureReason.RECEIVER_UNAVAILABLE
     FileSendFailure.NETWORK_FAILED -> TransferFailureReason.NETWORK_FAILED
+    FileSendFailure.TRANSFER_INTERRUPTED -> TransferFailureReason.INTERRUPTED
+    FileSendFailure.RECEIVER_CANCELLED -> TransferFailureReason.RECEIVER_CANCELLED
 }
 
 private fun IncomingUploadFailure?.toFailureReason(): TransferFailureReason = when (this) {
@@ -450,6 +453,8 @@ private fun TransferFailureReason.defaultMessage(): String = when (this) {
     TransferFailureReason.TIMED_OUT -> "The file transfer timed out"
     TransferFailureReason.WRITE_FAILED -> "The received file could not be saved"
     TransferFailureReason.INVALID_SELECTION -> "The selected files are invalid"
+    TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer"
+    TransferFailureReason.RECEIVER_CANCELLED -> "Receiver cancelled the transfer"
     TransferFailureReason.INTERRUPTED -> "The transfer was interrupted"
     TransferFailureReason.UNKNOWN -> "File transfer failed"
 }

@@ -16,6 +16,10 @@ class OutgoingFileTransferCoordinator(
     private val fileTransferManager: FileTransferManager,
     private val rawTcpFileTransport: RawTcpFileTransport = RawTcpFileTransport()
 ) {
+    fun cancelActiveTransfer() {
+        rawTcpFileTransport.closeActiveConnections()
+    }
+
     fun previews(files: List<PickedFile>): List<TransferFilePreview> {
         return files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) }
     }
@@ -181,7 +185,9 @@ enum class FileSendFailure {
     INTEGRITY_FAILED,
     TIMED_OUT,
     RECEIVER_UNAVAILABLE,
-    NETWORK_FAILED
+    NETWORK_FAILED,
+    TRANSFER_INTERRUPTED,
+    RECEIVER_CANCELLED
 }
 
 private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Failure {
@@ -191,6 +197,8 @@ private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Fail
         HttpTransportError.REMOTE_STORAGE_UNAVAILABLE -> FileSendFailure.REMOTE_STORAGE_UNAVAILABLE
         HttpTransportError.INTEGRITY_FAILED -> FileSendFailure.INTEGRITY_FAILED
         HttpTransportError.TIMEOUT -> FileSendFailure.TIMED_OUT
+        HttpTransportError.TRANSFER_INTERRUPTED -> FileSendFailure.TRANSFER_INTERRUPTED
+        HttpTransportError.RECEIVER_CANCELLED -> FileSendFailure.RECEIVER_CANCELLED
         HttpTransportError.UNREACHABLE -> FileSendFailure.RECEIVER_UNAVAILABLE
         else -> FileSendFailure.NETWORK_FAILED
     }

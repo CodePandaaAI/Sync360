@@ -51,6 +51,8 @@ enum class TransferFailureReason {
     NETWORK_FAILED,
     TIMED_OUT,
     WRITE_FAILED,
+    SENDER_CANCELLED,
+    RECEIVER_CANCELLED,
     INTERRUPTED,
     UNKNOWN
 }

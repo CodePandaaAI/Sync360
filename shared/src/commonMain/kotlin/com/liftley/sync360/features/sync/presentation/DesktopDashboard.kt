@@ -224,39 +224,51 @@ private fun DesktopReadySurface(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Sync360Surface(cornerRadius = 24.dp) {
-        Column(
-            modifier = Modifier.padding(32.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(18.dp)
+        Row(
+            modifier = Modifier.padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(18.dp)
         ) {
-            if (isScanning) {
-                CircularProgressIndicator(modifier = Modifier.size(48.dp), strokeWidth = 3.dp)
-            } else {
-                Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(72.dp)) {
+            Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(72.dp)) {
+                if (isScanning) {
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(34.dp),
+                            strokeWidth = 3.dp,
+                            color = colorScheme.primary
+                        )
+                    }
+                } else {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Wifi, contentDescription = null, tint = colorScheme.primary, modifier = Modifier.size(32.dp))
                     }
                 }
             }
-            Text(
-                text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "Keep Sync360 open on your other device. Found devices appear in the panel on the right.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = colorScheme.onSurface
-            )
-            Button(
-                onClick = onScan,
-                shape = RoundedCornerShape(18.dp),
-                contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(Modifier.width(8.dp))
-                Text("Scan again", fontWeight = FontWeight.Bold)
+                Text(
+                    text = if (isScanning) "Looking for nearby devices" else "Ready to receive",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = if (isScanning) "Scanning your local Wi-Fi." else "Found devices appear in the panel on the right.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colorScheme.onSurfaceVariant
+                )
+                Button(
+                    onClick = onScan,
+                    shape = RoundedCornerShape(18.dp),
+                    contentPadding = PaddingValues(horizontal = 22.dp, vertical = 10.dp)
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Scan again", fontWeight = FontWeight.Bold)
+                }
             }
         }
     }

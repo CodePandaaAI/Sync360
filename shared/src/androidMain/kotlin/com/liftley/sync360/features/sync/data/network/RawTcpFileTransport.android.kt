@@ -93,6 +93,13 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
         listener = null
     }
 
+    actual fun closeActiveConnections() {
+        val sockets = synchronized(lock) {
+            activeSockets.toList().also { activeSockets.clear() }
+        }
+        sockets.forEach { it.closeQuietly() }
+    }
+
     actual override suspend fun send(
         host: String,
         port: Int,

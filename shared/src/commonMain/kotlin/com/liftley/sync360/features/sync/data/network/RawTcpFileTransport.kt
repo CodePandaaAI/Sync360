@@ -89,6 +89,7 @@ expect class RawTcpFileTransport() : RawFileByteSender {
     var listener: RawTcpFileListener?
 
     fun startDynamic(): RawTcpListenerStartResult
+    fun closeActiveConnections()
     fun stop()
 
     override suspend fun send(

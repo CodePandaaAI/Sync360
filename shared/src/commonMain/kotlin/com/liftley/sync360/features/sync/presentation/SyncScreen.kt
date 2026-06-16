@@ -342,42 +342,50 @@ private fun ReadyReceiveSurface(
     Sync360Surface(
         modifier = Modifier.clickable(onClick = onOpenDevices)
     ) {
-        Column(
-            modifier = Modifier.padding(vertical = 32.dp, horizontal = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            if (isScanning) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(42.dp),
-                    strokeWidth = 3.dp,
-                    color = colorScheme.primary
-                )
-            } else {
-                Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(58.dp)) {
+            Surface(shape = CircleShape, color = colorScheme.primaryContainer, modifier = Modifier.size(58.dp)) {
+                if (isScanning) {
+                    Box(contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(28.dp),
+                            strokeWidth = 3.dp,
+                            color = colorScheme.primary
+                        )
+                    }
+                } else {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(Icons.Default.Wifi, contentDescription = null, tint = colorScheme.primary)
                     }
                 }
             }
-            Text(
-                text = if (isScanning) "Searching for devices..." else "Ready to receive",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = colorScheme.onSurface
-            )
-            Text(
-                text = "Tap to search for nearby devices on the same Wi-Fi.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = colorScheme.onSurfaceVariant
-            )
-            if (!isScanning) {
-                androidx.compose.material3.Button(
-                    onClick = onOpenDevices,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp)
-                ) {
-                    Text("Search devices", fontWeight = FontWeight.SemiBold)
+
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = if (isScanning) "Searching nearby" else "Ready to receive",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = colorScheme.onSurface
+                )
+                Text(
+                    text = if (isScanning) "Looking on your local Wi-Fi." else "Tap to choose a device.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colorScheme.onSurfaceVariant
+                )
+                if (!isScanning) {
+                    androidx.compose.material3.Button(
+                        onClick = onOpenDevices,
+                        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp)
+                    ) {
+                        Text("Search devices", fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

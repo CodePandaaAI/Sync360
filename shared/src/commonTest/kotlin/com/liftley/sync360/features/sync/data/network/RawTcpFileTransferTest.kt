@@ -20,7 +20,7 @@ class RawTcpFileTransferTest {
         val sender = RecordingRawSender()
         val manager = FileTransferManager(FakePlatformOperations)
         val file = pickedFile(index = 0, size = 2_500_000L)
-        val progress = mutableListOf<Int>()
+        val progress = mutableListOf<Long>()
 
         val result = manager.uploadOutgoingFilesRaw(
             rawTransport = sender,
@@ -36,7 +36,7 @@ class RawTcpFileTransferTest {
         assertEquals(listOf(0), sender.headers.map { it.fileIndex })
         assertEquals(listOf(file.sizeBytes), sender.headers.map { it.contentLength })
         assertEquals(listOf("file-0.bin"), sender.headers.map { it.fileIdentifier })
-        assertTrue(progress.last() in 1..95)
+        assertEquals(listOf(file.sizeBytes), progress)
     }
 
     @Test
@@ -48,7 +48,7 @@ class RawTcpFileTransferTest {
             pickedFile(index = 1, size = 2_000_000L),
             pickedFile(index = 2, size = 3_000_000L)
         )
-        val progress = mutableListOf<Int>()
+        val progress = mutableListOf<Long>()
 
         val result = manager.uploadOutgoingFilesRaw(
             rawTransport = sender,
@@ -64,7 +64,7 @@ class RawTcpFileTransferTest {
         assertEquals(listOf(0, 1, 2), sender.headers.map { it.fileIndex })
         assertEquals(files.map { it.sizeBytes }, sender.headers.map { it.contentLength })
         assertEquals(files.sumOf { it.sizeBytes }, sender.totalBytesSent)
-        assertEquals(95, progress.last())
+        assertEquals(listOf(1_000_000L, 3_000_000L, 6_000_000L), progress)
     }
 
     @Test
