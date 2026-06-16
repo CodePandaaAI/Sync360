@@ -17,10 +17,15 @@ class SyncService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        acquireTransferWakeLock()
+        val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_READY
+        if (mode == MODE_TRANSFERRING) {
+            acquireTransferWakeLock()
+        } else {
+            releaseWakeLock()
+        }
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
-        return START_NOT_STICKY
+        startForeground(NOTIFICATION_ID, createNotification(intent, mode))
+        return START_STICKY
     }
 
     override fun onDestroy() {
@@ -58,13 +63,13 @@ class SyncService : Service() {
             "Sync360 File Transfers",
             NotificationManager.IMPORTANCE_LOW
         ).apply {
-            description = "Keeps an active file transfer running."
+            description = "Keeps Sync360 ready for local transfers."
         }
         val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         manager.createNotificationChannel(channel)
     }
 
-    private fun createNotification(): Notification {
+    private fun createNotification(intent: Intent?, mode: String): Notification {
         val notificationIntent = Intent(this, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             this,
@@ -72,17 +77,55 @@ class SyncService : Service() {
             notificationIntent,
             PendingIntent.FLAG_IMMUTABLE
         )
+        val peerName = intent?.getStringExtra(EXTRA_PEER_NAME)
+        val detail = intent?.getStringExtra(EXTRA_DETAIL)
+        val fileCount = intent?.getIntExtra(EXTRA_FILE_COUNT, 0) ?: 0
+        val progressPercent = intent?.getIntExtra(EXTRA_PROGRESS, -1)?.takeIf { it >= 0 }
+        val title = when (mode) {
+            MODE_CONNECTED -> peerName?.let { "Connected to $it" } ?: "Sync360 connected"
+            MODE_TRANSFERRING -> transferTitle(peerName, fileCount)
+            MODE_ERROR -> "Sync360 needs attention"
+            else -> "Sync360 ready"
+        }
+        val text = when {
+            mode == MODE_TRANSFERRING && progressPercent != null ->
+                "${detail ?: "Transferring files"} - $progressPercent%"
+            mode == MODE_CONNECTED -> "Ready to send and receive."
+            mode == MODE_ERROR -> detail ?: "Open Sync360 to check the connection."
+            else -> detail ?: "Ready to receive on your local network."
+        }
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Sync360 file transfer")
-            .setContentText("Keeping active file transfer running in background.")
+            .setContentTitle(title)
+            .setContentText(text)
             .setSmallIcon(android.R.drawable.stat_sys_download)
             .setContentIntent(pendingIntent)
+            .setOngoing(mode != MODE_ERROR)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
+            .apply {
+                if (mode == MODE_TRANSFERRING && progressPercent != null) {
+                    setProgress(100, progressPercent, false)
+                }
+            }
             .build()
     }
 
+    private fun transferTitle(peerName: String?, fileCount: Int): String {
+        val action = if (fileCount <= 1) "Transferring file" else "Transferring $fileCount files"
+        return peerName?.let { "$action with $it" } ?: action
+    }
+
     companion object {
+        const val EXTRA_MODE = "mode"
+        const val EXTRA_PEER_NAME = "peer_name"
+        const val EXTRA_DETAIL = "detail"
+        const val EXTRA_PROGRESS = "progress"
+        const val EXTRA_FILE_COUNT = "file_count"
+        const val MODE_READY = "ready"
+        const val MODE_CONNECTED = "connected"
+        const val MODE_TRANSFERRING = "transferring"
+        const val MODE_ERROR = "error"
         private const val CHANNEL_ID = "sync360_service_channel"
         private const val NOTIFICATION_ID = 5001
         private const val TRANSFER_WAKE_LOCK_TIMEOUT_MS = 60 * 60 * 1000L

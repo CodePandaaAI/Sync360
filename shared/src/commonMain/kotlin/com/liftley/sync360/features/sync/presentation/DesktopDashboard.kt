@@ -73,10 +73,6 @@ fun DesktopDashboard(
                 if (activeDevice == null) {
                     SectionLabel("You'll appear as")
                     DesktopIdentityCard(serverIp = uiState.serverIp)
-                    RuntimeSecurityBanner(
-                        runtime = uiState.runtimeState,
-                        securityMode = uiState.securityMode
-                    )
                 }
 
                 SectionLabel(if (activeDevice == null) "Ready to receive" else "Sharing with you")
@@ -87,6 +83,14 @@ fun DesktopDashboard(
                         onDeviceClick = { onEvent(SyncEvent.RequestConnect(it)) },
                         onScan = { onEvent(SyncEvent.TriggerScan) },
                         onOpenDevices = { onEvent(SyncEvent.TriggerScan) }
+                    )
+                    RuntimeSecurityBanner(
+                        runtime = uiState.runtimeState,
+                        securityMode = uiState.securityMode
+                    )
+                    RestartSharingCard(
+                        runtime = uiState.runtimeState,
+                        onRestartSharing = { onEvent(SyncEvent.RestartSharing) }
                     )
                 } else {
                     if (

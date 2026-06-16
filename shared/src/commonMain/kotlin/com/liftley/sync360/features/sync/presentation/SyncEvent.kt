@@ -27,4 +27,5 @@ sealed interface SyncEvent {
     data class ShowFileInFolder(val path: String) : SyncEvent
     object OpenDownloadsFolder : SyncEvent
     object TriggerScan : SyncEvent
+    object RestartSharing : SyncEvent
 }

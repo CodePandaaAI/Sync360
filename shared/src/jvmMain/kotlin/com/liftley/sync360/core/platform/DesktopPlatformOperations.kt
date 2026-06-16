@@ -15,8 +15,9 @@ import java.net.NetworkInterface
 class DesktopPlatformOperations : PlatformOperations {
     private val activeFileWrites = mutableMapOf<String, DesktopFileWrite>()
 
-    override fun startTransferService(): BackgroundServiceStartResult =
+    override fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult =
         BackgroundServiceStartResult.NOT_REQUIRED
+    override fun updateForegroundService(status: SyncForegroundServiceStatus) {}
     override fun stopService() {}
 
     override fun readClipboard(): String? {

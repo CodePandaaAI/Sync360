@@ -7,8 +7,26 @@ interface PlatformOperations :
     NetworkEnvironmentProvider
 
 interface BackgroundServiceOperations {
-    fun startTransferService(): BackgroundServiceStartResult
+    fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult
+    fun updateForegroundService(status: SyncForegroundServiceStatus)
+    fun startTransferService(): BackgroundServiceStartResult =
+        startForegroundService(SyncForegroundServiceStatus(SyncForegroundServiceMode.TRANSFERRING))
     fun stopService()
+}
+
+data class SyncForegroundServiceStatus(
+    val mode: SyncForegroundServiceMode,
+    val peerName: String? = null,
+    val detail: String? = null,
+    val progressPercent: Int? = null,
+    val fileCount: Int = 0
+)
+
+enum class SyncForegroundServiceMode {
+    READY,
+    CONNECTED,
+    TRANSFERRING,
+    ERROR
 }
 
 interface ClipboardOperations {

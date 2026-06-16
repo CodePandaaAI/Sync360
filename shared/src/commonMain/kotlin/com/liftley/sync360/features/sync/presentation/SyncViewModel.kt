@@ -199,6 +199,10 @@ class SyncViewModel(
                 fileOperations.openDownloadsFolder()
             }
             SyncEvent.TriggerScan -> runtimeController.scan()
+            SyncEvent.RestartSharing -> {
+                runtimeController.restart()
+                showMessage("Restarted local sharing")
+            }
         }
     }
 

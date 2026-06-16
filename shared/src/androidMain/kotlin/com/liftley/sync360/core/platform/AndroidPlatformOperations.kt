@@ -33,11 +33,9 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         }
     }
 
-    override fun startTransferService(): BackgroundServiceStartResult {
+    override fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult {
         return try {
-            val intent = Intent().apply {
-                setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
-            }
+            val intent = serviceIntent(status)
             context.startForegroundService(intent)
             if (NotificationManagerCompat.from(context).areNotificationsEnabled()) {
                 BackgroundServiceStartResult.STARTED
@@ -50,6 +48,10 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         }
     }
 
+    override fun updateForegroundService(status: SyncForegroundServiceStatus) {
+        startForegroundService(status)
+    }
+
     override fun stopService() {
         try {
             val intent = Intent().apply {
@@ -59,6 +61,24 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         } catch (e: Exception) {
             println("AndroidPlatformOperations: Failed to stop SyncService - ${e.message}")
         }
+    }
+
+    private fun serviceIntent(status: SyncForegroundServiceStatus): Intent {
+        return Intent().apply {
+            setClassName(context.packageName, "com.liftley.sync360.service.SyncService")
+            putExtra(EXTRA_MODE, status.mode.toServiceMode())
+            status.peerName?.let { putExtra(EXTRA_PEER_NAME, it) }
+            status.detail?.let { putExtra(EXTRA_DETAIL, it) }
+            status.progressPercent?.let { putExtra(EXTRA_PROGRESS, it) }
+            putExtra(EXTRA_FILE_COUNT, status.fileCount)
+        }
+    }
+
+    private fun SyncForegroundServiceMode.toServiceMode(): String = when (this) {
+        SyncForegroundServiceMode.READY -> MODE_READY
+        SyncForegroundServiceMode.CONNECTED -> MODE_CONNECTED
+        SyncForegroundServiceMode.TRANSFERRING -> MODE_TRANSFERRING
+        SyncForegroundServiceMode.ERROR -> MODE_ERROR
     }
 
     override fun readClipboard(): String? {
@@ -324,6 +344,18 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
             current = current.cause
         }
         return fallback
+    }
+
+    private companion object {
+        const val EXTRA_MODE = "mode"
+        const val EXTRA_PEER_NAME = "peer_name"
+        const val EXTRA_DETAIL = "detail"
+        const val EXTRA_PROGRESS = "progress"
+        const val EXTRA_FILE_COUNT = "file_count"
+        const val MODE_READY = "ready"
+        const val MODE_CONNECTED = "connected"
+        const val MODE_TRANSFERRING = "transferring"
+        const val MODE_ERROR = "error"
     }
 }
 

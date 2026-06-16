@@ -1,12 +1,15 @@
 package com.liftley.sync360.features.sync.domain.runtime
 
 import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.SyncForegroundServiceMode
+import com.liftley.sync360.core.platform.SyncForegroundServiceStatus
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeFailure
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 import com.liftley.sync360.features.sync.domain.model.SyncStartResult
 import com.liftley.sync360.features.sync.domain.model.SyncSnapshot
 import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
 import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
+import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
@@ -33,6 +36,7 @@ class SyncRuntimeController(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycleLock = Any()
     private val _state = MutableStateFlow<SyncRuntimeState>(SyncRuntimeState.Stopped)
+    private var lastForegroundStatus: SyncForegroundServiceStatus? = null
     val state: StateFlow<SyncRuntimeState> = _state.asStateFlow()
     val snapshot: StateFlow<SyncSnapshot> = combine(
         state,
@@ -82,6 +86,7 @@ class SyncRuntimeController(
                         outcomeCode = current.transfer.state.outcomeCode()
                     )
                 }
+                updateForegroundService(current)
                 previous = current
             }
         }
@@ -127,6 +132,19 @@ class SyncRuntimeController(
             discoveryController.stop()
             repository.stopSync()
             _state.value = SyncRuntimeState.Stopped
+            platformOperations.stopService()
+            lastForegroundStatus = null
+        }
+    }
+
+    fun restart() {
+        synchronized(lifecycleLock) {
+            _state.value = SyncRuntimeState.Stopping
+            discoveryController.stop()
+            repository.stopSync()
+            _state.value = SyncRuntimeState.Stopped
+            lastForegroundStatus = null
+            start()
         }
     }
 
@@ -146,6 +164,80 @@ class SyncRuntimeController(
             discoveryController.shutdown()
             repository.disconnectAll()
             _state.value = SyncRuntimeState.Stopped
+            platformOperations.stopService()
+            lastForegroundStatus = null
+        }
+    }
+
+    private fun updateForegroundService(snapshot: SyncSnapshot) {
+        val status = snapshot.toForegroundStatus()
+        if (status == null) {
+            if (lastForegroundStatus != null) {
+                platformOperations.stopService()
+                lastForegroundStatus = null
+            }
+            return
+        }
+        if (status == lastForegroundStatus) return
+        if (lastForegroundStatus == null) {
+            platformOperations.startForegroundService(status)
+        } else {
+            platformOperations.updateForegroundService(status)
+        }
+        lastForegroundStatus = status
+    }
+
+    private fun SyncSnapshot.toForegroundStatus(): SyncForegroundServiceStatus? {
+        transfer.progress?.let { progress ->
+            val action = if (progress.direction == TransferDirection.RECEIVING) {
+                "Receiving"
+            } else {
+                "Sending"
+            }
+            return SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.TRANSFERRING,
+                peerName = progress.peerName,
+                detail = "$action ${progress.files.size} file${if (progress.files.size == 1) "" else "s"}",
+                progressPercent = progress.percent,
+                fileCount = progress.files.size
+            )
+        }
+        transfer.failure?.let { failure ->
+            return SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.ERROR,
+                peerName = failure.peerName,
+                detail = failure.message,
+                fileCount = 0
+            )
+        }
+        val approvedSession = session as? SessionSnapshot.Approved
+        if (approvedSession != null) {
+            return SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.CONNECTED,
+                peerName = approvedSession.identity.name,
+                detail = "Ready to send and receive.",
+                fileCount = 0
+            )
+        }
+        return when (runtime) {
+            SyncRuntimeState.Starting -> SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.READY,
+                detail = "Starting local sharing."
+            )
+            is SyncRuntimeState.Ready -> SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.READY,
+                detail = "Ready to receive on your local network."
+            )
+            is SyncRuntimeState.Degraded -> SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.ERROR,
+                detail = "Discovery is limited. Manual connection is still available."
+            )
+            is SyncRuntimeState.Unavailable -> SyncForegroundServiceStatus(
+                mode = SyncForegroundServiceMode.ERROR,
+                detail = "Local sharing is unavailable."
+            )
+            SyncRuntimeState.Stopped,
+            SyncRuntimeState.Stopping -> null
         }
     }
 }

@@ -414,7 +414,7 @@ internal class TransferEngine(
 
     private fun startService() = platformOperations.startTransferService()
 
-    private fun stopService() = platformOperations.stopService()
+    private fun stopService() = Unit
 
     private companion object {
         const val TRANSFER_BUFFER_BYTES = 1024 * 1024

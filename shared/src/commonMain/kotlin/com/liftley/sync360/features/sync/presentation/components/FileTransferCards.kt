@@ -158,11 +158,28 @@ fun ReadyTransferHomeCard(
                         color = colorScheme.onSurfaceVariant
                     )
                 }
-                Sync360IconButton(
-                    imageVector = if (isScanning) Icons.Default.Inbox else Icons.Default.Refresh,
-                    contentDescription = if (isScanning) "Scanning" else "Scan again",
-                    onClick = onScan
-                )
+                if (isScanning) {
+                    Sync360Surface(
+                        modifier = Modifier.size(48.dp),
+                        cornerRadius = 100.dp,
+                        color = colorScheme.surfaceContainer,
+                        fillMaxWidth = false
+                    ) {
+                        Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = colorScheme.primary
+                            )
+                        }
+                    }
+                } else {
+                    Sync360IconButton(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = "Scan again",
+                        onClick = onScan
+                    )
+                }
             }
 
             if (hasNearbyDevices) {
@@ -176,7 +193,7 @@ fun ReadyTransferHomeCard(
                 }
             } else {
                 Sync360Surface(
-                    modifier = Modifier.clickable(onClick = onOpenDevices),
+                    modifier = if (isScanning) Modifier else Modifier.clickable(onClick = onOpenDevices),
                     cornerRadius = 20.dp,
                     color = colorScheme.surfaceContainer
                 ) {
@@ -185,12 +202,20 @@ fun ReadyTransferHomeCard(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Icon(
-                            imageVector = if (isScanning) Icons.Default.Wifi else Icons.Default.Refresh,
-                            contentDescription = null,
-                            tint = colorScheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
+                        if (isScanning) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = colorScheme.primary
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Default.Refresh,
+                                contentDescription = null,
+                                tint = colorScheme.primary,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                         Text(
                             text = if (isScanning) "Searching local network..." else "Scan for devices",
                             style = MaterialTheme.typography.labelLarge,
