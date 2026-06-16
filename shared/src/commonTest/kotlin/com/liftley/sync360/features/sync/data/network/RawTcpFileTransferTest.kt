@@ -200,6 +200,9 @@ private object FakePlatformOperations : PlatformOperations {
     override fun cancelFileWrite(handle: String): FileOperationResult<Unit> =
         FileOperationResult.Success(Unit)
 
+    override fun deleteFile(path: String): FileOperationResult<Unit> =
+        FileOperationResult.Success(Unit)
+
     override fun openFile(path: String): FileOperationResult<Unit> =
         FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
 
@@ -245,6 +248,11 @@ private class RecordingWritePlatform : PlatformOperations {
         FileOperationResult.Success(handle)
 
     override fun cancelFileWrite(handle: String): FileOperationResult<Unit> {
+        cancelCount += 1
+        return FileOperationResult.Success(Unit)
+    }
+
+    override fun deleteFile(path: String): FileOperationResult<Unit> {
         cancelCount += 1
         return FileOperationResult.Success(Unit)
     }

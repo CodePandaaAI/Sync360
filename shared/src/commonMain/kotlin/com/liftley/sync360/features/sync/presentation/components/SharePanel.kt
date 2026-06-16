@@ -132,10 +132,10 @@ private fun FileAction(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Sync360Surface(
-        modifier = modifier
+        modifier = modifier.clip(RoundedCornerShape(24.dp))
             .clickable(onClick = onClick),
         cornerRadius = 24.dp,
-        color = colorScheme.surface
+        color = colorScheme.surfaceContainer
     ) {
         Row(
             modifier = Modifier.padding(14.dp),

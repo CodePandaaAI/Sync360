@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Allow access to Downloads directory where files are saved -->
+    <external-path name="downloads" path="Download/" />
+</paths>

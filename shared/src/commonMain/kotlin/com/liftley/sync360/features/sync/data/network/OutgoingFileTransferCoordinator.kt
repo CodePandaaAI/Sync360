@@ -26,7 +26,7 @@ class OutgoingFileTransferCoordinator(
         offerId: String,
         files: List<PickedFile>,
         sessionToken: String,
-        onProgress: (percent: Int) -> Unit,
+        onProgress: (bytes: Long) -> Unit,
         onVerifying: () -> Unit
     ): FileSendResult {
         val transferStarted = TimeSource.Monotonic.markNow()

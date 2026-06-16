@@ -203,6 +203,20 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         }
     }
 
+    override fun deleteFile(path: String): FileOperationResult<Unit> {
+        return try {
+            val uri = android.net.Uri.parse(path)
+            val deleted = context.contentResolver.delete(uri, null, null)
+            if (deleted > 0) {
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+            }
+        } catch (_: Exception) {
+            FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+        }
+    }
+
     override fun openFile(path: String): FileOperationResult<Unit> {
         val bridge = activityBridge
             ?: return FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)

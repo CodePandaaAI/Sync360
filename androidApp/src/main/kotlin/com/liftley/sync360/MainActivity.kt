@@ -55,7 +55,9 @@ class MainActivity : ComponentActivity() {
         }
 
         override fun openDownloadsFolder() {
-            this@MainActivity.openDownloadsFolder()
+            val syncFolder = java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Sync360")
+            if (!syncFolder.exists()) syncFolder.mkdirs()
+            this@MainActivity.showFileInFolder(java.io.File(syncFolder, "placeholder").absolutePath)
         }
     }
 
@@ -168,18 +170,35 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun showFileInFolder(path: String) {
-        openDownloadsFolder() // Android Scoped Storage does not easily allow 'revealing' a specific file in a generic file manager intent. Falling back to Downloads folder.
+        try {
+            val file = java.io.File(path)
+            val parentDir = file.parentFile ?: java.io.File(android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS), "Sync360")
+            
+            val uri =
+                androidx.core.content.FileProvider.getUriForFile(
+                    this,
+                    "$packageName.provider",
+                    parentDir
+                )
+
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "vnd.android.document/directory")
+                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            
+            startActivity(intent)
+        } catch (e: Exception) {
+            openDownloadsFolderFallback()
+        }
     }
 
-    private fun openDownloadsFolder() {
+    private fun openDownloadsFolderFallback() {
         try {
-            startActivity(
-                Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                }
-            )
-        } catch (e: Exception) {
-            Toast.makeText(this, "Could not open downloads folder", Toast.LENGTH_SHORT).show()
+            val fallback = Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS)
+            fallback.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            startActivity(fallback)
+        } catch (e2: Exception) {
+            Toast.makeText(this, "Could not open folder", Toast.LENGTH_SHORT).show()
         }
     }
 }

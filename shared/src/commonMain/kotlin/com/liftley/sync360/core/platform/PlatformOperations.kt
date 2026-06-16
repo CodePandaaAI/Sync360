@@ -28,6 +28,7 @@ interface FileOperations {
     fun writeFileChunk(handle: String, bytes: ByteArray, offset: Int, length: Int): FileOperationResult<Int>
     fun finishFileWrite(handle: String): FileOperationResult<String>
     fun cancelFileWrite(handle: String): FileOperationResult<Unit>
+    fun deleteFile(path: String): FileOperationResult<Unit>
     fun openFile(path: String): FileOperationResult<Unit>
     fun showFileInFolder(path: String): FileOperationResult<Unit>
     fun openDownloadsFolder(): FileOperationResult<Unit>
@@ -127,5 +128,6 @@ enum class PlatformFileError {
     WRITE_FAILED,
     FINALIZE_FAILED,
     CANCEL_FAILED,
+    DELETE_FAILED,
     OPEN_FAILED
 }

@@ -170,7 +170,10 @@ fun SyncScreen(
 
                 uiState.fileTransferProgress?.let { progress ->
                     item {
-                        FileTransferProgressCard(progress = progress)
+                        FileTransferProgressCard(
+                            progress = progress,
+                            onCancel = { onEvent(SyncEvent.CancelTransfer) }
+                        )
                     }
                 }
 

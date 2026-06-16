@@ -184,6 +184,7 @@ class SyncViewModel(
             }
             SyncEvent.DismissReceivedFiles -> transferController.dismissReceived()
             SyncEvent.DismissTransferFailure -> transferController.dismissFailure()
+            SyncEvent.CancelTransfer -> transferController.cancel()
             is SyncEvent.OpenFile -> {
                 if (event.path.isNotBlank()) {
                     fileOperations.openFile(event.path)

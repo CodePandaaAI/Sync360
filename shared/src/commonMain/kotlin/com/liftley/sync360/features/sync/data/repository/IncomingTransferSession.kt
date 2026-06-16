@@ -11,6 +11,9 @@ internal class IncomingTransferSession {
     private var files: List<TransferFilePreview> = emptyList()
     private val savedPathsByIndex = mutableMapOf<Int, String>()
 
+    val savedPaths: List<String>
+        get() = savedPathsByIndex.values.toList()
+
     fun start(
         offerId: String,
         senderDeviceId: String,

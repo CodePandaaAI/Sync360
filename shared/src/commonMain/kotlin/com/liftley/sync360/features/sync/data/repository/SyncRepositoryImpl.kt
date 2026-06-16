@@ -246,6 +246,11 @@ class SyncRepositoryImpl(
 
     override fun dismissTransferFailure() = transferEngine.dismissFailure()
 
+    override fun cancelTransfer() {
+        transferEngine.cancel()
+        activeRawTransferId?.let { closeRawTransfer(it) }
+    }
+
     override fun onConnectRequest(
         request: ConnectRequestDto,
         remoteHost: String
@@ -338,6 +343,7 @@ class SyncRepositoryImpl(
                     RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE
                 IncomingUploadFailure.WRITE_FAILED -> RawTcpFailure.RECEIVER_WRITE_FAILED
                 IncomingUploadFailure.INTEGRITY -> RawTcpFailure.HASH_MISMATCH
+                IncomingUploadFailure.INTERRUPTED -> RawTcpFailure.CANCELLED
                 IncomingUploadFailure.INVALID_REQUEST,
                 null -> RawTcpFailure.RECEIVER_UNAVAILABLE
             }
@@ -364,6 +370,7 @@ class SyncRepositoryImpl(
                 IncomingUploadFailure.STORAGE_UNAVAILABLE ->
                     RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE
                 IncomingUploadFailure.WRITE_FAILED -> RawTcpFailure.RECEIVER_WRITE_FAILED
+                IncomingUploadFailure.INTERRUPTED -> RawTcpFailure.CANCELLED
                 IncomingUploadFailure.INVALID_REQUEST,
                 null -> RawTcpFailure.IO_ERROR
             }
@@ -378,6 +385,11 @@ class SyncRepositoryImpl(
             RawTcpFailure.RECEIVER_STORAGE_UNAVAILABLE ->
                 IncomingUploadFailure.STORAGE_UNAVAILABLE
             RawTcpFailure.RECEIVER_WRITE_FAILED -> IncomingUploadFailure.WRITE_FAILED
+            RawTcpFailure.PARTIAL_TRANSFER,
+            RawTcpFailure.CANCELLED,
+            RawTcpFailure.IO_ERROR,
+            RawTcpFailure.READ_TIMEOUT,
+            RawTcpFailure.TIMEOUT -> IncomingUploadFailure.INTERRUPTED
             else -> null
         }
         transferEngine.failIncomingFile(offerId, fileIndex, incomingFailure)

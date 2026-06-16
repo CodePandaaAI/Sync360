@@ -24,7 +24,7 @@ internal class IncomingFileTransferCoordinator(
         offer: FileOfferDto,
         isApprovedSession: Boolean,
         hasActiveTransfer: Boolean,
-        onProgress: (percent: Int) -> Unit
+        onProgress: (bytes: Long) -> Unit
     ): IncomingOfferStart? {
         if (hasActiveTransfer) return null
         if (!isApprovedSession) return null
@@ -71,7 +71,8 @@ internal class IncomingFileTransferCoordinator(
             progress = FileTransferProgress(
                 peerName = offer.senderName,
                 files = previews,
-                percent = 1,
+                bytesTransferred = 0L,
+                totalBytes = totalBytes,
                 direction = TransferDirection.RECEIVING,
                 stage = TransferStage.TRANSFERRING
             ),
@@ -132,6 +133,10 @@ internal class IncomingFileTransferCoordinator(
 
     fun clear() {
         fileTransferManager.cancelAllIncomingWrites()
+        val paths = incomingTransferSession.savedPaths
+        if (paths.isNotEmpty()) {
+            fileTransferManager.deleteFiles(paths)
+        }
         incomingTransferSession.clear()
     }
 }

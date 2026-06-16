@@ -23,10 +23,15 @@ data class ReceivedFileBatch(
 data class FileTransferProgress(
     val peerName: String,
     val files: List<TransferFilePreview>,
-    val percent: Int,
+    val bytesTransferred: Long,
+    val totalBytes: Long,
+    val speedBytesPerSecond: Long? = null,
+    val estimatedTimeRemainingSeconds: Long? = null,
     val direction: TransferDirection,
     val stage: TransferStage
-)
+) {
+    val percent: Int get() = if (totalBytes > 0) ((bytesTransferred * 100.0) / totalBytes).toInt().coerceIn(0, 100) else 0
+}
 
 data class FileTransferFailure(
     val peerName: String,
@@ -46,6 +51,7 @@ enum class TransferFailureReason {
     NETWORK_FAILED,
     TIMED_OUT,
     WRITE_FAILED,
+    INTERRUPTED,
     UNKNOWN
 }
 

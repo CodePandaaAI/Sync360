@@ -190,6 +190,19 @@ class DesktopPlatformOperations : PlatformOperations {
         }
     }
 
+    override fun deleteFile(path: String): FileOperationResult<Unit> {
+        return try {
+            val file = File(path)
+            if (!file.exists() || file.delete()) {
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+            }
+        } catch (_: Exception) {
+            FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+        }
+    }
+
     override fun openFile(path: String): FileOperationResult<Unit> {
         return try {
             val file = File(path)

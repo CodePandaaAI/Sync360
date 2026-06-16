@@ -22,6 +22,7 @@ sealed interface SyncEvent {
     object ClearSelectedFiles : SyncEvent
     object DismissReceivedFiles : SyncEvent
     object DismissTransferFailure : SyncEvent
+    object CancelTransfer : SyncEvent
     data class OpenFile(val path: String) : SyncEvent
     data class ShowFileInFolder(val path: String) : SyncEvent
     object OpenDownloadsFolder : SyncEvent

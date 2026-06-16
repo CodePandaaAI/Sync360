@@ -22,9 +22,9 @@ class FileTransferManager(
     // It is capped below 100 until the platform finalizes the file.
     private var currentIncomingTotalBytes = 0L
     private var currentIncomingWrittenBytes = 0L
-    private var currentIncomingProgressCallback: ((percent: Int) -> Unit)? = null
+    private var currentIncomingProgressCallback: ((bytes: Long) -> Unit)? = null
 
-    fun registerIncomingTotalSize(totalBytes: Long, onProgress: (percent: Int) -> Unit) {
+    fun registerIncomingTotalSize(totalBytes: Long, onProgress: (bytes: Long) -> Unit) {
         currentIncomingTotalBytes = totalBytes.coerceAtLeast(1L)
         currentIncomingWrittenBytes = 0L
         currentIncomingProgressCallback = onProgress
@@ -155,14 +155,10 @@ class FileTransferManager(
             write.hasher.update(chunk, offset, length)
             write.hashNanos += hashStarted.elapsedNow().inWholeNanoseconds
             currentIncomingWrittenBytes += length
-            val percent = ((currentIncomingWrittenBytes.toDouble() / currentIncomingTotalBytes.toDouble()) * 99)
-                .toInt()
-                .coerceIn(1, 99)
             val progressStarted = TimeSource.Monotonic.markNow()
-            currentIncomingProgressCallback?.invoke(percent)
+            currentIncomingProgressCallback?.invoke(currentIncomingWrittenBytes)
             write.progressNanos += progressStarted.elapsedNow().inWholeNanoseconds
             write.progressCallbacks += 1
-            write.distinctProgressPercents += percent
             write.chunkCount += 1
         }
         if (wrote is FileOperationResult.Failure) {
@@ -246,6 +242,10 @@ class FileTransferManager(
         synchronized(incomingFailures) { incomingFailures.clear() }
     }
 
+    fun deleteFiles(paths: List<String>) {
+        paths.forEach { platformOperations.deleteFile(it) }
+    }
+
     suspend fun uploadOutgoingFilesRaw(
         rawTransport: RawFileByteSender,
         serverIp: String,
@@ -253,7 +253,7 @@ class FileTransferManager(
         offerId: String,
         transferToken: String,
         files: List<PickedFile>,
-        onProgress: (percent: Int) -> Unit
+        onProgress: (bytes: Long) -> Unit
     ): HttpTransportResult = withContext(Dispatchers.IO) {
         val batchStarted = TimeSource.Monotonic.markNow()
         val totalBytes = files.sumOf { it.sizeBytes }.coerceAtLeast(1L)
@@ -276,10 +276,7 @@ class FileTransferManager(
                 platformOperations = platformOperations
             ) { bytesSent ->
                 bytesUploaded += bytesSent
-                val percent = ((bytesUploaded.toDouble() / totalBytes.toDouble()) * 95)
-                    .toInt()
-                    .coerceIn(1, 95)
-                onProgress(percent)
+                onProgress(bytesUploaded)
             }
             if (rawResult is RawTcpSendResult.Success) {
                 TransferDiagnostics.log(
@@ -401,7 +398,8 @@ enum class IncomingUploadFailure {
     STORAGE_FULL,
     STORAGE_UNAVAILABLE,
     WRITE_FAILED,
-    INTEGRITY
+    INTEGRITY,
+    INTERRUPTED
 }
 
 private fun PlatformFileError?.toIncomingUploadFailure(): IncomingUploadFailure = when (this) {

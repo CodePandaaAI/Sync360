@@ -47,6 +47,7 @@ interface FileTransferRepository {
     fun offerFiles(files: List<PickedFile>)
     fun dismissReceivedFiles()
     fun dismissTransferFailure()
+    fun cancelTransfer()
 }
 
 interface SyncRepository : DeviceConnectionRepository, MessageRepository, FileTransferRepository

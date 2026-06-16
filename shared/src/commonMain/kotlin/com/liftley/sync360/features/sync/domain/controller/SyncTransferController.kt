@@ -12,4 +12,6 @@ class SyncTransferController(
 
     fun dismissFailure() = repository.dismissTransferFailure()
 
+    fun cancel() = repository.cancelTransfer()
+
 }

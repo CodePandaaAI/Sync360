@@ -26,9 +26,13 @@ internal class TransferStore {
         )
     }
 
-    fun updateProgress(percent: Int) {
+    fun updateProgress(bytesTransferred: Long, speedBytesPerSecond: Long?, estimatedTimeRemainingSeconds: Long?) {
         val progress = value.progress ?: return
-        transition(progress.copy(percent = percent.coerceIn(0, 100)))
+        transition(progress.copy(
+            bytesTransferred = bytesTransferred.coerceAtMost(progress.totalBytes),
+            speedBytesPerSecond = speedBytesPerSecond,
+            estimatedTimeRemainingSeconds = estimatedTimeRemainingSeconds
+        ))
     }
 
     fun updateStage(stage: TransferStage) {

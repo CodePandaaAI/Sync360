@@ -12,6 +12,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonColors
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,7 +33,7 @@ fun Sync360Surface(
     content: @Composable () -> Unit
 ) {
     val sizedModifier = if (fillMaxWidth) modifier.fillMaxWidth() else modifier
-    androidx.compose.material3.Surface(
+    Surface(
         modifier = sizedModifier,
         shape = RoundedCornerShape(cornerRadius),
         color = color,

@@ -107,7 +107,8 @@ internal class TransferEngine(
                 FileTransferProgress(
                     peerName = "Peer",
                     files = outgoing.previews(files),
-                    percent = 1,
+                    bytesTransferred = 0L,
+                    totalBytes = totalBytes,
                     direction = TransferDirection.SENDING,
                     stage = TransferStage.PREPARING
                 )
@@ -125,12 +126,12 @@ internal class TransferEngine(
                 },
                 onVerifying = {
                     updateStage(TransferStage.VERIFYING)
-                    updateProgress(99)
+                    updateProgress(totalBytes)
                 }
             )
 
             if (result is FileSendResult.Success) {
-                updateProgress(100)
+                updateProgress(totalBytes)
                 store.succeed(TransferDirection.SENDING)
                 finishProgressDiagnostics("success")
             } else {
@@ -185,7 +186,7 @@ internal class TransferEngine(
         if (!accepted) return false
 
         stopIncomingWatchdog()
-        updateProgress(100)
+        updateProgress(store.value.progress?.totalBytes ?: progressDiagnosticBytes)
         store.succeed(TransferDirection.RECEIVING)
         finishProgressDiagnostics("success")
         stopService()
@@ -219,7 +220,7 @@ internal class TransferEngine(
 
     fun completeIncomingFile(offerId: String, fileIndex: Int): String? {
         updateStage(TransferStage.VERIFYING)
-        updateProgress(99)
+        updateProgress(store.value.progress?.totalBytes ?: progressDiagnosticBytes)
         val complete = incoming.completeFileWrite(offerId, fileIndex)
         if (complete.batch != null) {
             stopIncomingWatchdog()
@@ -238,6 +239,7 @@ internal class TransferEngine(
         val failure = knownFailure ?: incoming.consumeFileWriteFailure(offerId, fileIndex)
         stopIncomingWatchdog()
         incoming.errorFileWrite(offerId, fileIndex)
+        incoming.clear()
         val reason = failure.toFailureReason()
         fail(reason.defaultMessage(), TransferDirection.RECEIVING, reason = reason)
         stopService()
@@ -274,15 +276,25 @@ internal class TransferEngine(
         }
     }
 
-    private fun updateProgress(percent: Int) {
+    private fun updateProgress(bytesTransferred: Long) {
         val updateStarted = TimeSource.Monotonic.markNow()
         if (progressDiagnosticStartedAt != null) {
             progressUpdateAttempts += 1
             progressExecutionContext = transferExecutionContext()
         }
         val current = store.value.progress
-        if (current != null && current.percent != percent) {
-            store.updateProgress(percent)
+        if (current != null && current.bytesTransferred != bytesTransferred) {
+            val elapsedMs = progressDiagnosticStartedAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
+            val speedBytesPerSecond = if (elapsedMs > 0) {
+                ((bytesTransferred.toDouble() / elapsedMs.toDouble()) * 1000.0).toLong()
+            } else null
+            
+            val remainingBytes = current.totalBytes - bytesTransferred
+            val estimatedTimeRemainingSeconds = if (speedBytesPerSecond != null && speedBytesPerSecond > 0) {
+                remainingBytes / speedBytesPerSecond
+            } else null
+            
+            store.updateProgress(bytesTransferred, speedBytesPerSecond, estimatedTimeRemainingSeconds)
             if (progressDiagnosticStartedAt != null) progressStateUpdates += 1
         }
         if (progressDiagnosticStartedAt != null) {
@@ -423,6 +435,7 @@ private fun IncomingUploadFailure?.toFailureReason(): TransferFailureReason = wh
     IncomingUploadFailure.STORAGE_UNAVAILABLE -> TransferFailureReason.STORAGE_UNAVAILABLE
     IncomingUploadFailure.INTEGRITY -> TransferFailureReason.INTEGRITY_FAILED
     IncomingUploadFailure.WRITE_FAILED -> TransferFailureReason.WRITE_FAILED
+    IncomingUploadFailure.INTERRUPTED -> TransferFailureReason.INTERRUPTED
     IncomingUploadFailure.INVALID_REQUEST -> TransferFailureReason.UNKNOWN
     null -> TransferFailureReason.UNKNOWN
 }
@@ -437,5 +450,6 @@ private fun TransferFailureReason.defaultMessage(): String = when (this) {
     TransferFailureReason.TIMED_OUT -> "The file transfer timed out"
     TransferFailureReason.WRITE_FAILED -> "The received file could not be saved"
     TransferFailureReason.INVALID_SELECTION -> "The selected files are invalid"
+    TransferFailureReason.INTERRUPTED -> "The transfer was interrupted"
     TransferFailureReason.UNKNOWN -> "File transfer failed"
 }

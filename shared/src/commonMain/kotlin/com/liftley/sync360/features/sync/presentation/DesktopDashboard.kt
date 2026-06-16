@@ -93,7 +93,10 @@ fun DesktopDashboard(
                         FileTransferErrorCard(failure = failure, onEvent = onEvent)
                     }
                     uiState.fileTransferProgress?.let { progress ->
-                        FileTransferProgressCard(progress = progress)
+                        FileTransferProgressCard(
+                            progress = progress,
+                            onCancel = { onEvent(SyncEvent.CancelTransfer) }
+                        )
                     }
                     SharePanel(
                         isDesktop = true,

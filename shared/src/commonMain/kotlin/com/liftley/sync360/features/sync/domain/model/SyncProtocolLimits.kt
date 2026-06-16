@@ -15,7 +15,7 @@ object SyncProtocolLimits {
     const val SIGNATURE_HEX_LENGTH = 64
     const val MAX_OFFER_ID_LENGTH = 128
     const val MAX_PENDING_CONNECT_REQUESTS = 8
-    const val MAX_FILES_PER_TRANSFER = 12
+    const val MAX_FILES_PER_TRANSFER = 200
     const val MAX_FILE_NAME_LENGTH = 255
     const val MAX_MIME_TYPE_LENGTH = 255
     const val MAX_FILE_BYTES = 10L * 1024 * 1024 * 1024
