@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
 
 internal class IncomingOfferDecisionStore {
     private val lock = Any()
@@ -29,7 +30,7 @@ internal class IncomingOfferDecisionStore {
                 _pendingOffer.value = offer
             }
         }
-        val result = withTimeoutOrNull(INCOMING_DECISION_TIMEOUT_MILLIS) {
+        val result = withTimeoutOrNull(INCOMING_DECISION_TIMEOUT_MILLIS.milliseconds) {
             decision.await()
         } ?: IncomingOfferDecision.TimedOut
         synchronized(lock) {

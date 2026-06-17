@@ -1,4 +1,4 @@
-package com.liftley.sync360.features.sync.presentation.components
+package com.liftley.sync360.features.sync.presentation.components.transfer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -23,6 +23,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
+import com.liftley.sync360.features.sync.presentation.components.TransferPreviewSummaryRow
+import com.liftley.sync360.features.sync.presentation.components.formatBytes
+
 @Composable
 fun ReceivedFileBatchCard(
     batch: ReceivedFileBatch,
@@ -80,7 +84,10 @@ fun ReceivedFileBatchCard(
                 ),
                 contentPadding = PaddingValues(vertical = 12.dp)
             ) {
-                Text(if (batch.files.size == 1) "Open File" else "Show in folder", fontWeight = FontWeight.Bold)
+                Text(
+                    if (batch.files.size == 1) "Open File" else "Show in folder",
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

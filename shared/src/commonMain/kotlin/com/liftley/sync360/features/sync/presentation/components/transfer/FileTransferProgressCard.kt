@@ -1,35 +1,21 @@
-package com.liftley.sync360.features.sync.presentation.components
+package com.liftley.sync360.features.sync.presentation.components.transfer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.PermMedia
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
@@ -37,7 +23,6 @@ import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
 import com.liftley.sync360.features.sync.domain.model.TransferStage
-import com.liftley.sync360.features.sync.presentation.SyncEvent
 
 @Composable
 fun FileTransferProgressCard(
@@ -47,17 +32,21 @@ fun FileTransferProgressCard(
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val animatedProgress by androidx.compose.animation.core.animateFloatAsState(targetValue = progress.percent / 100f)
-    
-    Sync360Surface(modifier = modifier, cornerRadius = 24.dp) {
+
+    _root_ide_package_.com.liftley.sync360.features.sync.presentation.components.Sync360Surface(
+        modifier = modifier,
+        cornerRadius = 24.dp
+    ) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            val directionText = if (progress.direction == TransferDirection.RECEIVING) "Receiving from" else "Sending to"
+            val directionText =
+                if (progress.direction == TransferDirection.RECEIVING) "Receiving from" else "Sending to"
             Text(
                 text = "$directionText ${progress.peerName}",
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = colorScheme.onSurface
             )
-            
+
             val stateText = when (progress.stage) {
                 TransferStage.PREPARING -> "Preparing..."
                 TransferStage.TRANSFERRING -> if (progress.direction == TransferDirection.RECEIVING) "Receiving..." else "Sending..."
@@ -68,14 +57,17 @@ fun FileTransferProgressCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant
             )
-            
-            val filesStr = if (progress.files.size == 1) progress.files.first().name else "${progress.files.size} files"
-            TransferPreviewSummaryRow(
+
+            val filesStr =
+                if (progress.files.size == 1) progress.files.first().name else "${progress.files.size} files"
+            _root_ide_package_.com.liftley.sync360.features.sync.presentation.components.TransferPreviewSummaryRow(
                 title = filesStr,
-                subtitle = formatBytes(progress.totalBytes),
+                subtitle = _root_ide_package_.com.liftley.sync360.features.sync.presentation.components.formatBytes(
+                    progress.totalBytes
+                ),
                 files = progress.files
             )
-            
+
             LinearProgressIndicator(
                 progress = { animatedProgress },
                 modifier = Modifier.fillMaxWidth().height(8.dp),
@@ -95,7 +87,7 @@ fun FileTransferProgressCard(
                     fontWeight = FontWeight.Bold,
                     color = colorScheme.primary
                 )
-                
+
                 if (progress.speedBytesPerSecond != null && progress.estimatedTimeRemainingSeconds != null) {
                     val speedStr = formatSpeed(progress.speedBytesPerSecond)
                     val etaStr = formatEta(progress.estimatedTimeRemainingSeconds)

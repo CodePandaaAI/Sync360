@@ -1,4 +1,4 @@
-package com.liftley.sync360.features.sync.presentation.components
+package com.liftley.sync360.features.sync.presentation.components.transfer
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.presentation.SyncEvent
+import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
 
 @Composable
 fun FileTransferErrorCard(
@@ -71,7 +73,7 @@ fun FileTransferErrorCard(
                 color = colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center
             )
-            androidx.compose.material3.TextButton(
+            TextButton(
                 onClick = { onEvent(SyncEvent.DismissTransferFailure) },
                 modifier = Modifier.fillMaxWidth()
             ) {

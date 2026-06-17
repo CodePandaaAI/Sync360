@@ -20,16 +20,6 @@ internal class IncomingFileTransferCoordinator(
     private var activeOffer: PreparedIncomingFileOffer? = null
     private val savedPaths = mutableMapOf<Int, String>()
 
-    fun startOffer(
-        offer: FileOfferDto,
-        hasPeerGrant: Boolean,
-        hasActiveTransfer: Boolean,
-        onProgress: (bytes: Long) -> Unit
-    ): IncomingOfferStart? {
-        val prepared = prepareOffer(offer, hasPeerGrant, hasActiveTransfer) ?: return null
-        return startPreparedOffer(prepared, onProgress)
-    }
-
     fun prepareOffer(
         offer: FileOfferDto,
         hasPeerGrant: Boolean,

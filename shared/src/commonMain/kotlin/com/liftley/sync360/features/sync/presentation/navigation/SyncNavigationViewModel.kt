@@ -23,7 +23,7 @@ class SyncNavigationViewModel : ViewModel() {
 
     fun pop(): Boolean {
         if (backStack.size <= 1) return false
-        backStack.removeLast()
+        backStack.removeAt(backStack.lastIndex)
         return true
     }
 }

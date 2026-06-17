@@ -62,8 +62,8 @@ import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
 import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
-import com.liftley.sync360.features.sync.presentation.components.FileTransferErrorCard
-import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
+import com.liftley.sync360.features.sync.presentation.components.transfer.FileTransferErrorCard
+import com.liftley.sync360.features.sync.presentation.components.transfer.FileTransferProgressCard
 import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
 import com.liftley.sync360.features.sync.presentation.components.SyncBottomNavigationBar
 import com.liftley.sync360.features.sync.presentation.navigation.SyncRoute
