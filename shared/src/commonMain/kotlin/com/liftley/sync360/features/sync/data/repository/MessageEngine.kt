@@ -1,8 +1,6 @@
 package com.liftley.sync360.features.sync.data.repository
 
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
-import com.liftley.sync360.features.sync.data.network.HttpTransportResult
-import com.liftley.sync360.features.sync.data.network.HttpSyncClient
 import com.liftley.sync360.features.sync.data.network.api.MessageDto
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
 import com.liftley.sync360.features.sync.domain.model.ConnectionState
@@ -10,13 +8,11 @@ import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
-import com.liftley.sync360.features.sync.domain.model.UserFacingFailure
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -28,7 +24,6 @@ internal class MessageEngine(
     private val scope: CoroutineScope,
     private val localDevice: DeviceProfile,
     private val incomingNotifier: IncomingMessageNotifier,
-    private val httpClient: HttpSyncClient,
     private val deviceSession: DeviceSessionStore,
     private val deviceRegistry: DeviceRegistry,
     private val sessionAuthenticator: SessionAuthenticator,
@@ -52,59 +47,6 @@ internal class MessageEngine(
                 .collect { activeId ->
                     _messages.value = textStore.messagesFor(activeId)
                 }
-        }
-    }
-
-    fun send(text: String) {
-        val peerId = deviceSession.activeDeviceIdValue ?: run {
-            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
-            return
-        }
-        sendTo(peerId, text)
-    }
-
-    fun sendTo(deviceId: String, text: String) {
-        if (text.isBlank() || text.length > SyncProtocolLimits.MAX_TEXT_LENGTH) {
-            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.TEXT_INVALID))
-            return
-        }
-        val route = deviceRegistry.routeFor(deviceId) ?: run {
-            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
-            return
-        }
-        val sessionToken = deviceRegistry.sessionTokenFor(deviceId) ?: run {
-            events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.MISSING_ROUTE))
-            return
-        }
-        val message = MessageDto(
-            messageId = newSyncItemId(),
-            senderDeviceId = localDevice.id,
-            senderName = localDevice.name,
-            content = text,
-            timestamp = Clock.System.now().toEpochMilliseconds(),
-            sessionToken = sessionToken,
-            issuedAtMillis = 0L,
-            nonce = "",
-            signature = ""
-        )
-        val signed = sessionAuthenticator.signTextMessage(message)
-
-        scope.launch {
-            val result = httpClient.sendTextMessage(route.host, route.port, signed)
-            if (result.isSuccess) {
-                append(signed, deviceId)
-            } else {
-                val failure = result as HttpTransportResult.Failure
-                events.emit(
-                    ConnectionEvent.Failed(
-                        if (failure.detail == "receiver_declined") {
-                            UserFacingFailure.RECEIVER_DECLINED
-                        } else {
-                            UserFacingFailure.TEXT_DELIVERY_FAILED
-                        }
-                    )
-                )
-            }
         }
     }
 
@@ -143,6 +85,22 @@ internal class MessageEngine(
     fun acceptValidatedIncomingText(message: MessageDto) {
         append(message, message.senderDeviceId)
         incomingNotifier.notifyIncoming(message.senderName, message.content.take(120), false)
+    }
+
+    fun saveReceivedText(senderDeviceId: String, senderName: String, text: String) {
+        val message = MessageDto(
+            messageId = newSyncItemId(),
+            senderDeviceId = senderDeviceId,
+            senderName = senderName,
+            content = text,
+            timestamp = Clock.System.now().toEpochMilliseconds(),
+            sessionToken = "",
+            issuedAtMillis = 0L,
+            nonce = "",
+            signature = ""
+        )
+        append(message, senderDeviceId)
+        incomingNotifier.notifyIncoming(senderName, text.take(120), false)
     }
 
     fun clearVisible() {

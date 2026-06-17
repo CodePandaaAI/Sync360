@@ -2,6 +2,7 @@ package com.liftley.sync360.features.sync.data.network
 
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SendItem
 
 object RawTcpFileTransferConfig {
     const val BUFFER_BYTES = 1024 * 1024
@@ -82,6 +83,15 @@ interface RawFileByteSender {
         file: PickedFile,
         platformOperations: PlatformOperations,
         onBytesSent: (Long) -> Unit
+    ): RawTcpSendResult = send(host, port, header, SendItem.File(file), platformOperations, onBytesSent)
+
+    suspend fun send(
+        host: String,
+        port: Int,
+        header: RawTcpFileHeader,
+        item: SendItem,
+        platformOperations: PlatformOperations,
+        onBytesSent: (Long) -> Unit
     ): RawTcpSendResult
 }
 
@@ -97,6 +107,15 @@ expect class RawTcpFileTransport() : RawFileByteSender {
         port: Int,
         header: RawTcpFileHeader,
         file: PickedFile,
+        platformOperations: PlatformOperations,
+        onBytesSent: (Long) -> Unit
+    ): RawTcpSendResult
+
+    override suspend fun send(
+        host: String,
+        port: Int,
+        header: RawTcpFileHeader,
+        item: SendItem,
         platformOperations: PlatformOperations,
         onBytesSent: (Long) -> Unit
     ): RawTcpSendResult

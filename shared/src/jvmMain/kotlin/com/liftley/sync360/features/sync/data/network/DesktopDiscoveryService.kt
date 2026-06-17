@@ -38,15 +38,25 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
     private var isDiscovering = false
     private var isShutdown = false
 
+    private var lastRegisterInfo: RegisterInfo? = null
+
+    private data class RegisterInfo(
+        val port: Int,
+        val deviceId: String,
+        val deviceName: String,
+        val deviceType: String
+    )
+
     init {
         System.setProperty("java.net.preferIPv4Stack", "true")
     }
 
     private val serviceListener = object : ServiceListener {
         override fun serviceAdded(event: ServiceEvent) {
-            jmdnsInstances.forEach { instance ->
+            val dns = event.dns ?: return
+            scope.launch(Dispatchers.IO) {
                 try {
-                    instance.requestServiceInfo(event.type, event.name, true)
+                    dns.requestServiceInfo(event.type, event.name, true)
                 } catch (_: Exception) {}
             }
         }
@@ -121,12 +131,73 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
     }
 
     private fun ensureJmDnsInstances() {
-        if (isShutdown) return
-        if (jmdnsInstances.isNotEmpty()) return
-        getActualLocalAddresses().forEach { address ->
+        val currentAddresses = getActualLocalAddresses()
+        val currentInstances = synchronized(lifecycleLock) {
+            if (isShutdown) return
+            jmdnsInstances.toList()
+        }
+
+        val boundAddresses = currentInstances.mapNotNull {
+            runCatching { it.inetAddress }.getOrNull()
+        }
+
+        val needsRebuild = boundAddresses.toSet() != currentAddresses.toSet()
+
+        if (needsRebuild && currentInstances.isNotEmpty()) {
+            synchronized(lifecycleLock) {
+                jmdnsInstances.forEach { instance ->
+                    runCatching {
+                        instance.unregisterAllServices()
+                        instance.close()
+                    }
+                }
+                jmdnsInstances.clear()
+            }
+        }
+
+        val wasRebuilt = needsRebuild && currentInstances.isNotEmpty()
+
+        synchronized(lifecycleLock) {
+            if (isShutdown) return
+            if (jmdnsInstances.isNotEmpty()) return
+        }
+
+        val instances = mutableListOf<JmDNS>()
+        currentAddresses.forEach { address ->
             runCatching {
-                jmdnsInstances += JmDNS.create(address)
+                instances += JmDNS.create(address)
             }.onFailure { it.printStackTrace() }
+        }
+
+        val infoToReRegister = synchronized(lifecycleLock) {
+            if (isShutdown) {
+                instances.forEach { runCatching { it.close() } }
+                return
+            }
+            if (jmdnsInstances.isEmpty()) {
+                jmdnsInstances.addAll(instances)
+                if (wasRebuilt) lastRegisterInfo else null
+            } else {
+                instances.forEach { runCatching { it.close() } }
+                null
+            }
+        }
+
+        // Auto re-register host if we recreated JmDNS instances due to network change
+        if (infoToReRegister != null) {
+            val properties = mapOf("type" to infoToReRegister.deviceType, "deviceId" to infoToReRegister.deviceId)
+            synchronized(lifecycleLock) {
+                jmdnsInstances.forEachIndexed { index, instance ->
+                    val serviceInfo = ServiceInfo.create(
+                        serviceType,
+                        if (index == 0) infoToReRegister.deviceName else "${infoToReRegister.deviceName}-$index",
+                        infoToReRegister.port,
+                        0, 0,
+                        properties
+                    )
+                    runCatching { instance.registerService(serviceInfo) }
+                }
+            }
         }
     }
 
@@ -143,44 +214,56 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
         _state.value = _state.value.copy(scan = DiscoveryScanState.STARTING, failure = null)
 
-        scope.launch {
-            mapMutex.withLock {
-                devicesMap.clear()
-                serviceNameToIdMap.clear()
-                _discoveredDevices.value = emptyList()
-            }
-        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                mapMutex.withLock {
+                    devicesMap.clear()
+                    serviceNameToIdMap.clear()
+                    _discoveredDevices.value = emptyList()
+                }
 
-        return try {
-            ensureJmDnsInstances()
-            if (jmdnsInstances.isEmpty()) {
+                ensureJmDnsInstances()
+
+                val currentInstances = synchronized(lifecycleLock) {
+                    if (isShutdown) emptyList() else jmdnsInstances.toList()
+                }
+
+                if (currentInstances.isEmpty()) {
+                    synchronized(lifecycleLock) { isDiscovering = false }
+                    _state.value = _state.value.copy(
+                        scan = DiscoveryScanState.FAILED,
+                        failure = DiscoveryFailure.PLATFORM_UNAVAILABLE
+                    )
+                    return@launch
+                }
+                // Safely avoid duplicate listener attachments and trigger active queries
+                currentInstances.forEach { instance ->
+                    discoveryTypes.forEach { type ->
+                        try {
+                            instance.removeServiceListener(type, serviceListener)
+                        } catch (_: Exception) {}
+                        instance.addServiceListener(type, serviceListener)
+
+                        // Trigger active query broadcast asynchronously
+                        scope.launch(Dispatchers.IO) {
+                            try {
+                                instance.list(type)
+                            } catch (_: Exception) {}
+                        }
+                    }
+                }
+                _state.value = _state.value.copy(scan = DiscoveryScanState.ACTIVE, failure = null)
+            } catch (e: Exception) {
                 synchronized(lifecycleLock) { isDiscovering = false }
                 _state.value = _state.value.copy(
                     scan = DiscoveryScanState.FAILED,
-                    failure = DiscoveryFailure.PLATFORM_UNAVAILABLE
+                    failure = DiscoveryFailure.SCAN_START_FAILED
                 )
-                return DiscoveryCommandResult.FAILED
+                e.printStackTrace()
             }
-            // Safely avoid duplicate listener attachments
-            jmdnsInstances.forEach { instance ->
-                discoveryTypes.forEach { type ->
-                    try {
-                        instance.removeServiceListener(type, serviceListener)
-                    } catch (_: Exception) {}
-                    instance.addServiceListener(type, serviceListener)
-                }
-            }
-            _state.value = _state.value.copy(scan = DiscoveryScanState.ACTIVE, failure = null)
-            DiscoveryCommandResult.ACCEPTED
-        } catch (e: Exception) {
-            synchronized(lifecycleLock) { isDiscovering = false }
-            _state.value = _state.value.copy(
-                scan = DiscoveryScanState.FAILED,
-                failure = DiscoveryFailure.SCAN_START_FAILED
-            )
-            e.printStackTrace()
-            DiscoveryCommandResult.FAILED
         }
+
+        return DiscoveryCommandResult.ACCEPTED
     }
 
     override fun stopDiscovery(): DiscoveryCommandResult {
@@ -196,25 +279,27 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
         _state.value = _state.value.copy(scan = DiscoveryScanState.STOPPING)
 
-        return try {
-            jmdnsInstances.forEach { instance ->
-                discoveryTypes.forEach { type ->
-                    try {
-                        instance.removeServiceListener(type, serviceListener)
-                    } catch (_: Exception) {}
+        scope.launch(Dispatchers.IO) {
+            try {
+                val currentInstances = synchronized(lifecycleLock) { jmdnsInstances.toList() }
+                currentInstances.forEach { instance ->
+                    discoveryTypes.forEach { type ->
+                        try {
+                            instance.removeServiceListener(type, serviceListener)
+                        } catch (_: Exception) {}
+                    }
                 }
+                _state.value = _state.value.copy(scan = DiscoveryScanState.IDLE)
+            } catch (e: Exception) {
+                _state.value = _state.value.copy(
+                    scan = DiscoveryScanState.FAILED,
+                    failure = DiscoveryFailure.SCAN_STOP_FAILED
+                )
+                e.printStackTrace()
             }
-            _state.value = _state.value.copy(scan = DiscoveryScanState.IDLE)
-            DiscoveryCommandResult.ACCEPTED
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                scan = DiscoveryScanState.FAILED,
-                failure = DiscoveryFailure.SCAN_STOP_FAILED
-            )
-            e.printStackTrace()
-            DiscoveryCommandResult.FAILED
         }
-        // Do NOT close jmdns or set it to null here, so the registered host remains active!
+
+        return DiscoveryCommandResult.ACCEPTED
     }
 
     override fun registerHost(
@@ -224,50 +309,90 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         deviceType: String
     ): DiscoveryCommandResult {
         if (isShutdown) return DiscoveryCommandResult.SHUTDOWN
+
+        synchronized(lifecycleLock) {
+            lastRegisterInfo = RegisterInfo(port, deviceId, deviceName, deviceType)
+        }
+
         _state.value = _state.value.copy(
             advertisement = DiscoveryAdvertisementState.REGISTERING,
             failure = null
         )
-        return try {
-            ensureJmDnsInstances()
-            if (jmdnsInstances.isEmpty()) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                ensureJmDnsInstances()
+                val currentInstances = synchronized(lifecycleLock) {
+                    if (isShutdown) emptyList() else jmdnsInstances.toList()
+                }
+                if (currentInstances.isEmpty()) {
+                    _state.value = _state.value.copy(
+                        advertisement = DiscoveryAdvertisementState.FAILED,
+                        failure = DiscoveryFailure.PLATFORM_UNAVAILABLE
+                    )
+                    return@launch
+                }
+                // Clear any stale registrations to prevent conflicts on hot-reload/restart
+                currentInstances.forEach { instance ->
+                    try {
+                        instance.unregisterAllServices()
+                    } catch (_: Exception) {}
+                }
+
+                val properties = mapOf("type" to deviceType, "deviceId" to deviceId)
+                currentInstances.forEachIndexed { index, instance ->
+                    val serviceInfo = ServiceInfo.create(
+                        serviceType,
+                        if (index == 0) deviceName else "$deviceName-$index",
+                        port,
+                        0, 0,
+                        properties
+                    )
+                    instance.registerService(serviceInfo)
+                }
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.ACTIVE,
+                    failure = null
+                )
+            } catch (e: Exception) {
                 _state.value = _state.value.copy(
                     advertisement = DiscoveryAdvertisementState.FAILED,
-                    failure = DiscoveryFailure.PLATFORM_UNAVAILABLE
+                    failure = DiscoveryFailure.REGISTRATION_FAILED
                 )
-                return DiscoveryCommandResult.FAILED
+                e.printStackTrace()
             }
-            // Clear any stale registrations to prevent conflicts on hot-reload/restart
-            jmdnsInstances.forEach { instance ->
-                try {
-                    instance.unregisterAllServices()
-                } catch (_: Exception) {}
-            }
-
-            val properties = mapOf("type" to deviceType, "deviceId" to deviceId)
-            jmdnsInstances.forEachIndexed { index, instance ->
-                val serviceInfo = ServiceInfo.create(
-                    serviceType,
-                    if (index == 0) deviceName else "$deviceName-$index",
-                    port,
-                    0, 0,
-                    properties
-                )
-                instance.registerService(serviceInfo)
-            }
-            _state.value = _state.value.copy(
-                advertisement = DiscoveryAdvertisementState.ACTIVE,
-                failure = null
-            )
-            DiscoveryCommandResult.ACCEPTED
-        } catch (e: Exception) {
-            _state.value = _state.value.copy(
-                advertisement = DiscoveryAdvertisementState.FAILED,
-                failure = DiscoveryFailure.REGISTRATION_FAILED
-            )
-            e.printStackTrace()
-            DiscoveryCommandResult.FAILED
         }
+        return DiscoveryCommandResult.ACCEPTED
+    }
+
+    override fun unregisterHost(): DiscoveryCommandResult {
+        if (isShutdown) {
+            val currentInstances = synchronized(lifecycleLock) { jmdnsInstances.toList() }
+            if (currentInstances.isEmpty()) return DiscoveryCommandResult.SHUTDOWN
+        }
+
+        synchronized(lifecycleLock) {
+            lastRegisterInfo = null
+        }
+
+        if (_state.value.advertisement == DiscoveryAdvertisementState.IDLE) {
+            return DiscoveryCommandResult.ALREADY_IDLE
+        }
+        _state.value = _state.value.copy(
+            advertisement = DiscoveryAdvertisementState.IDLE,
+            failure = null
+        )
+        scope.launch(Dispatchers.IO) {
+            try {
+                val currentInstances = synchronized(lifecycleLock) { jmdnsInstances.toList() }
+                currentInstances.forEach { it.unregisterAllServices() }
+            } catch (error: Exception) {
+                _state.value = _state.value.copy(
+                    advertisement = DiscoveryAdvertisementState.FAILED,
+                    failure = DiscoveryFailure.REGISTRATION_FAILED
+                )
+            }
+        }
+        return DiscoveryCommandResult.ACCEPTED
     }
 
     override fun shutdown() {
@@ -279,10 +404,32 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
         if (!shouldShutdown) return
 
-        stopDiscovery()
-        unregisterHost()
-        jmdnsInstances.forEach { instance -> runCatching { instance.close() } }
-        jmdnsInstances.clear()
+        val currentInstances = synchronized(lifecycleLock) {
+            val list = jmdnsInstances.toList()
+            jmdnsInstances.clear()
+            list
+        }
+
+        scope.launch(Dispatchers.IO) {
+            try {
+                currentInstances.forEach { instance ->
+                    discoveryTypes.forEach { type ->
+                        try {
+                            instance.removeServiceListener(type, serviceListener)
+                        } catch (_: Exception) {}
+                    }
+                    try {
+                        instance.unregisterAllServices()
+                    } catch (_: Exception) {}
+                    try {
+                        instance.close()
+                    } catch (_: Exception) {}
+                }
+            } finally {
+                scope.cancel()
+            }
+        }
+
         devicesMap.clear()
         serviceNameToIdMap.clear()
         _discoveredDevices.value = emptyList()
@@ -290,27 +437,5 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             scan = DiscoveryScanState.SHUTDOWN,
             advertisement = DiscoveryAdvertisementState.SHUTDOWN
         )
-        scope.cancel()
-    }
-
-    override fun unregisterHost(): DiscoveryCommandResult {
-        if (isShutdown && jmdnsInstances.isEmpty()) return DiscoveryCommandResult.SHUTDOWN
-        if (_state.value.advertisement == DiscoveryAdvertisementState.IDLE) {
-            return DiscoveryCommandResult.ALREADY_IDLE
-        }
-        return try {
-            jmdnsInstances.forEach { it.unregisterAllServices() }
-            _state.value = _state.value.copy(
-                advertisement = DiscoveryAdvertisementState.IDLE,
-                failure = null
-            )
-            DiscoveryCommandResult.ACCEPTED
-        } catch (error: Exception) {
-            _state.value = _state.value.copy(
-                advertisement = DiscoveryAdvertisementState.FAILED,
-                failure = DiscoveryFailure.REGISTRATION_FAILED
-            )
-            DiscoveryCommandResult.FAILED
-        }
     }
 }

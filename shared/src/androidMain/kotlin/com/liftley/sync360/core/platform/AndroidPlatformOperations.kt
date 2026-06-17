@@ -1,6 +1,9 @@
 package com.liftley.sync360.core.platform
 
 import android.content.ContentValues
+import android.content.ClipData
+import android.content.ClipDescription
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -16,7 +19,10 @@ import androidx.core.net.toUri
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 class AndroidPlatformOperations(private val context: Context) : PlatformOperations {
 
     @Volatile
@@ -82,18 +88,18 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
     }
 
     override fun readClipboard(): String? {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         if (!clipboard.hasPrimaryClip()) return null
         val description = clipboard.primaryClipDescription ?: return null
-        if (!description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_PLAIN) &&
-            !description.hasMimeType(android.content.ClipDescription.MIMETYPE_TEXT_HTML)) return null
+        if (!description.hasMimeType(ClipDescription.MIMETYPE_TEXT_PLAIN) &&
+            !description.hasMimeType(ClipDescription.MIMETYPE_TEXT_HTML)) return null
             
         return clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()
     }
 
     override fun writeClipboard(text: String) {
-        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-        val clip = android.content.ClipData.newPlainText("Copied Text", text)
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = ClipData.newPlainText("Copied Text", text)
         clipboard.setPrimaryClip(clip)
     }
 
@@ -110,6 +116,16 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
         onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
     ): FileOperationResult<Long> = withContext(Dispatchers.IO) {
         try {
+            if (file.mimeType == "application/x-sync360-text") {
+                val textContent = if (file.id.startsWith("text_content:")) {
+                    Base64.decode(file.id.substringAfter("text_content:")).decodeToString()
+                } else {
+                    ""
+                }
+                val bytes = textContent.encodeToByteArray()
+                onChunk(bytes, 0, bytes.size)
+                return@withContext FileOperationResult.Success(bytes.size.toLong())
+            }
             var bytesRead = 0L
             val uri = file.id.toUri()
             context.contentResolver.openInputStream(uri)?.use { input ->
@@ -225,7 +241,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
 
     override fun deleteFile(path: String): FileOperationResult<Unit> {
         return try {
-            val uri = android.net.Uri.parse(path)
+            val uri = path.toUri()
             val deleted = context.contentResolver.delete(uri, null, null)
             if (deleted > 0) {
                 FileOperationResult.Success(Unit)

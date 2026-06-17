@@ -11,7 +11,10 @@ import java.io.File
 import java.io.OutputStream
 import java.net.Inet4Address
 import java.net.NetworkInterface
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 class DesktopPlatformOperations : PlatformOperations {
     private val activeFileWrites = mutableMapOf<String, DesktopFileWrite>()
 
@@ -95,6 +98,16 @@ class DesktopPlatformOperations : PlatformOperations {
         onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
     ): FileOperationResult<Long> = withContext(Dispatchers.IO) {
         try {
+            if (file.mimeType == "application/x-sync360-text") {
+                val textContent = if (file.id.startsWith("text_content:")) {
+                    Base64.decode(file.id.substringAfter("text_content:")).decodeToString()
+                } else {
+                    ""
+                }
+                val bytes = textContent.encodeToByteArray()
+                onChunk(bytes, 0, bytes.size)
+                return@withContext FileOperationResult.Success(bytes.size.toLong())
+            }
             var bytesRead = 0L
             File(file.id).inputStream().use { input ->
                 val buffer = ByteArray(chunkSizeBytes)

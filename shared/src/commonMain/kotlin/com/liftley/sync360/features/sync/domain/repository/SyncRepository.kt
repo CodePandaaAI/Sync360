@@ -3,8 +3,8 @@ package com.liftley.sync360.features.sync.domain.repository
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
 import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.model.SyncStartResult
 import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
@@ -34,26 +34,22 @@ interface DeviceConnectionRepository {
     fun declineIncomingOffer(offerId: String)
 
     fun hasPeerGrantFor(deviceId: String): Boolean
-    fun switchActiveDevice(deviceId: String)
-    fun disconnectActivePeer()
     fun disconnectAll()
 
     suspend fun clearAllData()
-    fun deleteDevice(deviceId: String)
 }
 
 interface MessageRepository {
     val sessionMessages: Flow<List<SyncMessage>>
 
-    fun sendText(text: String)
-    fun sendTextTo(deviceId: String, text: String)
+    fun saveReceivedText(senderDeviceId: String, senderName: String, text: String)
 }
 
 interface FileTransferRepository {
     val transferSnapshot: Flow<TransferSnapshot>
 
-    fun offerFiles(files: List<PickedFile>)
-    fun offerFilesTo(deviceId: String, files: List<PickedFile>)
+    fun offerItems(items: List<SendItem>)
+    fun offerItemsTo(deviceId: String, items: List<SendItem>)
     fun dismissReceivedFiles()
     fun dismissTransferFailure()
     fun cancelTransfer()

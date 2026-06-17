@@ -125,6 +125,7 @@ internal class IncomingFileTransferCoordinator(
             offerId = offerId,
             fileIndex = fileIndex,
             fileName = file.name,
+            mimeType = file.mimeType,
             expectedBytes = file.sizeBytes,
             expectedSha256 = expectedSha256,
             dispatcher = "Dispatchers.IO raw TCP receiver"

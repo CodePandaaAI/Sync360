@@ -2,6 +2,119 @@
 
 ## Current State First - Read This Before Editing
 
+## Authoritative Handoff - June 17, 2026
+
+This section supersedes older notes below when there is any conflict.
+
+Sync360 is now moving to a **nearby-device drop app** model, not a Bluetooth-style "connect to one device" model.
+
+### Current Product Model
+
+* The user starts on the **Send** screen.
+* The app has two primary screens:
+  * `SendScreen`: compose a bundle and choose a nearby target.
+  * `ReceiveScreen`: approve/observe incoming receives and show received results.
+* Navigation uses **Navigation 3**:
+  * `SyncRoute.Send`
+  * `SyncRoute.Receive`
+  * `SyncNavigationViewModel` owns the state-backed back stack.
+  * Mobile starts at Send and automatically navigates to Receive for incoming offer/progress/result state.
+  * Desktop uses `DesktopDashboard` to show Send and Receive side by side.
+* Nearby devices are **send targets**, not user-facing sessions.
+* There should be no primary "connected device" UX, no disconnect button in the main flow, and no connect-first requirement before the user can choose a target.
+* Internal peer grants/session tokens can still exist for authentication and route caching. They are implementation details, not product UX.
+
+### Send Model
+
+Outgoing content is a mixed bundle of `SendItem`s:
+
+* `SendItem.File(PickedFile)` for real files.
+* `SendItem.Text(...)` for direct text snippets.
+
+Important: a direct text snippet is **not** a `.txt` file. It is sent as Sync360 text content using `SYNC360_TEXT_MIME_TYPE` and should be received into the app text/clipboard list. A real `.txt` file remains a normal file.
+
+UI state now uses:
+
+* `SyncUiState.selectedItems: List<SendItem>`
+* `SyncEvent.AddSelectedFiles`
+* `SyncEvent.AddCustomText`
+* `SyncEvent.SendSelectedItems`
+* `SyncEvent.SendSelectedItemsTo`
+* `SyncEvent.ClearSelectedItems`
+
+The old `selectedFiles` naming should not be reintroduced.
+
+### Receive / Quick Save Model
+
+Quick Save controls receive approval:
+
+* Quick Save OFF: incoming file/text offers create a pending incoming offer and wait for Accept/Decline.
+* Quick Save ON: valid offers from authenticated nearby peers are accepted automatically.
+* Invalid unsigned offers must still be rejected.
+* File receive starts raw TCP only after the offer is accepted.
+* Incoming text accepted through Quick Save or approval is saved through `MessageEngine.saveReceivedText`.
+
+### Current Network / Transport Model
+
+Ktor HTTP remains the **control plane**:
+
+* discovery-related control
+* connect/grant request/accept/reject compatibility endpoints
+* text offers/messages
+* file offers
+* file-complete/status/error signals
+
+Raw TCP remains the **file byte plane**:
+
+* dynamic receiver TCP port
+* one-time raw transfer token
+* `RawTransferGrantStore`
+* `RawTcpFileTransport`
+* transfer header validation
+* content length and SHA-256 validation
+
+Do **not** reintroduce HTTP file-byte upload routes or base64 file-byte payloads. HTTP file bodies mentioned in older sections are historical/stale.
+
+### Security Rules
+
+Do not weaken:
+
+* HMAC request validation
+* `sessionToken` validation
+* peer grant / route / token lookup
+* raw TCP transfer token validation
+* raw TCP header, length, and hash validation
+
+If a target has no valid grant/route/session token, target send must fail clearly instead of bypassing auth.
+
+### Current Key Files
+
+* `shared/src/commonMain/kotlin/com/liftley/sync360/App.kt`: Navigation 3 app shell and desktop split-pane decision.
+* `features/sync/presentation/SendScreen.kt`: main send surface, text/file bundle composer, nearby target list.
+* `features/sync/presentation/ReceiveScreen.kt`: receive approval/progress/result surface.
+* `features/sync/presentation/SyncViewModel.kt`: UDF event handling and UI-state mapping.
+* `features/sync/presentation/SyncUiState.kt`: single UI render state; includes `selectedItems`.
+* `features/sync/domain/model/FileTransferModels.kt`: `SendItem`, `PickedFile`, transfer preview/result models.
+* `features/sync/data/repository/TransferEngine.kt`: target/item-based transfer orchestration.
+* `features/sync/data/network/OutgoingFileTransferCoordinator.kt`: file/text-item offer, auth, raw TCP send orchestration.
+* `features/sync/data/network/FileTransferManager.kt`: hashing, incoming writes, text-content bridge, raw TCP upload helper.
+* `features/sync/data/network/RawTcpFileTransport.kt` plus Android/JVM actuals: raw byte transport.
+* `features/sync/data/repository/SyncRepositoryImpl.kt`: runtime integration and incoming offer decisions.
+
+### Architecture Rules For Future AI
+
+Follow `android-architecture-skill.md`:
+
+* UI renders `SyncUiState` and emits `SyncEvent`.
+* ViewModel handles UI logic and calls domain/repository/controller APIs.
+* Data/repository layer owns networking, auth, storage, transfer orchestration, and business rules.
+* Use `collectAsStateWithLifecycle()` in Compose app/screen entry points where available.
+* Keep platform APIs behind platform/data abstractions; do not call Android APIs from composables.
+
+### Working Preference
+
+The project owner has explicitly asked the AI assistant **not to run Gradle tests or builds** unless later requested. The owner will run builds and paste errors. Prefer focused code edits plus static searches.
+
 The older sections below still describe the product vision and many important platform quirks, but this section reflects the current implementation direction.
 
 Last updated: June 15, 2026.

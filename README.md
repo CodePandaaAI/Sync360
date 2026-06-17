@@ -1,5 +1,106 @@
 # Sync360
 
+## Authoritative Current Handoff - June 17, 2026
+
+Sync360 is now being built as a **local-network nearby-device drop app**.
+
+The current product flow is:
+
+1. User opens on the **Send** screen.
+2. User builds one outgoing bundle:
+   * real files
+   * direct text snippets
+3. Nearby devices are shown as send targets.
+4. User taps a target and confirms sending.
+5. Receiver opens/uses the **Receive** screen for approval, progress, and result.
+
+There is no primary "connected device" UX in the intended flow. Internal peer grants/session tokens/routes still exist for security and reachability, but they are implementation details.
+
+### Current Screens And Navigation
+
+* `SendScreen`: unified file + text bundle composer and nearby target list.
+* `ReceiveScreen`: incoming approval, receive progress, received result, and errors.
+* Navigation uses **Navigation 3**:
+  * `SyncRoute.Send`
+  * `SyncRoute.Receive`
+  * `SyncNavigationViewModel` owns the state-backed back stack.
+* Mobile starts on Send and navigates to Receive when incoming receive state exists.
+* Desktop uses `DesktopDashboard` to show Send and Receive side by side.
+
+### Send Items
+
+Outgoing content uses `SendItem`:
+
+* `SendItem.File(PickedFile)` for real files.
+* `SendItem.Text(...)` for direct text snippets.
+
+Direct text is **not** a `.txt` file. It uses `SYNC360_TEXT_MIME_TYPE` and should be stored/displayed as text in the received text/clipboard list. A real `.txt` remains a normal file.
+
+Important UI/domain state names:
+
+* `SyncUiState.selectedItems`
+* `SyncEvent.AddSelectedFiles`
+* `SyncEvent.AddCustomText`
+* `SyncEvent.SendSelectedItems`
+* `SyncEvent.SendSelectedItemsTo`
+* `SyncEvent.ClearSelectedItems`
+
+Do not reintroduce `selectedFiles` as the main bundle state.
+
+### Quick Save
+
+Quick Save controls receive approval:
+
+* OFF: valid incoming file/text offers require Accept/Decline.
+* ON: valid authenticated incoming file/text offers are accepted automatically.
+* Invalid/unsigned offers are still rejected.
+* Raw TCP file receive starts only after the file offer is accepted.
+
+### Transport
+
+Ktor HTTP is the control plane:
+
+* grant/connect compatibility messages
+* text offers/messages
+* file offers
+* accept/reject/status/error/complete signals
+
+Raw TCP is the file-byte plane:
+
+* dynamic receiver TCP port
+* one-time transfer token
+* `RawTransferGrantStore`
+* `RawTcpFileTransport`
+* header/content-length/hash validation
+
+Do not reintroduce HTTP file-byte upload or base64 file-byte transfer. Older README sections that describe HTTP raw upload are stale.
+
+### Security Rules
+
+Do not weaken:
+
+* HMAC validation
+* `sessionToken` validation
+* peer grant / route / token lookup
+* raw TCP transfer-token validation
+* raw TCP header, content-length, and SHA-256 validation
+
+If a target has no valid peer grant/route/token, sending should fail clearly.
+
+### Architecture Rules
+
+Follow `android-architecture-skill.md`:
+
+* UI renders `SyncUiState` and emits `SyncEvent`.
+* `SyncViewModel` handles UI logic and calls domain/repository/controller APIs.
+* Data/repository/network classes own auth, networking, storage, and transfer orchestration.
+* Use lifecycle-aware state collection such as `collectAsStateWithLifecycle()` where available.
+* Keep platform APIs out of composables.
+
+### AI Working Preference
+
+The project owner prefers to run builds/tests manually. Do **not** run Gradle builds or tests unless explicitly asked; make focused edits and use static searches.
+
 ## Current Implementation Snapshot
 
 This README preserves the original product vision below, but this section is the current handoff for agents and tools working on the live codebase.

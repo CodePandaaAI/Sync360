@@ -11,7 +11,6 @@ import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
 import com.liftley.sync360.features.sync.data.network.OutgoingFileTransferCoordinator
 import com.liftley.sync360.features.sync.data.network.RawTcpFileHeader
 import com.liftley.sync360.features.sync.data.network.RawTcpFileListener
-import com.liftley.sync360.features.sync.data.network.RawTcpFileTransferConfig
 import com.liftley.sync360.features.sync.data.network.RawTcpFileTransport
 import com.liftley.sync360.features.sync.data.network.RawTcpFailure
 import com.liftley.sync360.features.sync.data.network.RawTcpListenerStartResult
@@ -30,7 +29,8 @@ import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryControll
 import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
 import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SYNC360_TEXT_MIME_TYPE
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
 import com.liftley.sync360.features.sync.domain.model.SyncMessage
 import com.liftley.sync360.features.sync.domain.model.SyncStartResult
@@ -43,7 +43,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.launch
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 class SyncRepositoryImpl(
     private val discoveryController: SyncDiscoveryController,
     private val localDevice: DeviceProfile,
@@ -53,9 +57,9 @@ class SyncRepositoryImpl(
     private val httpClient: HttpSyncClient = HttpSyncClient(syncPort),
     private val httpServer: HttpSyncServer = HttpSyncServer(syncPort),
     private val rawTcpFileTransport: RawTcpFileTransport = RawTcpFileTransport(),
-    private val fileTransferManager: FileTransferManager =
+    fileTransferManager: FileTransferManager =
         FileTransferManager(platformOperations),
-    private val outgoingFileTransferCoordinator: OutgoingFileTransferCoordinator =
+    outgoingFileTransferCoordinator: OutgoingFileTransferCoordinator =
         OutgoingFileTransferCoordinator(
             localDevice,
             httpClient,
@@ -69,6 +73,7 @@ class SyncRepositoryImpl(
     private var runtimeClosed = false
     private var activeRawTransferId: String? = null
     private val rawTransferGrants = RawTransferGrantStore()
+    private val pendingAutoSendItems = mutableMapOf<String, List<SendItem>>()
 
     private val deviceSession = DeviceSessionStore()
     private val deviceRegistry = DeviceRegistry()
@@ -91,7 +96,6 @@ class SyncRepositoryImpl(
         scope = scope,
         localDevice = localDevice,
         incomingNotifier = incomingNotifier,
-        httpClient = httpClient,
         deviceSession = deviceSession,
         deviceRegistry = deviceRegistry,
         sessionAuthenticator = sessionAuthenticator,
@@ -126,6 +130,23 @@ class SyncRepositoryImpl(
         onDeviceDeleted = messageEngine::removePeer
     )
 
+    init {
+        httpServer.listener = this
+        rawTcpFileTransport.listener = this
+
+        scope.launch {
+            sessionSnapshot.collect { snapshot ->
+                if (snapshot is SessionSnapshot.Approved) {
+                    val peerId = snapshot.identity.deviceId
+                    val items = pendingAutoSendItems.remove(peerId)
+                    if (items != null && items.isNotEmpty()) {
+                        transferEngine.offerItemsTo(peerId, items)
+                    }
+                }
+            }
+        }
+    }
+
     override val nearbyDevices: Flow<List<DeviceProfile>> = discoveryController.nearbyDevices
     override val isScanning: Flow<Boolean> = discoveryController.isScanning
     override val connectionEvents: Flow<ConnectionEvent> = events.asSharedFlow()
@@ -135,11 +156,6 @@ class SyncRepositoryImpl(
     override val pendingIncomingOffer = incomingOfferDecisions.pendingOffer
     override val sessionMessages: Flow<List<SyncMessage>> = messageEngine.messages
     override val transferSnapshot: Flow<TransferSnapshot> = transferEngine.snapshot
-
-    init {
-        httpServer.listener = this
-        rawTcpFileTransport.listener = this
-    }
 
     override fun startSync(): SyncStartResult {
         val decision = synchronized(runtimeLock) {
@@ -159,8 +175,6 @@ class SyncRepositoryImpl(
             return SyncStartResult.NETWORK_UNAVAILABLE
         }
 
-        httpServer.listener = this
-        rawTcpFileTransport.listener = this
         if (!httpServer.start()) {
             synchronized(runtimeLock) { syncStarted = false }
             events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.SERVER_UNAVAILABLE))
@@ -230,11 +244,6 @@ class SyncRepositoryImpl(
     override fun hasPeerGrantFor(deviceId: String): Boolean =
         deviceRegistry.hasGrantFor(deviceId)
 
-    override fun switchActiveDevice(deviceId: String) =
-        connectionEngine.switchActive(deviceId)
-
-    override fun disconnectActivePeer() = connectionEngine.disconnectActive()
-
     override fun disconnectAll() {
         transferEngine.cancel()
         val route = connectionEngine.activePeerRoute()
@@ -254,17 +263,25 @@ class SyncRepositoryImpl(
 
     override suspend fun clearAllData() = connectionEngine.clearSession()
 
-    override fun deleteDevice(deviceId: String) = connectionEngine.deleteDevice(deviceId)
+    override fun saveReceivedText(senderDeviceId: String, senderName: String, text: String) =
+        messageEngine.saveReceivedText(senderDeviceId, senderName, text)
 
-    override fun sendText(text: String) = messageEngine.send(text)
+    override fun offerItems(items: List<SendItem>) = transferEngine.offerItems(items)
 
-    override fun sendTextTo(deviceId: String, text: String) =
-        messageEngine.sendTo(deviceId, text)
-
-    override fun offerFiles(files: List<PickedFile>) = transferEngine.offer(files)
-
-    override fun offerFilesTo(deviceId: String, files: List<PickedFile>) =
-        transferEngine.offerTo(deviceId, files)
+    override fun offerItemsTo(deviceId: String, items: List<SendItem>) {
+        if (hasPeerGrantFor(deviceId)) {
+            transferEngine.offerItemsTo(deviceId, items)
+        } else {
+            val device = discoveryController.nearbyDevices.value.firstOrNull { it.id == deviceId }
+            if (device != null) {
+                pendingAutoSendItems[deviceId] = items
+                connectionEngine.request(device)
+                connectionEngine.confirm()
+            } else {
+                events.tryEmit(ConnectionEvent.Failed(UserFacingFailure.UNKNOWN))
+            }
+        }
+    }
 
     override fun dismissReceivedFiles() = transferEngine.dismissReceivedFiles()
 
@@ -431,6 +448,20 @@ class SyncRepositoryImpl(
 
     override fun onRawFileComplete(offerId: String, fileIndex: Int): RawTcpReceiveResult {
         if (transferEngine.completeIncomingFile(offerId, fileIndex) != null) {
+            transferEngine.receivedBatchValue?.let { batch ->
+                batch.files.forEachIndexed { index, file ->
+                    val savedPath = batch.savedPaths.getOrNull(index)
+                    if (file.mimeType == SYNC360_TEXT_MIME_TYPE && savedPath?.startsWith("text_content:") == true) {
+                        val base64 = savedPath.substringAfter("text_content:")
+                        val text = Base64.decode(base64).decodeToString()
+                        messageEngine.saveReceivedText(
+                            senderDeviceId = batch.senderDeviceId,
+                            senderName = batch.senderName,
+                            text = text
+                        )
+                    }
+                }
+            }
             return RawTcpReceiveResult.Success
         }
         val failure = transferEngine.consumeIncomingFailure(offerId, fileIndex)

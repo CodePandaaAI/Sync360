@@ -416,7 +416,7 @@ private fun ActiveTransferLifecycleCard(
 }
 
 @Composable
-private fun ReceivedReceiptLifecycleCard(
+fun ReceivedReceiptLifecycleCard(
     batch: ReceivedFileBatch,
     onEvent: (SyncEvent) -> Unit,
     modifier: Modifier = Modifier
@@ -600,6 +600,82 @@ private fun TransferFilePreview.receiptIcon(): ImageVector {
 }
 
 @Composable
+private fun TransferPreviewSummaryRow(
+    title: String,
+    subtitle: String,
+    files: List<TransferFilePreview>,
+    modifier: Modifier = Modifier
+) {
+    val colorScheme = MaterialTheme.colorScheme
+    val previewIcon = if (files.any { it.mimeType.startsWith("image/") || it.mimeType.startsWith("video/") }) {
+        Icons.Default.PermMedia
+    } else {
+        Icons.Default.Description
+    }
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = colorScheme.surface
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = colorScheme.primaryContainer
+            ) {
+                Box(modifier = Modifier.size(58.dp), contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = previewIcon,
+                        contentDescription = null,
+                        tint = colorScheme.onPrimaryContainer,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp)
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+fun formatBytes(bytes: Long): String {
+    val units = listOf("B", "KB", "MB", "GB")
+    var value = bytes.toDouble()
+    var index = 0
+    while (value >= 1024.0 && index < units.lastIndex) {
+        value /= 1024.0
+        index += 1
+    }
+    return if (index == 0) {
+        "$bytes ${units[index]}"
+    } else {
+        "${(value * 10).toInt() / 10.0} ${units[index]}"
+    }
+}
+
+@Composable
 private fun FailureTransferLifecycleCard(
     failure: FileTransferFailure,
     onDismiss: () -> Unit,
@@ -662,7 +738,7 @@ private fun FailureTransferLifecycleCard(
 @Composable
 private fun TransferStatusGlyph(
     progress: Int,
-    icon: androidx.compose.ui.graphics.vector.ImageVector
+    icon: ImageVector
 ) {
     val colorScheme = MaterialTheme.colorScheme
     Box(modifier = Modifier.size(58.dp), contentAlignment = Alignment.Center) {
@@ -744,11 +820,11 @@ fun FileTransferProgressCard(
                 trackColor = colorScheme.surfaceContainerHighest,
                 strokeCap = StrokeCap.Round
             )
-            
-            androidx.compose.foundation.layout.Row(
+
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "${progress.percent}%",
@@ -767,8 +843,8 @@ fun FileTransferProgressCard(
                     )
                 }
             }
-            
-            androidx.compose.foundation.layout.Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                 androidx.compose.material3.TextButton(
                     onClick = onCancel,
                     colors = ButtonDefaults.textButtonColors(contentColor = colorScheme.error)
@@ -863,10 +939,10 @@ fun ReceivedFileBatchCard(
     val colorScheme = MaterialTheme.colorScheme
     Sync360Surface(modifier = modifier, cornerRadius = 24.dp) {
         Column(Modifier.padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            androidx.compose.foundation.layout.Row(
+            Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = batch.senderName,
@@ -874,11 +950,11 @@ fun ReceivedFileBatchCard(
                     fontWeight = FontWeight.Bold,
                     color = colorScheme.onSurface
                 )
-                androidx.compose.material3.IconButton(
+                IconButton(
                     onClick = { onEvent(SyncEvent.DismissReceivedFiles) },
                     modifier = Modifier.size(24.dp)
                 ) {
-                    androidx.compose.material3.Icon(
+                    Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Dismiss",
                         tint = colorScheme.onSurfaceVariant
@@ -919,27 +995,27 @@ fun ReceivedFileBatchCard(
 
 @Composable
 fun FileTransferErrorCard(
-    failure: com.liftley.sync360.features.sync.domain.model.FileTransferFailure,
+    failure: FileTransferFailure,
     onEvent: (SyncEvent) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colorScheme = MaterialTheme.colorScheme
     val message = when (failure.reason) {
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_UNAVAILABLE -> "Device is busy or offline."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.TIMED_OUT -> "Couldn’t reach the device. Check that both devices are on the same Wi-Fi."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.NETWORK_FAILED -> "Transfer stopped responding or the device refused the request."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.WRITE_FAILED -> "Couldn’t save file data."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTEGRITY_FAILED -> "File verification failed or size mismatch. Please try again."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.STORAGE_FULL -> "Not enough storage on the receiving device."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Receiver declined the transfer."
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTERRUPTED -> "The transfer was interrupted."
+        TransferFailureReason.RECEIVER_UNAVAILABLE -> "Device is busy or offline."
+        TransferFailureReason.TIMED_OUT -> "Couldn’t reach the device. Check that both devices are on the same Wi-Fi."
+        TransferFailureReason.NETWORK_FAILED -> "Transfer stopped responding or the device refused the request."
+        TransferFailureReason.WRITE_FAILED -> "Couldn’t save file data."
+        TransferFailureReason.INTEGRITY_FAILED -> "File verification failed or size mismatch. Please try again."
+        TransferFailureReason.STORAGE_FULL -> "Not enough storage on the receiving device."
+        TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer."
+        TransferFailureReason.RECEIVER_CANCELLED -> "Receiver declined the transfer."
+        TransferFailureReason.INTERRUPTED -> "The transfer was interrupted."
         else -> failure.message.takeIf { it.isNotBlank() } ?: "Something went wrong during transfer."
     }
     val title = when (failure.reason) {
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.SENDER_CANCELLED,
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.RECEIVER_CANCELLED -> "Transfer cancelled"
-        com.liftley.sync360.features.sync.domain.model.TransferFailureReason.INTERRUPTED -> "Transfer interrupted"
+        TransferFailureReason.SENDER_CANCELLED,
+        TransferFailureReason.RECEIVER_CANCELLED -> "Transfer cancelled"
+        TransferFailureReason.INTERRUPTED -> "Transfer interrupted"
         else -> "Transfer failed"
     }
 
@@ -947,9 +1023,9 @@ fun FileTransferErrorCard(
         Column(
             modifier = Modifier.padding(18.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            androidx.compose.material3.Icon(
+            Icon(
                 imageVector = Icons.Default.ErrorOutline,
                 contentDescription = "Error",
                 modifier = Modifier.size(48.dp),
@@ -965,7 +1041,7 @@ fun FileTransferErrorCard(
                 text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = colorScheme.onSurfaceVariant,
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                textAlign = TextAlign.Center
             )
             androidx.compose.material3.TextButton(
                 onClick = { onEvent(SyncEvent.DismissTransferFailure) },

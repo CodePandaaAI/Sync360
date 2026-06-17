@@ -12,8 +12,9 @@ import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
 import com.liftley.sync360.features.sync.domain.diagnostics.transferExecutionContext
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
-import com.liftley.sync360.features.sync.domain.model.PickedFile
+
 import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
@@ -59,8 +60,10 @@ internal class TransferEngine(
     val snapshot: Flow<TransferSnapshot> = store.snapshot
     val isActive: Boolean
         get() = store.value.isActive
+    val receivedBatchValue: com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch?
+        get() = store.value.receivedBatch
 
-    fun offer(files: List<PickedFile>) {
+    fun offerItems(items: List<SendItem>) {
         val peerId = deviceSession.activeDeviceIdValue ?: run {
             fail(
                 message = "Target device is not available",
@@ -69,10 +72,10 @@ internal class TransferEngine(
             )
             return
         }
-        offerTo(peerId, files)
+        offerItemsTo(peerId, items)
     }
 
-    fun offerTo(deviceId: String, files: List<PickedFile>) {
+    fun offerItemsTo(deviceId: String, items: List<SendItem>) {
         val peerName = deviceRegistry.grantFor(deviceId)?.identity?.name ?: deviceId
         if (isActive) {
             fail(
@@ -82,7 +85,7 @@ internal class TransferEngine(
             )
             return
         }
-        if (files.isEmpty() || files.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) {
+        if (items.isEmpty() || items.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) {
             fail(
                 "Select up to ${SyncProtocolLimits.MAX_FILES_PER_TRANSFER} files",
                 TransferDirection.SENDING,
@@ -90,11 +93,11 @@ internal class TransferEngine(
             )
             return
         }
-        if (files.any {
+        if (items.any {
                 it.sizeBytes < 0L ||
                     it.sizeBytes > SyncProtocolLimits.MAX_FILE_BYTES ||
-                    it.name.isBlank() ||
-                    it.name.length > SyncProtocolLimits.MAX_FILE_NAME_LENGTH ||
+                    it.displayName.isBlank() ||
+                    it.displayName.length > SyncProtocolLimits.MAX_FILE_NAME_LENGTH ||
                     it.mimeType.length > SyncProtocolLimits.MAX_MIME_TYPE_LENGTH
             }
         ) {
@@ -106,10 +109,10 @@ internal class TransferEngine(
             return
         }
         var totalBytes = 0L
-        for (file in files) {
+        for (item in items) {
             if (
-                file.sizeBytes > Long.MAX_VALUE - totalBytes ||
-                totalBytes + file.sizeBytes > SyncProtocolLimits.MAX_BATCH_BYTES
+                item.sizeBytes > Long.MAX_VALUE - totalBytes ||
+                    totalBytes + item.sizeBytes > SyncProtocolLimits.MAX_BATCH_BYTES
             ) {
                 fail(
                     message = "Selected files are too large",
@@ -118,7 +121,7 @@ internal class TransferEngine(
                 )
                 return
             }
-            totalBytes += file.sizeBytes
+            totalBytes += item.sizeBytes
         }
 
         val route = deviceRegistry.routeFor(deviceId) ?: run {
@@ -148,7 +151,7 @@ internal class TransferEngine(
             store.start(
                 FileTransferProgress(
                     peerName = peerName,
-                    files = outgoing.previews(files),
+                    files = outgoing.previewsForItems(items),
                     bytesTransferred = 0L,
                     totalBytes = totalBytes,
                     direction = TransferDirection.SENDING,
@@ -156,11 +159,11 @@ internal class TransferEngine(
                 )
             )
 
-            val result = outgoing.sendFiles(
+            val result = outgoing.sendItems(
                 peerHost = route.host,
                 peerPort = route.port,
                 offerId = offerId,
-                files = files,
+                items = items,
                 sessionToken = sessionToken,
                 onProgress = {
                     updateStage(TransferStage.TRANSFERRING)

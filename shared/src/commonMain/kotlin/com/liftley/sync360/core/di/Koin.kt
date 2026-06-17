@@ -51,7 +51,8 @@ val commonModule = module {
             transferController = get(),
             clipboardOperations = get(),
             fileOperations = get(),
-            localIpAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress
+            localIpAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress,
+            localDeviceName = get<com.liftley.sync360.features.sync.domain.model.DeviceProfile>().name
         )
     }
 }

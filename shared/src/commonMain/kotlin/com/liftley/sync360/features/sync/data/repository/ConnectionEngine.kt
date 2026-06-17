@@ -129,35 +129,7 @@ internal class ConnectionEngine(
         }
     }
 
-    fun switchActive(deviceId: String) {
-        deviceSession.connect(deviceId)
-    }
 
-    fun disconnectActive() {
-        if (hasActiveTransfer()) return
-
-        deviceSession.beginDisconnecting()
-        val route = activePeerRoute()
-        if (route != null) {
-            val token = deviceSession.activeDeviceIdValue?.let(deviceRegistry::sessionTokenFor)
-            scope.launch {
-                httpClient.sendConnectReject(
-                    route.host,
-                    route.port,
-                    sessionAuthenticator.connectReject(token)
-                )
-            }
-        }
-        clearSession()
-    }
-
-    fun deleteDevice(deviceId: String) {
-        if (deviceSession.activeDeviceIdValue == deviceId && hasActiveTransfer()) return
-
-        onDeviceDeleted(deviceId)
-        deviceRegistry.delete(deviceId)
-        if (deviceSession.activeDeviceIdValue == deviceId) clearSession()
-    }
 
     fun clearSession() {
         outgoing.cancel()
@@ -219,21 +191,16 @@ internal class ConnectionEngine(
         ) {
             return ConnectRequestOutcome.BUSY
         }
-        if (deviceRegistry.hasValidGrant(device.id, request.sessionToken)) {
-            deviceRegistry.upsert(device, request.sessionToken)
-            deviceSession.connect(device.id)
-            scope.launch {
-                httpClient.sendConnectAccept(
-                    remoteHost,
-                    device.port,
-                    sessionAuthenticator.connectAccept(request.sessionToken, remoteHost)
-                )
-            }
-            return ConnectRequestOutcome.RECEIVED
+        deviceRegistry.upsert(device, request.sessionToken)
+        deviceSession.connect(device.id)
+        events.tryEmit(ConnectionEvent.Connected(device.name))
+        scope.launch {
+            httpClient.sendConnectAccept(
+                remoteHost,
+                device.port,
+                sessionAuthenticator.connectAccept(request.sessionToken, remoteHost)
+            )
         }
-
-        sessionTokens.put(device.id, request.sessionToken)
-        deviceSession.addIncoming(device)
         return ConnectRequestOutcome.RECEIVED
     }
 

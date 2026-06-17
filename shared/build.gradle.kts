@@ -55,6 +55,8 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.navigation3.runtime)
+            implementation(libs.androidx.navigation3.ui)
             implementation(compose.material)
             implementation(compose.materialIconsExtended)
             
@@ -73,6 +75,9 @@ kotlin {
             // Koin Dependency Injection
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
+            
+            // Coil Image Loading
+            implementation(libs.coil.compose)
             
         }
         commonTest.dependencies {

@@ -7,6 +7,32 @@ data class PickedFile(
     val sizeBytes: Long
 )
 
+sealed interface SendItem {
+    val id: String
+    val displayName: String
+    val mimeType: String
+    val sizeBytes: Long
+
+    data class File(val file: PickedFile) : SendItem {
+        override val id: String = file.id
+        override val displayName: String = file.name
+        override val mimeType: String = file.mimeType
+        override val sizeBytes: Long = file.sizeBytes
+    }
+
+    data class Text(
+        override val id: String,
+        val text: String,
+        val preview: String
+    ) : SendItem {
+        override val displayName: String = "Text: $preview"
+        override val mimeType: String = SYNC360_TEXT_MIME_TYPE
+        override val sizeBytes: Long = text.encodeToByteArray().size.toLong()
+    }
+}
+
+const val SYNC360_TEXT_MIME_TYPE = "application/x-sync360-text"
+
 data class TransferFilePreview(
     val name: String,
     val mimeType: String,
@@ -17,7 +43,8 @@ data class TransferFilePreview(
 data class ReceivedFileBatch(
     val senderName: String,
     val files: List<TransferFilePreview>,
-    val savedPaths: List<String>
+    val savedPaths: List<String>,
+    val senderDeviceId: String = ""
 )
 
 data class FileTransferProgress(

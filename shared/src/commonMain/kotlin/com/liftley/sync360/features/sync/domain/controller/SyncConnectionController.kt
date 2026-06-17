@@ -17,8 +17,4 @@ class SyncConnectionController(
     fun acceptIncoming(deviceId: String) = repository.acceptIncomingConnect(deviceId)
 
     fun declineIncoming(deviceId: String) = repository.declineIncomingConnect(deviceId)
-
-    fun switchActive(deviceId: String) = repository.switchActiveDevice(deviceId)
-
-    fun disconnectActive() = repository.disconnectActivePeer()
 }

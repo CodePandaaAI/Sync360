@@ -5,6 +5,7 @@ import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
 import com.liftley.sync360.features.sync.domain.diagnostics.transferExecutionContext
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -107,10 +108,19 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
         file: PickedFile,
         platformOperations: PlatformOperations,
         onBytesSent: (Long) -> Unit
+    ): RawTcpSendResult = send(host, port, header, SendItem.File(file), platformOperations, onBytesSent)
+
+    actual override suspend fun send(
+        host: String,
+        port: Int,
+        header: RawTcpFileHeader,
+        item: SendItem,
+        platformOperations: PlatformOperations,
+        onBytesSent: (Long) -> Unit
     ): RawTcpSendResult {
         return try {
             withTimeout(RawTcpFileTransferConfig.TRANSFER_TIMEOUT_MILLIS) {
-                sendWithinTimeout(host, port, header, file, platformOperations, onBytesSent)
+                sendWithinTimeout(host, port, header, item, platformOperations, onBytesSent)
             }
         } catch (_: TimeoutCancellationException) {
             RawTcpSendResult.Failure(RawTcpFailure.TIMEOUT, 0L)
@@ -121,7 +131,7 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
         host: String,
         port: Int,
         header: RawTcpFileHeader,
-        file: PickedFile,
+        item: SendItem,
         platformOperations: PlatformOperations,
         onBytesSent: (Long) -> Unit
     ): RawTcpSendResult = withContext(Dispatchers.IO) {
@@ -157,10 +167,7 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
             }
 
             val sourceStarted = TimeSource.Monotonic.markNow()
-            val readResult = platformOperations.readFileChunks(
-                file,
-                RawTcpFileTransferConfig.BUFFER_BYTES
-            ) { bytes, offset, length ->
+            val readResult = streamItemBytes(item, platformOperations) { bytes, offset, length ->
                 coroutineContext.ensureActive()
                 if (bytesSent + length > header.contentLength) {
                     val remaining = (header.contentLength - bytesSent).coerceAtLeast(0L).toInt()
@@ -229,6 +236,25 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
         }
         logSender(header, bytesSent, chunks, sourceNanos, socketWriteNanos, totalStarted, result.failureOrNull())
         result
+    }
+
+    private suspend fun streamItemBytes(
+        item: SendItem,
+        platformOperations: PlatformOperations,
+        onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
+    ): FileOperationResult<Long> {
+        return when (item) {
+            is SendItem.File -> platformOperations.readFileChunks(
+                item.file,
+                RawTcpFileTransferConfig.BUFFER_BYTES,
+                onChunk
+            )
+            is SendItem.Text -> {
+                val bytes = item.text.encodeToByteArray()
+                onChunk(bytes, 0, bytes.size)
+                FileOperationResult.Success(bytes.size.toLong())
+            }
+        }
     }
 
     private fun receive(connection: Socket) {

@@ -2,19 +2,21 @@ package com.liftley.sync360.features.sync.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.ClipboardOperations
 import com.liftley.sync360.core.platform.FileOperations
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
 import com.liftley.sync360.features.sync.domain.controller.SyncConnectionController
 import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
-import com.liftley.sync360.features.sync.domain.model.ConnectionState
 import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
+import com.liftley.sync360.features.sync.domain.model.SessionSecurityMode
+import com.liftley.sync360.features.sync.domain.model.ConnectionEvent
+import com.liftley.sync360.features.sync.domain.model.UserFacingFailure
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -27,82 +29,37 @@ class SyncViewModel(
     private val transferController: SyncTransferController,
     private val clipboardOperations: ClipboardOperations,
     private val fileOperations: FileOperations,
-    private val localIpAddress: String
+    private val localIpAddress: String,
+    private val localDeviceName: String
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         SyncUiState(
-            serverIp = localIpAddress,
-            isScanningForDevices = true
+            localDeviceName = localDeviceName,
+            serverIp = localIpAddress
         )
     )
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
     private val _uiEffects = Channel<SyncUiEffect>(Channel.BUFFERED)
     val uiEffects: Flow<SyncUiEffect> = _uiEffects.receiveAsFlow()
 
-    private var pendingDraftTargetId: String? = null
-
     init {
         viewModelScope.launch {
-            var lastTransferFailure: com.liftley.sync360.features.sync.domain.model.FileTransferFailure? = null
             runtimeController.snapshot.collect { snapshot ->
-                val activeDevice = (snapshot.session as? SessionSnapshot.Approved)?.let { session ->
-                    DeviceProfile(
-                        id = session.identity.deviceId,
-                        name = session.identity.name,
-                        type = session.identity.type,
-                        hostAddress = session.route.host,
-                        port = session.route.port,
-                        isOnline = true
-                    )
-                }
-                val pendingOutgoing = when (val connection = snapshot.connection.state) {
-                    is ConnectionState.ResolvingRoute -> connection.device
-                    is ConnectionState.Requesting -> connection.device
-                    is ConnectionState.AwaitingApproval -> connection.device
-                    else -> null
-                }
                 _uiState.update {
                     it.copy(
-                        activeDevice = activeDevice,
                         runtimeState = snapshot.runtime,
                         securityMode = (snapshot.session as? SessionSnapshot.Approved)
                             ?.securityMode
-                            ?: com.liftley.sync360.features.sync.domain.model.SessionSecurityMode.TRUSTED_LAN_PLAINTEXT,
-                        pendingIncomingRequest = snapshot.connection.pendingIncoming.firstOrNull(),
+                            ?: SessionSecurityMode.TRUSTED_LAN_PLAINTEXT,
                         pendingIncomingOffer = snapshot.pendingIncomingOffer,
                         quickSaveEnabled = snapshot.quickSaveEnabled,
-                        pendingOutgoingRequest = pendingOutgoing,
-                        connectionState = snapshot.connection.state,
                         fileTransferProgress = snapshot.transfer.progress,
                         fileTransferFailure = snapshot.transfer.failure,
                         receivedFileBatch = snapshot.transfer.receivedBatch,
-                        localNetworkHealthy = snapshot.runtime is SyncRuntimeState.Ready,
-                        isScanningForDevices = snapshot.runtime is SyncRuntimeState.Starting ||
-                            it.isScanningForDevices
+                        localNetworkHealthy = snapshot.runtime is SyncRuntimeState.Ready
                     )
                 }
-                
-                if (activeDevice != null && activeDevice.id == pendingDraftTargetId) {
-                    val targetId = pendingDraftTargetId!!
-                    pendingDraftTargetId = null
-                    
-                    val state = _uiState.value
-                    if (state.selectedFiles.isNotEmpty()) {
-                        transferController.sendTo(targetId, state.selectedFiles)
-                        _uiState.update { it.copy(selectedFiles = emptyList()) }
-                    } else if (state.outgoingText.isNotBlank()) {
-                        repository.sendTextTo(targetId, state.outgoingText)
-                        _uiState.update { it.copy(outgoingText = "") }
-                    }
-                }
-                
-                snapshot.connection.pendingIncoming.firstOrNull()?.let { device ->
-                    connectionController.acceptIncoming(device.id)
-                }
-                
-                // Let the UI handle the failure card via uiState.fileTransferFailure
-                lastTransferFailure = snapshot.transfer.failure
             }
         }
         viewModelScope.launch {
@@ -118,11 +75,11 @@ class SyncViewModel(
         viewModelScope.launch {
             repository.connectionEvents.collect { event ->
                 when (event) {
-                    is com.liftley.sync360.features.sync.domain.model.ConnectionEvent.WaitingForApproval ->
-                        showMessage("Waiting for ${event.deviceName} to approve")
-                    is com.liftley.sync360.features.sync.domain.model.ConnectionEvent.Connected ->
-                        showMessage("Connected to ${event.deviceName}")
-                    is com.liftley.sync360.features.sync.domain.model.ConnectionEvent.Failed ->
+                    is ConnectionEvent.WaitingForApproval ->
+                        showMessage("Waiting for ${event.deviceName}")
+                    is ConnectionEvent.Connected ->
+                        showMessage("${event.deviceName} is available")
+                    is ConnectionEvent.Failed ->
                         showMessage(event.toUiMessage())
                 }
             }
@@ -149,16 +106,6 @@ class SyncViewModel(
 
     fun onEvent(event: SyncEvent) {
         when (event) {
-            is SyncEvent.Disconnect -> {
-                connectionController.disconnectActive()
-                _uiState.update { it.copy(outgoingText = "") }
-            }
-            is SyncEvent.SendMessage -> {
-                if (event.text.isNotBlank()) {
-                    repository.sendText(event.text)
-                }
-                _uiState.update { it.copy(outgoingText = "") }
-            }
             is SyncEvent.UpdateOutgoingText -> {
                 _uiState.update { it.copy(outgoingText = event.text) }
             }
@@ -171,11 +118,9 @@ class SyncViewModel(
             is SyncEvent.DismissConnectRequest -> connectionController.dismissRequest()
             is SyncEvent.AcceptConnection -> connectionController.acceptIncoming(event.deviceId)
             is SyncEvent.DeclineConnection -> connectionController.declineIncoming(event.deviceId)
-            is SyncEvent.SwitchDevice -> connectionController.switchActive(event.deviceId)
             is SyncEvent.CopyClipboard -> {
-                val latest = _uiState.value.latestTexts.firstOrNull()?.text
-                if (!latest.isNullOrBlank()) {
-                    clipboardOperations.writeClipboard(latest)
+                if (event.text.isNotBlank()) {
+                    clipboardOperations.writeClipboard(event.text)
                     showMessage("Copied to clipboard")
                 }
             }
@@ -191,79 +136,72 @@ class SyncViewModel(
                 }
             }
             is SyncEvent.AddSelectedFiles -> {
-                val merged = (_uiState.value.selectedFiles + event.files)
+                val merged = (_uiState.value.selectedItems + event.files.map { SendItem.File(it) })
                     .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
-                _uiState.update { it.copy(selectedFiles = merged) }
+                _uiState.update { it.copy(selectedItems = merged) }
             }
-            SyncEvent.SendSelectedFiles -> {
-                val selected = _uiState.value.selectedFiles
+            is SyncEvent.AddCustomText -> {
+                if (event.text.isNotBlank()) {
+                    val textItem = event.text.toSendTextItem()
+                    val merged = (_uiState.value.selectedItems + textItem)
+                        .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
+                    _uiState.update { it.copy(selectedItems = merged, outgoingText = "") }
+                }
+            }
+            SyncEvent.SendSelectedItems -> {
+                val selected = _uiState.value.selectedItems
                 if (selected.isNotEmpty()) {
-                    transferController.send(selected)
+                    transferController.sendItems(selected)
                 }
-                _uiState.update { it.copy(selectedFiles = emptyList()) }
+                _uiState.update { it.copy(selectedItems = emptyList()) }
             }
-            is SyncEvent.SendDraftTo -> {
-                val state = _uiState.value
-                if (state.selectedFiles.isNotEmpty()) {
-                    onEvent(SyncEvent.SendSelectedFilesTo(event.deviceId))
-                } else if (state.outgoingText.isNotBlank()) {
-                    onEvent(SyncEvent.SendTextTo(event.deviceId))
+            is SyncEvent.ProposeSendTo -> {
+                if (_uiState.value.selectedItems.isEmpty()) {
+                    showMessage("Add files or text first")
+                    return
+                }
+                val target = findDevice(event.deviceId)
+                if (target != null) {
+                    _uiState.update { it.copy(pendingOutgoingOfferTarget = target) }
                 }
             }
-            is SyncEvent.SendSelectedFilesTo -> {
-                val selected = _uiState.value.selectedFiles
+            SyncEvent.CancelSendProposal -> {
+                _uiState.update { it.copy(pendingOutgoingOfferTarget = null) }
+            }
+            is SyncEvent.SendSelectedItemsTo -> {
+                _uiState.update { it.copy(pendingOutgoingOfferTarget = null) }
+                val selected = _uiState.value.selectedItems
                 if (selected.isEmpty()) {
-                    showMessage("Select files first")
+                    showMessage("Add files or text first")
                     return
                 }
-                if (!repository.hasPeerGrantFor(event.deviceId)) {
-                    val device = findDevice(event.deviceId)
-                    if (device != null) {
-                        pendingDraftTargetId = event.deviceId
-                        connectionController.request(device)
-                        connectionController.confirmRequest()
-                    } else {
-                        showMessage("Device is not ready. Try again.")
-                    }
-                    return
-                }
-                transferController.sendTo(event.deviceId, selected)
-                _uiState.update { it.copy(selectedFiles = emptyList()) }
+                transferController.sendItemsTo(event.deviceId, selected)
+                _uiState.update { it.copy(selectedItems = emptyList()) }
             }
-            is SyncEvent.SendTextTo -> {
-                val text = _uiState.value.outgoingText
-                if (text.isBlank()) {
-                    showMessage("Enter text first")
-                    return
-                }
-                if (!repository.hasPeerGrantFor(event.deviceId)) {
-                    val device = findDevice(event.deviceId)
-                    if (device != null) {
-                        pendingDraftTargetId = event.deviceId
-                        connectionController.request(device)
-                        connectionController.confirmRequest()
-                    } else {
-                        showMessage("Device is not ready. Try again.")
-                    }
-                    return
-                }
-                repository.sendTextTo(event.deviceId, text)
-                _uiState.update { it.copy(outgoingText = "") }
+            SyncEvent.ClearSelectedItems -> {
+                _uiState.update { it.copy(selectedItems = emptyList()) }
             }
-            SyncEvent.ClearSelectedFiles -> {
-                _uiState.update { it.copy(selectedFiles = emptyList()) }
+            is SyncEvent.RemoveSelectedItem -> {
+                val updated = _uiState.value.selectedItems.filter { it.id != event.itemId }
+                _uiState.update { it.copy(selectedItems = updated) }
             }
             SyncEvent.DismissReceivedFiles -> transferController.dismissReceived()
             SyncEvent.DismissTransferFailure -> transferController.dismissFailure()
             SyncEvent.CancelTransfer -> transferController.cancel()
             is SyncEvent.OpenFile -> {
                 if (event.path.isNotBlank()) {
-                    fileOperations.openFile(event.path)
+                    val res = fileOperations.openFile(event.path)
+                    if (res is com.liftley.sync360.core.platform.FileOperationResult.Failure) {
+                        showMessage("Could not open file (it might have been moved or deleted)")
+                    }
                 }
             }
             is SyncEvent.ShowFileInFolder -> {
                 if (event.path.isNotBlank()) {
-                    fileOperations.showFileInFolder(event.path)
+                    val res = fileOperations.showFileInFolder(event.path)
+                    if (res is com.liftley.sync360.core.platform.FileOperationResult.Failure) {
+                        showMessage("Could not open containing folder")
+                    }
                 }
             }
             is SyncEvent.OpenDownloadsFolder -> {
@@ -281,45 +219,59 @@ class SyncViewModel(
     }
 
     private fun findDevice(deviceId: String): DeviceProfile? =
-        _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
+        _uiState.value.nearbyDevices.firstOrNull { it.id == deviceId }
 
     private fun showMessage(message: String) {
         _uiEffects.trySend(SyncUiEffect.ShowMessage(message))
     }
+
+    private fun String.toSendTextItem(): SendItem.Text {
+        val normalized = replace("\n", " ").trim()
+        val shortPreview = if (normalized.length > 25) {
+            normalized.take(25) + "..."
+        } else {
+            normalized
+        }
+        return SendItem.Text(
+            id = "text:${kotlin.time.Clock.System.now().toEpochMilliseconds()}",
+            text = this,
+            preview = shortPreview
+        )
+    }
 }
 
-private fun com.liftley.sync360.features.sync.domain.model.ConnectionEvent.Failed.toUiMessage(): String {
+private fun ConnectionEvent.Failed.toUiMessage(): String {
     val target = peer ?: "device"
     return when (reason) {
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.SERVER_UNAVAILABLE ->
+        UserFacingFailure.SERVER_UNAVAILABLE ->
             "Sync360 could not open or reach the sharing server"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.INVALID_HOST ->
+        UserFacingFailure.INVALID_HOST ->
             "Enter a valid local IPv4 address or hostname, optionally with a port"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.MISSING_ROUTE ->
+        UserFacingFailure.MISSING_ROUTE ->
             "This device does not have a reachable address"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.UNREACHABLE ->
+        UserFacingFailure.UNREACHABLE ->
             "Could not reach $target. Check Wi-Fi and firewall settings."
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.REQUEST_TIMEOUT ->
-            "Connection to $target timed out"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.APPROVAL_TIMEOUT ->
-            "$target did not approve the connection in time"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.DECLINED ->
-            "Connection declined"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.PEER_BUSY ->
+        UserFacingFailure.REQUEST_TIMEOUT ->
+            "$target did not respond"
+        UserFacingFailure.APPROVAL_TIMEOUT ->
+            "$target is not ready"
+        UserFacingFailure.DECLINED ->
+            "Request declined"
+        UserFacingFailure.PEER_BUSY ->
             "$target is busy"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.PROTOCOL_MISMATCH ->
+        UserFacingFailure.PROTOCOL_MISMATCH ->
             "$target uses an incompatible Sync360 version"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.CLIENT_CLOSED ->
+        UserFacingFailure.CLIENT_CLOSED ->
             "Sync360 networking is stopped"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.TEXT_INVALID ->
+        UserFacingFailure.TEXT_INVALID ->
             "Text is empty or too large"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.TEXT_DELIVERY_FAILED ->
+        UserFacingFailure.TEXT_DELIVERY_FAILED ->
             "Text could not be delivered"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.INCOMING_REQUEST_EXPIRED ->
+        UserFacingFailure.INCOMING_REQUEST_EXPIRED ->
             "Incoming request expired"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.RECEIVER_DECLINED ->
-            "$target declined the request"
-        com.liftley.sync360.features.sync.domain.model.UserFacingFailure.UNKNOWN ->
-            "Connection failed"
+        UserFacingFailure.RECEIVER_DECLINED ->
+            "Receiver declined the transfer."
+        UserFacingFailure.UNKNOWN ->
+            "Device is not ready. Try again."
     }
 }

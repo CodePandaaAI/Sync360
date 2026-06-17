@@ -7,6 +7,7 @@ import com.liftley.sync360.features.sync.data.network.api.FilePreviewDto
 import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
 import kotlin.time.TimeSource
 
@@ -21,7 +22,11 @@ class OutgoingFileTransferCoordinator(
     }
 
     fun previews(files: List<PickedFile>): List<TransferFilePreview> {
-        return files.map { TransferFilePreview(it.name, it.mimeType, it.sizeBytes) }
+        return previewsForItems(files.map { SendItem.File(it) })
+    }
+
+    fun previewsForItems(items: List<SendItem>): List<TransferFilePreview> {
+        return items.map { TransferFilePreview(it.displayName, it.mimeType, it.sizeBytes) }
     }
 
     suspend fun sendFiles(
@@ -32,9 +37,27 @@ class OutgoingFileTransferCoordinator(
         sessionToken: String,
         onProgress: (bytes: Long) -> Unit,
         onVerifying: () -> Unit
+    ): FileSendResult = sendItems(
+        peerHost = peerHost,
+        peerPort = peerPort,
+        offerId = offerId,
+        items = files.map { SendItem.File(it) },
+        sessionToken = sessionToken,
+        onProgress = onProgress,
+        onVerifying = onVerifying
+    )
+
+    suspend fun sendItems(
+        peerHost: String,
+        peerPort: Int,
+        offerId: String,
+        items: List<SendItem>,
+        sessionToken: String,
+        onProgress: (bytes: Long) -> Unit,
+        onVerifying: () -> Unit
     ): FileSendResult {
         val transferStarted = TimeSource.Monotonic.markNow()
-        val totalBytes = files.sumOf { it.sizeBytes }
+        val totalBytes = items.sumOf { it.sizeBytes }
         fun logEndToEnd(outcome: String) {
             TransferDiagnostics.log(
                 stage = "sender_transfer_end_to_end",
@@ -48,10 +71,10 @@ class OutgoingFileTransferCoordinator(
                 stringEncoding = false,
                 json = false,
                 multipart = false,
-                details = "transferId=$offerId files=${files.size} outcome=$outcome"
+                details = "transferId=$offerId files=${items.size} outcome=$outcome"
             )
         }
-        val preparedFiles = fileTransferManager.prepareOutgoingFiles(files)
+        val preparedFiles = fileTransferManager.prepareOutgoingItems(items)
             ?: run {
                 logEndToEnd("prepare_failure")
                 return FileSendResult.Failure(FileSendFailure.SOURCE_UNAVAILABLE)
@@ -66,7 +89,7 @@ class OutgoingFileTransferCoordinator(
             senderDeviceId = localDevice.id,
             senderName = localDevice.name,
             files = preparedFiles.map {
-                FilePreviewDto(it.file.name, it.file.mimeType, it.file.sizeBytes, it.sha256)
+                FilePreviewDto(it.item.displayName, it.item.mimeType, it.item.sizeBytes, it.sha256)
             },
             sessionToken = sessionToken,
             issuedAtMillis = offerAuth.issuedAtMillis,
@@ -89,7 +112,7 @@ class OutgoingFileTransferCoordinator(
             stringEncoding = false,
             json = true,
             multipart = false,
-            details = "transferId=$offerId files=${files.size}" +
+            details = "transferId=$offerId files=${items.size}" +
                 " outcome=${if (offerAccepted != null) "success" else "failure"}"
         )
         if (offerAccepted == null) {
@@ -98,13 +121,13 @@ class OutgoingFileTransferCoordinator(
         }
 
         val endpoint = offerAccepted.response
-        val uploaded = fileTransferManager.uploadOutgoingFilesRaw(
+        val uploaded = fileTransferManager.uploadOutgoingItemsRaw(
             rawTransport = rawTcpFileTransport,
             serverIp = requireNotNull(endpoint.rawTcpHost),
             serverPort = requireNotNull(endpoint.rawTcpPort),
             offerId = offerId,
             transferToken = requireNotNull(endpoint.transferToken),
-            files = preparedFiles.map { it.file },
+            items = preparedFiles.map { it.item },
             onProgress = onProgress
         )
         if (uploaded is HttpTransportResult.Failure) {
@@ -163,8 +186,8 @@ class OutgoingFileTransferCoordinator(
     ): List<String> {
         return listOf(offerId, senderDeviceId, senderName) +
             files.flatMap { prepared ->
-                val file = prepared.file
-                listOf(file.name, file.mimeType, file.sizeBytes.toString(), prepared.sha256)
+                val item = prepared.item
+                listOf(item.displayName, item.mimeType, item.sizeBytes.toString(), prepared.sha256)
             }
     }
 

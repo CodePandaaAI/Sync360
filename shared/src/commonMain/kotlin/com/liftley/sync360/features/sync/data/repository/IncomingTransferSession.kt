@@ -64,7 +64,8 @@ internal class IncomingTransferSession {
         return ReceivedFileBatch(
             senderName = senderName,
             files = files,
-            savedPaths = files.indices.map { index -> savedPathsByIndex.getValue(index) }
+            savedPaths = files.indices.map { index -> savedPathsByIndex.getValue(index) },
+            senderDeviceId = senderDeviceId.orEmpty()
         )
     }
 
