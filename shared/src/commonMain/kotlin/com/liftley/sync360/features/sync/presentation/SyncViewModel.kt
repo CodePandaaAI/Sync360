@@ -4,30 +4,32 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.core.platform.ClipboardOperations
 import com.liftley.sync360.core.platform.FileOperations
+import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
+import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
-import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
-
-import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class SyncViewModel(
-    val isDesktop: Boolean,
     private val repository: SyncRepository,
     private val runtimeController: SyncRuntimeController,
     private val transferController: SyncTransferController,
     private val clipboardOperations: ClipboardOperations,
     private val fileOperations: FileOperations,
-    private val localIpAddress: String,
+    localIpAddress: String,
     private val localDeviceName: String
 ) : ViewModel() {
 
@@ -94,9 +96,6 @@ class SyncViewModel(
 
     }
 
-    private fun Long.toHourMinuteLabel(): String =
-        if (this <= 0L) "" else formatTimestampHourMinute(this)
-
     fun onEvent(event: SyncEvent) {
         when (event) {
             is SyncEvent.UpdateOutgoingText -> {
@@ -109,22 +108,27 @@ class SyncViewModel(
                     showMessage("Copied to clipboard")
                 }
             }
+
             is SyncEvent.PasteFromClipboard -> {
                 val clipText = clipboardOperations.readClipboard()
                 if (!clipText.isNullOrBlank()) {
                     _uiState.update { it.copy(send = it.send.copy(outgoingText = clipText)) }
                 }
             }
+
             is SyncEvent.OpenFilePicker -> {
                 fileOperations.openFilePicker(event.kind) { files ->
                     onEvent(SyncEvent.AddSelectedFiles(files))
                 }
             }
+
             is SyncEvent.AddSelectedFiles -> {
-                val merged = (_uiState.value.send.selectedItems + event.files.map { SendItem.File(it) })
-                    .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
+                val merged =
+                    (_uiState.value.send.selectedItems + event.files.map { SendItem.File(it) })
+                        .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
                 _uiState.update { it.copy(send = it.send.copy(selectedItems = merged)) }
             }
+
             is SyncEvent.AddCustomText -> {
                 if (event.text.isNotBlank()) {
                     if (event.text.length > SyncProtocolLimits.MAX_TEXT_LENGTH) {
@@ -134,7 +138,14 @@ class SyncViewModel(
                     val textItem = event.text.toSendTextItem()
                     val merged = (_uiState.value.send.selectedItems + textItem)
                         .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
-                    _uiState.update { it.copy(send = it.send.copy(selectedItems = merged, outgoingText = "")) }
+                    _uiState.update {
+                        it.copy(
+                            send = it.send.copy(
+                                selectedItems = merged,
+                                outgoingText = ""
+                            )
+                        )
+                    }
                 }
             }
 
@@ -148,9 +159,11 @@ class SyncViewModel(
                     _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = target)) }
                 }
             }
+
             SyncEvent.CancelSendProposal -> {
                 _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = null)) }
             }
+
             is SyncEvent.SendSelectedItemsTo -> {
                 _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = null)) }
                 val selected = _uiState.value.send.selectedItems
@@ -160,6 +173,7 @@ class SyncViewModel(
                 }
                 transferController.sendItemsTo(event.deviceId, selected)
             }
+
             is SyncEvent.SendSelectedItemsToHost -> {
                 val selected = _uiState.value.send.selectedItems
                 if (selected.isEmpty()) {
@@ -168,13 +182,16 @@ class SyncViewModel(
                 }
                 transferController.sendItemsToHost(event.hostAddress, selected)
             }
+
             SyncEvent.ClearSelectedItems -> {
                 _uiState.update { it.copy(send = it.send.copy(selectedItems = emptyList())) }
             }
+
             is SyncEvent.RemoveSelectedItem -> {
                 val updated = _uiState.value.send.selectedItems.filter { it.id != event.itemId }
                 _uiState.update { it.copy(send = it.send.copy(selectedItems = updated)) }
             }
+
             SyncEvent.DismissReceivedFiles -> transferController.dismissReceived()
             SyncEvent.DismissTransferFailure -> transferController.dismissFailure()
             SyncEvent.CancelTransfer -> transferController.cancel()
@@ -186,6 +203,7 @@ class SyncViewModel(
                     }
                 }
             }
+
             is SyncEvent.ShowFileInFolder -> {
                 if (event.path.isNotBlank()) {
                     val res = fileOperations.showFileInFolder(event.path)
@@ -194,14 +212,17 @@ class SyncViewModel(
                     }
                 }
             }
+
             is SyncEvent.OpenDownloadsFolder -> {
                 fileOperations.openDownloadsFolder()
             }
+
             SyncEvent.TriggerScan -> runtimeController.scan()
             SyncEvent.RestartSharing -> {
                 runtimeController.restart()
                 showMessage("Restarted local sharing")
             }
+
             is SyncEvent.AcceptIncomingOffer -> repository.acceptIncomingOffer(event.offerId)
             is SyncEvent.DeclineIncomingOffer -> repository.declineIncomingOffer(event.offerId)
             SyncEvent.ToggleQuickSave -> repository.setQuickSaveEnabled(!_uiState.value.receive.quickSaveEnabled)

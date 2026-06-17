@@ -155,7 +155,7 @@ class AndroidPlatformOperations(private val context: Context) : PlatformOperatio
                 put(MediaStore.MediaColumns.DISPLAY_NAME, safeReceivedFileName(name))
                 put(
                     MediaStore.MediaColumns.RELATIVE_PATH,
-                    android.os.Environment.DIRECTORY_DOWNLOADS + "/Sync360"
+                    Environment.DIRECTORY_DOWNLOADS + "/Sync360"
                 )
                 put(MediaStore.MediaColumns.IS_PENDING, 1)
             }

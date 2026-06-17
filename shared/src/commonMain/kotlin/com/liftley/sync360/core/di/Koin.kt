@@ -42,7 +42,6 @@ val commonModule = module {
 
     factory { (isDesktop: Boolean) ->
         SyncViewModel(
-            isDesktop = isDesktop,
             repository = get(),
             runtimeController = get(),
             transferController = get(),

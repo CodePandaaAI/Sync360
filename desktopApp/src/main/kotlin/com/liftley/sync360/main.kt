@@ -28,7 +28,7 @@ fun main() {
             title = "Sync360",
             icon = painterResource(Res.drawable.app_icon)
         ) {
-            App(isDesktop = true)
+            DesktopRoot()
         }
     }
 }
