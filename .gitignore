@@ -38,6 +38,10 @@ keystore.properties
 # Project-local planning documents
 guide/
 
+# Project-local agent skills/tooling
+.agents/skills/caveman/
+skills-main/
+
 # JavaScript
 node_modules/
 

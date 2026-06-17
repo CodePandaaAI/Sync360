@@ -20,11 +20,13 @@ import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
 import com.liftley.sync360.features.sync.domain.model.TransferStage
+import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.ExperimentalTime
@@ -36,8 +38,6 @@ internal class TransferEngine(
     private val scope: CoroutineScope,
     private val incomingNotifier: IncomingMessageNotifier,
     private val platformOperations: PlatformOperations,
-    private val deviceSession: DeviceSessionStore,
-    private val deviceRegistry: DeviceRegistry,
     private val incoming: IncomingFileTransferCoordinator,
     private val outgoing: OutgoingFileTransferCoordinator,
     private val onIncomingTerminated: () -> Unit
@@ -60,23 +60,24 @@ internal class TransferEngine(
     val snapshot: Flow<TransferSnapshot> = store.snapshot
     val isActive: Boolean
         get() = store.value.isActive
+    val blocksIncomingOffers: Boolean
+        get() = store.value.blocksIncomingOffers
     val receivedBatchValue: com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch?
         get() = store.value.receivedBatch
 
-    fun offerItems(items: List<SendItem>) {
-        val peerId = deviceSession.activeDeviceIdValue ?: run {
+    fun offerItemsTo(device: DeviceProfile, items: List<SendItem>) {
+        val peerName = device.name
+        val peerHost = device.hostAddress
+        if (peerHost.isNullOrBlank()) {
             fail(
-                message = "Target device is not available",
+                message = "Target device has no reachable address",
                 direction = TransferDirection.SENDING,
-                reason = TransferFailureReason.RECEIVER_UNAVAILABLE
+                reason = TransferFailureReason.RECEIVER_UNAVAILABLE,
+                peerNameOverride = peerName
             )
             return
         }
-        offerItemsTo(peerId, items)
-    }
-
-    fun offerItemsTo(deviceId: String, items: List<SendItem>) {
-        val peerName = deviceRegistry.grantFor(deviceId)?.identity?.name ?: deviceId
+        val peerPort = device.port
         if (isActive) {
             fail(
                 message = "A transfer is already in progress",
@@ -87,8 +88,17 @@ internal class TransferEngine(
         }
         if (items.isEmpty() || items.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) {
             fail(
-                "Select up to ${SyncProtocolLimits.MAX_FILES_PER_TRANSFER} files",
+                "Select up to ${SyncProtocolLimits.MAX_FILES_PER_TRANSFER} items",
                 TransferDirection.SENDING,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        if (items.filterIsInstance<SendItem.Text>().any { it.text.length > SyncProtocolLimits.MAX_TEXT_LENGTH }) {
+            fail(
+                message = "One or more text snippets are too large",
+                direction = TransferDirection.SENDING,
+                reason = TransferFailureReason.INVALID_SELECTION,
                 peerNameOverride = peerName
             )
             return
@@ -124,24 +134,7 @@ internal class TransferEngine(
             totalBytes += item.sizeBytes
         }
 
-        val route = deviceRegistry.routeFor(deviceId) ?: run {
-            fail(
-                message = "Target device has no reachable granted route",
-                direction = TransferDirection.SENDING,
-                reason = TransferFailureReason.RECEIVER_UNAVAILABLE,
-                peerNameOverride = peerName
-            )
-            return
-        }
-        val sessionToken = deviceRegistry.sessionTokenFor(deviceId) ?: run {
-            fail(
-                message = "Target device has no valid session token",
-                direction = TransferDirection.SENDING,
-                reason = TransferFailureReason.RECEIVER_UNAVAILABLE,
-                peerNameOverride = peerName
-            )
-            return
-        }
+
         val offerId = newSyncItemId()
 
         outgoingJob?.cancel()
@@ -160,11 +153,10 @@ internal class TransferEngine(
             )
 
             val result = outgoing.sendItems(
-                peerHost = route.host,
-                peerPort = route.port,
+                peerHost = peerHost!!,
+                peerPort = peerPort,
                 offerId = offerId,
                 items = items,
-                sessionToken = sessionToken,
                 onProgress = {
                     updateStage(TransferStage.TRANSFERRING)
                     updateProgress(it)
@@ -190,26 +182,31 @@ internal class TransferEngine(
 
     fun dismissReceivedFiles() = store.dismissReceivedBatch()
 
+    fun updateReceivedBatch(batch: ReceivedFileBatch) {
+        store.succeed(TransferDirection.RECEIVING, batch)
+    }
+
     fun dismissFailure() = store.dismissFailure()
 
     fun receiveOffer(offer: FileOfferDto, remoteHost: String): Boolean {
-        val prepared = prepareIncomingOffer(offer, remoteHost) ?: return false
+        val prepared = prepareIncomingOffer(
+            offer = offer,
+            remoteHost = remoteHost,
+            hasPeerGrant = true
+        ) ?: return false
         startPreparedIncomingOffer(prepared)
         return true
     }
 
     fun prepareIncomingOffer(
         offer: FileOfferDto,
-        remoteHost: String
+        remoteHost: String,
+        hasPeerGrant: Boolean
     ): PreparedIncomingFileOffer? =
         incoming.prepareOffer(
             offer,
-            hasPeerGrant = hasPeerGrantAtRoute(
-                offer.senderDeviceId,
-                offer.sessionToken,
-                remoteHost
-            ),
-            hasActiveTransfer = isActive
+            hasPeerGrant = hasPeerGrant,
+            hasActiveTransfer = blocksIncomingOffers
         )
 
     fun pendingIncomingOffer(prepared: PreparedIncomingFileOffer): PendingIncomingOffer.Files =
@@ -239,22 +236,9 @@ internal class TransferEngine(
     }
 
     fun receiveComplete(complete: FileCompleteDto, remoteHost: String): Boolean {
-        val accepted = incoming.completeSignal(
-            complete = complete,
-            hasPeerGrant = hasPeerGrantAtRoute(
-                complete.senderDeviceId,
-                complete.sessionToken,
-                remoteHost
-            )
-        )
-        if (!accepted) return false
-
-        stopIncomingWatchdog()
-        updateProgress(store.value.progress?.totalBytes ?: progressDiagnosticBytes)
-        store.succeed(TransferDirection.RECEIVING)
-        finishProgressDiagnostics("success")
-        stopService()
-        return true
+        val accepted = incoming.completeSignal(complete, hasPeerGrant = true)
+        if (accepted) markIncomingActivity()
+        return accepted
     }
 
     fun initIncomingRawFile(
@@ -264,15 +248,15 @@ internal class TransferEngine(
         fileIdentifier: String,
         remoteHost: String
     ): Boolean {
-        if (deviceRegistry.peerGrants.value.none { it.route.host == remoteHost }) return false
-        val accepted = incoming.initRawFileWrite(
-            offerId,
-            fileIndex,
-            declaredLength,
-            fileIdentifier
+        updateStage(TransferStage.TRANSFERRING)
+        val initialized = incoming.initRawFileWrite(
+            offerId = offerId,
+            fileIndex = fileIndex,
+            declaredLength = declaredLength,
+            fileIdentifier = fileIdentifier
         )
-        if (accepted) markIncomingActivity()
-        return accepted
+        if (initialized) markIncomingActivity()
+        return initialized
     }
 
     fun receiveChunk(offerId: String, fileIndex: Int, chunk: ByteArray, offset: Int, length: Int): Boolean {
@@ -326,20 +310,7 @@ internal class TransferEngine(
         if (updateService) stopService()
     }
 
-    private fun hasPeerGrantAtRoute(
-        deviceId: String,
-        sessionToken: String,
-        remoteHost: String
-    ): Boolean {
-        val grant = deviceRegistry.grantFor(deviceId) ?: return false
-        return grant.sessionToken == sessionToken && grant.route.host == remoteHost
-    }
 
-    private fun hasPeerGrantTokenAtRoute(sessionToken: String, remoteHost: String): Boolean {
-        return deviceRegistry.peerGrants.value.any {
-            it.sessionToken == sessionToken && it.route.host == remoteHost
-        }
-    }
 
     private fun updateProgress(bytesTransferred: Long) {
         val updateStarted = TimeSource.Monotonic.markNow()
@@ -390,7 +361,7 @@ internal class TransferEngine(
         reason: TransferFailureReason = TransferFailureReason.UNKNOWN,
         peerNameOverride: String? = null
     ) {
-        val peerName = peerNameOverride ?: store.value.progress?.peerName ?: deviceSession.activeDeviceIdValue ?: "Peer"
+        val peerName = peerNameOverride ?: store.value.progress?.peerName ?: "Peer"
         store.fail(
             FileTransferFailure(
                 peerName = peerName,
@@ -493,6 +464,7 @@ private fun FileSendFailure.toFailureReason(): TransferFailureReason = when (thi
     FileSendFailure.INTEGRITY_FAILED -> TransferFailureReason.INTEGRITY_FAILED
     FileSendFailure.TIMED_OUT -> TransferFailureReason.TIMED_OUT
     FileSendFailure.RECEIVER_UNAVAILABLE -> TransferFailureReason.RECEIVER_UNAVAILABLE
+    FileSendFailure.RECEIVER_BUSY -> TransferFailureReason.RECEIVER_BUSY
     FileSendFailure.NETWORK_FAILED -> TransferFailureReason.NETWORK_FAILED
     FileSendFailure.TRANSFER_INTERRUPTED -> TransferFailureReason.INTERRUPTED
     FileSendFailure.RECEIVER_CANCELLED -> TransferFailureReason.RECEIVER_CANCELLED
@@ -514,6 +486,7 @@ private fun TransferFailureReason.defaultMessage(): String = when (this) {
     TransferFailureReason.STORAGE_UNAVAILABLE -> "The receiving device cannot access storage"
     TransferFailureReason.INTEGRITY_FAILED -> "File integrity verification failed"
     TransferFailureReason.RECEIVER_UNAVAILABLE -> "The receiving device is unavailable"
+    TransferFailureReason.RECEIVER_BUSY -> "The receiving device is busy"
     TransferFailureReason.NETWORK_FAILED -> "The file transfer was interrupted by the network"
     TransferFailureReason.TIMED_OUT -> "The file transfer timed out"
     TransferFailureReason.WRITE_FAILED -> "The received file could not be saved"

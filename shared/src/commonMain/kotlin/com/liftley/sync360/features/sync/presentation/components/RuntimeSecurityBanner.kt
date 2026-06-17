@@ -11,13 +11,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.features.sync.domain.model.SessionSecurityMode
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 
 @Composable
 fun RuntimeSecurityBanner(
-    runtime: SyncRuntimeState,
-    securityMode: SessionSecurityMode
+    runtime: SyncRuntimeState
 ) {
     val runtimeMessage = when (runtime) {
         SyncRuntimeState.Stopped -> "Sharing is stopped."
@@ -27,12 +25,9 @@ fun RuntimeSecurityBanner(
         is SyncRuntimeState.Unavailable -> "Local sharing is unavailable."
         SyncRuntimeState.Stopping -> "Stopping local sharing..."
     }
-    val securityMessage = when (securityMode) {
-        SessionSecurityMode.TRUSTED_LAN_PLAINTEXT ->
-            "Transfers use authenticated HTTP but are not encrypted. Use only your private home network or personal hotspot."
-    }
-    val unsafeNetworkMessage =
-        "Do not use on cafe, hotel, airport, school, office, or other shared networks."
+
+    val securityMessage = "Payloads move over raw TCP with one-time transfer tokens. Use only your private home network or personal hotspot."
+    val unsafeNetworkMessage = "Do not use on cafe, hotel, airport, school, office, or other shared networks."
 
     Sync360Surface(cornerRadius = 20.dp, color = MaterialTheme.colorScheme.secondaryContainer) {
         Column(

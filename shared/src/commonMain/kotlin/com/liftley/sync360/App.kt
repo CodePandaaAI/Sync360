@@ -50,10 +50,10 @@ fun App(
                     val backStack = navigationViewModel.backStack
 
                     if (!isDesktop) {
-                        LaunchedEffect(uiState.pendingIncomingOffer, uiState.fileTransferProgress, uiState.receivedFileBatch) {
-                            val hasIncoming = uiState.pendingIncomingOffer != null ||
-                                    (uiState.fileTransferProgress != null && uiState.fileTransferProgress?.direction == TransferDirection.RECEIVING) ||
-                                    uiState.receivedFileBatch != null
+                        LaunchedEffect(uiState.receive.pendingIncomingOffer, uiState.receive.fileTransferProgress, uiState.receive.receivedFileBatch) {
+                            val hasIncoming = uiState.receive.pendingIncomingOffer != null ||
+                                    (uiState.receive.fileTransferProgress != null && uiState.receive.fileTransferProgress?.direction == TransferDirection.RECEIVING) ||
+                                    uiState.receive.receivedFileBatch != null
                             if (hasIncoming) {
                                 if (navigationViewModel.currentRoute != SyncRoute.Receive) {
                                     navigationViewModel.navigate(SyncRoute.Receive)

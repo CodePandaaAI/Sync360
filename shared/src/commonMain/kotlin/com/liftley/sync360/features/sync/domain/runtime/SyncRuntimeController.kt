@@ -7,8 +7,6 @@ import com.liftley.sync360.features.sync.domain.model.SyncRuntimeFailure
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
 import com.liftley.sync360.features.sync.domain.model.SyncStartResult
 import com.liftley.sync360.features.sync.domain.model.SyncSnapshot
-import com.liftley.sync360.features.sync.domain.model.ConnectionSnapshot
-import com.liftley.sync360.features.sync.domain.model.SessionSnapshot
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
@@ -46,15 +44,11 @@ class SyncRuntimeController(
     }
     val snapshot: StateFlow<SyncSnapshot> = combine(
         state,
-        repository.connectionSnapshot,
-        repository.sessionSnapshot,
         repository.transferSnapshot,
         incomingDecisionState
-    ) { runtime, connection, session, transfer, incomingDecision ->
+    ) { runtime, transfer, incomingDecision ->
         SyncSnapshot(
             runtime = runtime,
-            connection = connection,
-            session = session,
             transfer = transfer,
             quickSaveEnabled = incomingDecision.first,
             pendingIncomingOffer = incomingDecision.second
@@ -63,8 +57,6 @@ class SyncRuntimeController(
         scope = scope,
         started = SharingStarted.Eagerly,
         initialValue = SyncSnapshot(
-            connection = ConnectionSnapshot(),
-            session = SessionSnapshot.NoSession,
             transfer = TransferSnapshot()
         )
     )
@@ -80,15 +72,6 @@ class SyncRuntimeController(
                         event = "state_transition",
                         stateAfter = current.runtime.stateCode(),
                         outcomeCode = current.runtime.outcomeCode()
-                    )
-                }
-                if (previous.connection.state != current.connection.state) {
-                    diagnosticLog.record(
-                        subsystem = "connection",
-                        stateBefore = previous.connection.state.stateCode(),
-                        event = "state_transition",
-                        stateAfter = current.connection.state.stateCode(),
-                        outcomeCode = current.connection.state.outcomeCode()
                     )
                 }
                 if (previous.transfer.state != current.transfer.state) {
@@ -176,7 +159,7 @@ class SyncRuntimeController(
             if (_state.value is SyncRuntimeState.Stopping) return
             _state.value = SyncRuntimeState.Stopping
             discoveryController.shutdown()
-            repository.disconnectAll()
+            repository.shutdownSync()
             _state.value = SyncRuntimeState.Stopped
             platformOperations.stopService()
             lastForegroundStatus = null
@@ -224,15 +207,6 @@ class SyncRuntimeController(
                 fileCount = 0
             )
         }
-        val approvedSession = session as? SessionSnapshot.Approved
-        if (approvedSession != null) {
-            return SyncForegroundServiceStatus(
-                mode = SyncForegroundServiceMode.CONNECTED,
-                peerName = approvedSession.identity.name,
-                detail = "Ready to send and receive.",
-                fileCount = 0
-            )
-        }
         return when (runtime) {
             SyncRuntimeState.Starting -> SyncForegroundServiceStatus(
                 mode = SyncForegroundServiceMode.READY,
@@ -261,7 +235,6 @@ private fun Any.stateCode(): String = this::class.simpleName.orEmpty()
 private fun Any.outcomeCode(): String = when (this) {
     is com.liftley.sync360.features.sync.domain.model.SyncRuntimeState.Degraded -> reason.name
     is com.liftley.sync360.features.sync.domain.model.SyncRuntimeState.Unavailable -> reason.name
-    is com.liftley.sync360.features.sync.domain.model.ConnectionState.Failed -> reason.name
     is com.liftley.sync360.features.sync.domain.model.TransferState.Failed -> "FAILED"
     is com.liftley.sync360.features.sync.domain.model.TransferState.Succeeded -> "SUCCEEDED"
     else -> "OK"

@@ -7,7 +7,6 @@ import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
 import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationViewModel
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
 import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
-import com.liftley.sync360.features.sync.domain.controller.SyncConnectionController
 import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
 import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
 import com.liftley.sync360.features.sync.domain.diagnostics.SyncDiagnosticLog
@@ -32,7 +31,6 @@ val commonModule = module {
     single { SyncDiscoveryController(get(), get(), get()) }
     single { SyncDiagnosticLog() }
     single { SyncRuntimeController(get(), get(), get(), get()) }
-    single { SyncConnectionController(get()) }
     single { SyncTransferController(get()) }
 
     factory { ClearAllDataUseCase(get()) }
@@ -47,7 +45,6 @@ val commonModule = module {
             isDesktop = isDesktop,
             repository = get(),
             runtimeController = get(),
-            connectionController = get(),
             transferController = get(),
             clipboardOperations = get(),
             fileOperations = get(),

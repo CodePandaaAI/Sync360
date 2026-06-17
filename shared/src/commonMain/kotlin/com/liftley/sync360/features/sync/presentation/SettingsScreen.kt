@@ -88,15 +88,14 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     RuntimeSecurityBanner(
-                        runtime = uiState.runtimeState,
-                        securityMode = uiState.securityMode
+                        runtime = uiState.runtime.runtimeState
                     )
                 }
             }
 
             item {
                 RestartSharingCard(
-                    runtime = uiState.runtimeState,
+                    runtime = uiState.runtime.runtimeState,
                     onRestartSharing = { onEvent(SyncEvent.RestartSharing) }
                 )
             }

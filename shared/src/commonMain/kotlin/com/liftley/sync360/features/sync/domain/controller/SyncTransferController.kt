@@ -6,10 +6,12 @@ import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 class SyncTransferController(
     private val repository: SyncRepository
 ) {
-    fun sendItems(items: List<SendItem>) = repository.offerItems(items)
 
     fun sendItemsTo(deviceId: String, items: List<SendItem>) =
         repository.offerItemsTo(deviceId, items)
+
+    fun sendItemsToHost(hostAddress: String, items: List<SendItem>) =
+        repository.offerItemsToHost(hostAddress, items)
 
     fun dismissReceived() = repository.dismissReceivedFiles()
 

@@ -15,10 +15,10 @@ import com.liftley.sync360.features.sync.domain.model.TransferStage
 
 internal class IncomingFileTransferCoordinator(
     private val fileTransferManager: FileTransferManager,
-    private val sessionAuthenticator: SessionAuthenticator,
     private val platformOperations: PlatformOperations
 ) {
-    private val incomingTransferSession = IncomingTransferSession()
+    private var activeOffer: PreparedIncomingFileOffer? = null
+    private val savedPaths = mutableMapOf<Int, String>()
 
     fun startOffer(
         offer: FileOfferDto,
@@ -37,7 +37,6 @@ internal class IncomingFileTransferCoordinator(
     ): PreparedIncomingFileOffer? {
         if (hasActiveTransfer) return null
         if (!hasPeerGrant) return null
-        if (!sessionAuthenticator.verifyFileOffer(offer)) return null
         if (offer.files.isEmpty() || offer.files.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) return null
 
         if (offer.files.any {
@@ -71,7 +70,6 @@ internal class IncomingFileTransferCoordinator(
             offerId = offer.offerId,
             senderDeviceId = offer.senderDeviceId,
             senderName = offer.senderName,
-            sessionToken = offer.sessionToken,
             files = previews,
             totalBytes = totalBytes
         )
@@ -81,13 +79,9 @@ internal class IncomingFileTransferCoordinator(
         prepared: PreparedIncomingFileOffer,
         onProgress: (bytes: Long) -> Unit
     ): IncomingOfferStart {
-        incomingTransferSession.start(
-            offerId = prepared.offerId,
-            senderDeviceId = prepared.senderDeviceId,
-            sessionToken = prepared.sessionToken,
-            senderName = prepared.senderName,
-            files = prepared.files
-        )
+        activeOffer = prepared
+        savedPaths.clear()
+
         fileTransferManager.registerIncomingTotalSize(prepared.totalBytes, onProgress)
 
         return IncomingOfferStart(
@@ -106,8 +100,8 @@ internal class IncomingFileTransferCoordinator(
 
     fun completeSignal(complete: FileCompleteDto, hasPeerGrant: Boolean): Boolean {
         if (!hasPeerGrant) return false
-        if (!sessionAuthenticator.verifyFileComplete(complete)) return false
-        return incomingTransferSession.isComplete(complete.offerId, complete.senderDeviceId)
+        val currentOffer = activeOffer ?: return false
+        return currentOffer.offerId == complete.offerId && currentOffer.senderDeviceId == complete.senderDeviceId
     }
 
     fun initRawFileWrite(
@@ -116,9 +110,11 @@ internal class IncomingFileTransferCoordinator(
         declaredLength: Long,
         fileIdentifier: String
     ): Boolean {
-        if (!incomingTransferSession.canReceiveFile(offerId, fileIndex)) return false
+        val currentOffer = activeOffer ?: return false
+        if (currentOffer.offerId != offerId) return false
+        if (fileIndex !in currentOffer.files.indices) return false
 
-        val file = incomingTransferSession.fileAt(fileIndex) ?: return false
+        val file = currentOffer.files[fileIndex]
         if (declaredLength != file.sizeBytes || fileIdentifier != file.name) return false
         val expectedSha256 = file.sha256 ?: return false
         return fileTransferManager.initIncomingFileWrite(
@@ -133,17 +129,34 @@ internal class IncomingFileTransferCoordinator(
     }
 
     fun writeChunk(offerId: String, fileIndex: Int, chunk: ByteArray, offset: Int, length: Int): Boolean {
-        if (!incomingTransferSession.canReceiveFile(offerId, fileIndex)) return false
+        val currentOffer = activeOffer ?: return false
+        if (currentOffer.offerId != offerId) return false
+        if (fileIndex !in currentOffer.files.indices) return false
         return fileTransferManager.writeIncomingFileChunk(offerId, fileIndex, chunk, offset, length)
     }
 
     fun completeFileWrite(offerId: String, fileIndex: Int): IncomingFileWriteComplete {
-        if (!incomingTransferSession.canReceiveFile(offerId, fileIndex)) {
-            return IncomingFileWriteComplete(savedPath = null, batch = null)
-        }
+        val currentOffer = activeOffer ?: return IncomingFileWriteComplete(savedPath = null, batch = null)
+        if (currentOffer.offerId != offerId) return IncomingFileWriteComplete(savedPath = null, batch = null)
+        if (fileIndex !in currentOffer.files.indices) return IncomingFileWriteComplete(savedPath = null, batch = null)
 
         val savedPath = fileTransferManager.completeIncomingFileWrite(offerId, fileIndex)
-        val batch = savedPath?.let { incomingTransferSession.completeFile(fileIndex, it) }
+        var batch: ReceivedFileBatch? = null
+        if (savedPath != null) {
+            savedPaths[fileIndex] = savedPath
+            if (savedPaths.size == currentOffer.files.size) {
+                // All files received
+                val pathsList = currentOffer.files.indices.map { savedPaths[it] ?: "" }
+                batch = ReceivedFileBatch(
+                    senderName = currentOffer.senderName,
+                    files = currentOffer.files,
+                    savedPaths = pathsList,
+                    senderDeviceId = currentOffer.senderDeviceId
+                )
+                activeOffer = null
+                savedPaths.clear()
+            }
+        }
         return IncomingFileWriteComplete(savedPath = savedPath, batch = batch)
     }
 
@@ -157,11 +170,11 @@ internal class IncomingFileTransferCoordinator(
 
     fun clear() {
         fileTransferManager.cancelAllIncomingWrites()
-        val paths = incomingTransferSession.savedPaths
-        if (paths.isNotEmpty()) {
-            fileTransferManager.deleteFiles(paths)
+        if (savedPaths.isNotEmpty()) {
+            fileTransferManager.deleteFiles(savedPaths.values.toList())
         }
-        incomingTransferSession.clear()
+        activeOffer = null
+        savedPaths.clear()
     }
 }
 
@@ -175,7 +188,6 @@ internal data class PreparedIncomingFileOffer(
     val offerId: String,
     val senderDeviceId: String,
     val senderName: String,
-    val sessionToken: String,
     val files: List<TransferFilePreview>,
     val totalBytes: Long
 )

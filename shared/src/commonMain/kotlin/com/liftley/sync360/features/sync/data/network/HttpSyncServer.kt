@@ -1,14 +1,9 @@
 package com.liftley.sync360.features.sync.data.network
 
-import com.liftley.sync360.features.sync.data.network.api.ConnectAcceptDto
-import com.liftley.sync360.features.sync.data.network.api.ConnectRejectDto
-import com.liftley.sync360.features.sync.data.network.api.ConnectRequestDto
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
 import com.liftley.sync360.features.sync.data.network.api.HttpSyncRoutes
-import com.liftley.sync360.features.sync.data.network.api.MessageDto
-import com.liftley.sync360.features.sync.data.network.api.MessageResponseDto
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
@@ -30,19 +25,8 @@ import kotlin.time.Clock
 import kotlin.time.ExperimentalTime
 
 interface SyncServerListener {
-    fun onConnectRequest(request: ConnectRequestDto, remoteHost: String): ConnectRequestOutcome
-    fun onConnectAccept(accept: ConnectAcceptDto, remoteHost: String): Boolean
-    fun onConnectReject(reject: ConnectRejectDto, remoteHost: String): Boolean
-    suspend fun onTextMessage(message: MessageDto, remoteHost: String): MessageResponseDto
     suspend fun onFileOffer(offer: FileOfferDto, remoteHost: String): FileOfferResponseDto
     fun onFileComplete(complete: FileCompleteDto, remoteHost: String): Boolean
-}
-
-enum class ConnectRequestOutcome {
-    RECEIVED,
-    BUSY,
-    PROTOCOL_MISMATCH,
-    FORBIDDEN
 }
 
 @OptIn(ExperimentalTime::class)
@@ -68,61 +52,7 @@ class HttpSyncServer(private val port: Int = 8080) {
                     })
                 }
                 routing {
-                    post(HttpSyncRoutes.ConnectRequest) {
-                        if (call.rejectRateLimited(connectRateLimiter)) return@post
-                        if (call.rejectOversizedControlBody()) return@post
-                        val request = call.receive<ConnectRequestDto>()
-                        val status = when (
-                            listener?.onConnectRequest(
-                                request,
-                                call.request.origin.remoteHost
-                            )
-                        ) {
-                            ConnectRequestOutcome.RECEIVED -> HttpStatusCode.OK
-                            ConnectRequestOutcome.BUSY -> HttpStatusCode.Conflict
-                            ConnectRequestOutcome.PROTOCOL_MISMATCH ->
-                                HttpStatusCode(426, "Upgrade Required")
-                            ConnectRequestOutcome.FORBIDDEN -> HttpStatusCode.Forbidden
-                            null -> HttpStatusCode.ServiceUnavailable
-                        }
-                        call.respond(status)
-                    }
 
-                    post(HttpSyncRoutes.ConnectAccept) {
-                        if (call.rejectRateLimited(controlRateLimiter)) return@post
-                        if (call.rejectOversizedControlBody()) return@post
-                        val accepted = listener?.onConnectAccept(
-                            call.receive<ConnectAcceptDto>(),
-                            call.request.origin.remoteHost
-                        ) == true
-                        call.respond(if (accepted) HttpStatusCode.OK else HttpStatusCode.Forbidden)
-                    }
-
-                    post(HttpSyncRoutes.ConnectReject) {
-                        if (call.rejectRateLimited(controlRateLimiter)) return@post
-                        if (call.rejectOversizedControlBody()) return@post
-                        val accepted = listener?.onConnectReject(
-                            call.receive<ConnectRejectDto>(),
-                            call.request.origin.remoteHost
-                        ) == true
-                        call.respond(if (accepted) HttpStatusCode.OK else HttpStatusCode.Forbidden)
-                    }
-
-                    post(HttpSyncRoutes.TextMessage) {
-                        if (call.rejectRateLimited(controlRateLimiter)) return@post
-                        if (call.rejectOversizedControlBody()) return@post
-                        val response = listener?.onTextMessage(
-                            call.receive<MessageDto>(),
-                            call.request.origin.remoteHost
-                        ) ?: MessageResponseDto(
-                            accepted = false,
-                            failureReason = "receiver_unavailable"
-                        )
-                        call.respond(
-                            if (response.accepted) HttpStatusCode.OK else HttpStatusCode.Forbidden,
-                            response
-                        )
-                    }
 
                     post(HttpSyncRoutes.FileOffer) {
                         if (call.rejectRateLimited(controlRateLimiter)) return@post

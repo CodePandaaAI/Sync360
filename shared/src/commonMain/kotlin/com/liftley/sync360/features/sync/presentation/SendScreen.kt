@@ -2,32 +2,73 @@ package com.liftley.sync360.features.sync.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Article
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Laptop
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Smartphone
+import androidx.compose.material.icons.filled.Tablet
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Tab
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.core.platform.FilePickerKind
-import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.DeviceType
-import com.liftley.sync360.features.sync.domain.model.SendItem
-import com.liftley.sync360.features.sync.presentation.components.*
+import com.liftley.sync360.features.sync.domain.model.TransferDirection
+import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
+import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
+import com.liftley.sync360.features.sync.presentation.components.FileTransferErrorCard
+import com.liftley.sync360.features.sync.presentation.components.FileTransferProgressCard
+import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
+import com.liftley.sync360.features.sync.presentation.components.SyncBottomNavigationBar
 import com.liftley.sync360.features.sync.presentation.navigation.SyncRoute
+import com.liftley.sync360.features.sync.presentation.send.ManualIpConnectCard
+import com.liftley.sync360.features.sync.presentation.send.UnifiedSelectionPanel
 import kotlinx.coroutines.flow.Flow
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,11 +84,11 @@ fun SendScreen(
     onOpenSettings: () -> Unit = {}
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    val visibleNearby = uiState.nearbyDevices
-    val hasDraftContent = uiState.selectedItems.isNotEmpty()
+    val visibleNearby = uiState.discovery.nearbyDevices
+    val hasDraftContent = uiState.send.selectedItems.isNotEmpty()
 
-    var activeTab by remember { mutableIntStateOf(0) } // 0 = Send Items, 1 = Recent Clipboard
-    var showManualInput by remember { mutableStateOf(false) }
+    var activeTab by rememberSaveable { mutableIntStateOf(0) }
+    var showManualInput by rememberSaveable { mutableStateOf(false) }
 
     LaunchedEffect(uiEffects) {
         uiEffects.collect { effect ->
@@ -70,7 +111,7 @@ fun SendScreen(
                                 fontWeight = FontWeight.Bold
                             )
                             Text(
-                                text = "This Device: ${uiState.localDeviceName} • ${uiState.serverIp}",
+                                text = "This Device: ${uiState.runtime.localDeviceName} • ${uiState.runtime.serverIp}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -92,10 +133,10 @@ fun SendScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             Switch(
-                                checked = uiState.quickSaveEnabled,
+                                checked = uiState.receive.quickSaveEnabled,
                                 onCheckedChange = { onEvent(SyncEvent.ToggleQuickSave) },
                                 thumbContent = {
-                                    if (uiState.quickSaveEnabled) {
+                                    if (uiState.receive.quickSaveEnabled) {
                                         Icon(
                                             imageVector = Icons.Default.Check,
                                             contentDescription = null,
@@ -156,8 +197,8 @@ fun SendScreen(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 // Inline Sending Progress / Failure
-                val progress = uiState.fileTransferProgress
-                val failure = uiState.fileTransferFailure
+                val progress = uiState.receive.fileTransferProgress
+                val failure = uiState.receive.fileTransferFailure
                 if (progress != null && progress.direction == TransferDirection.SENDING) {
                     item {
                         FileTransferProgressCard(
@@ -177,8 +218,8 @@ fun SendScreen(
                 // Unified Selection Panel
                 item {
                     UnifiedSelectionPanel(
-                        selectedItems = uiState.selectedItems,
-                        outgoingText = uiState.outgoingText,
+                        selectedItems = uiState.send.selectedItems,
+                        outgoingText = uiState.send.outgoingText,
                         onEvent = onEvent
                     )
                 }
@@ -197,7 +238,7 @@ fun SendScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (visibleNearby.isNotEmpty()) {
-                            if (uiState.isScanningForDevices) {
+                            if (uiState.discovery.isScanningForDevices) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -307,7 +348,7 @@ fun SendScreen(
                     item {
                         Sync360Surface(
                             modifier = Modifier.clickable {
-                                if (!uiState.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
+                                if (!uiState.discovery.isScanningForDevices) onEvent(SyncEvent.TriggerScan)
                             },
                             cornerRadius = 16.dp,
                             color = MaterialTheme.colorScheme.surfaceContainerHigh
@@ -319,7 +360,7 @@ fun SendScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.Center
                             ) {
-                                if (uiState.isScanningForDevices) {
+                                if (uiState.discovery.isScanningForDevices) {
                                     CircularProgressIndicator(
                                         modifier = Modifier.size(18.dp),
                                         strokeWidth = 2.dp,
@@ -354,7 +395,7 @@ fun SendScreen(
                         ) {
                             ManualIpConnectCard(
                                 onConnect = {
-                                    onEvent(SyncEvent.RequestConnectByHost(it))
+                                    onEvent(SyncEvent.SendSelectedItemsToHost(it))
                                     showManualInput = false
                                 }
                             )
@@ -378,7 +419,7 @@ fun SendScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                if (uiState.latestTexts.isEmpty()) {
+                if (uiState.send.latestTexts.isEmpty()) {
                     item {
                         Box(
                             modifier = Modifier
@@ -421,7 +462,7 @@ fun SendScreen(
                 } else {
                     item {
                         ClipboardHistorySection(
-                            textsList = uiState.latestTexts,
+                            textsList = uiState.send.latestTexts,
                             onCopyClick = { entry ->
                                 onEvent(SyncEvent.CopyClipboard(entry.text))
                             }
@@ -433,284 +474,4 @@ fun SendScreen(
     }
 
     ConfirmDialogs(uiState = uiState, onEvent = onEvent)
-}
-
-@Composable
-internal fun UnifiedSelectionPanel(
-    selectedItems: List<SendItem>,
-    outgoingText: String,
-    onEvent: (SyncEvent) -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Sync360Surface(cornerRadius = 24.dp) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "Selected files & text",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurface
-                )
-
-                if (selectedItems.isEmpty()) {
-                    OutlinedButton(
-                        onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        contentPadding = PaddingValues(vertical = 12.dp)
-                    ) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Choose Files", fontWeight = FontWeight.SemiBold)
-                    }
-                } else {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(colorScheme.surfaceContainer)
-                            .padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${selectedItems.size} item${if (selectedItems.size == 1) "" else "s"} selected",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = colorScheme.primary
-                            )
-                            IconButton(
-                                onClick = { onEvent(SyncEvent.ClearSelectedItems) },
-                                modifier = Modifier.size(24.dp)
-                            ) {
-                                Icon(Icons.Default.Delete, contentDescription = "Clear all", tint = colorScheme.error)
-                            }
-                        }
-
-                        LazyHorizontalGrid(
-                            rows = GridCells.Fixed(2),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(144.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(selectedItems) { item ->
-                                SelectedGridItemTile(item = item, onEvent = onEvent)
-                            }
-                        }
-
-                        OutlinedButton(
-                            onClick = { onEvent(SyncEvent.OpenFilePicker(FilePickerKind.Any)) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(14.dp)
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null)
-                            Spacer(Modifier.width(4.dp))
-                            Text("Add more files")
-                        }
-                    }
-                }
-            }
-        }
-
-        // Add text snippet
-        Sync360Surface(cornerRadius = 24.dp) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
-            ) {
-                Text(
-                    text = "Add text snippet",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = colorScheme.onSurface
-                )
-
-                OutlinedTextField(
-                    value = outgoingText,
-                    onValueChange = { onEvent(SyncEvent.UpdateOutgoingText(it)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    placeholder = { Text("Type or paste text...") },
-                    minLines = 2,
-                    maxLines = 4,
-                    shape = RoundedCornerShape(18.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = colorScheme.primary,
-                        unfocusedBorderColor = colorScheme.outlineVariant,
-                        focusedContainerColor = colorScheme.surfaceContainer,
-                        unfocusedContainerColor = colorScheme.surfaceContainer
-                    )
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { onEvent(SyncEvent.PasteFromClipboard) },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Paste")
-                    }
-                    Button(
-                        onClick = { onEvent(SyncEvent.AddCustomText(outgoingText)) },
-                        enabled = outgoingText.isNotBlank(),
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(Modifier.width(4.dp))
-                        Text("Add")
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun SelectedGridItemTile(
-    item: SendItem,
-    onEvent: (SyncEvent) -> Unit
-) {
-    val colorScheme = MaterialTheme.colorScheme
-    val isText = item is SendItem.Text
-    val name = when (item) {
-        is SendItem.File -> item.file.name
-        is SendItem.Text -> "Text snippet"
-    }
-    val id = when (item) {
-        is SendItem.File -> item.file.id
-        is SendItem.Text -> item.id
-    }
-    val subtext = when (item) {
-        is SendItem.File -> formatBytes(item.file.sizeBytes)
-        is SendItem.Text -> item.text
-    }
-
-    Surface(
-        modifier = Modifier
-            .width(180.dp)
-            .height(64.dp),
-        shape = RoundedCornerShape(12.dp),
-        color = colorScheme.surface,
-        tonalElevation = 1.dp
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(colorScheme.primaryContainer),
-                contentAlignment = Alignment.Center
-            ) {
-                if (item is SendItem.File && item.file.mimeType.startsWith("image/")) {
-                    coil3.compose.AsyncImage(
-                        model = item.file.id,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = if (isText) Icons.AutoMirrored.Filled.Article else Icons.Default.Description,
-                        contentDescription = null,
-                        tint = colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = name,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Text(
-                    text = subtext,
-                    style = MaterialTheme.typography.bodySmall,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    color = colorScheme.onSurfaceVariant
-                )
-            }
-
-            IconButton(
-                onClick = { onEvent(SyncEvent.RemoveSelectedItem(id)) },
-                modifier = Modifier.size(20.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Remove",
-                    tint = colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(14.dp)
-                )
-            }
-        }
-    }
-}
-
-
-@Composable
-private fun ManualIpConnectCard(onConnect: (String) -> Unit) {
-    var manualHost by remember { mutableStateOf("") }
-    val colorScheme = MaterialTheme.colorScheme
-    Sync360Surface {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Text(
-                text = "Connect manually",
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
-                color = colorScheme.onSurfaceVariant
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    value = manualHost,
-                    onValueChange = { manualHost = it },
-                    modifier = Modifier.weight(1f),
-                    singleLine = true,
-                    label = { Text("IP address") },
-                    shape = RoundedCornerShape(24.dp)
-                )
-                Button(
-                    onClick = {
-                        onConnect(manualHost)
-                        manualHost = ""
-                    },
-                    enabled = manualHost.isNotBlank(),
-                    shape = RoundedCornerShape(24.dp),
-                    modifier = Modifier.height(56.dp).padding(top = 8.dp)
-                ) {
-                    Text("Add")
-                }
-            }
-        }
-    }
 }

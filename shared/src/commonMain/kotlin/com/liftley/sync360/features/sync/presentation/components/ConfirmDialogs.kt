@@ -13,10 +13,10 @@ fun ConfirmDialogs(
     uiState: SyncUiState,
     onEvent: (SyncEvent) -> Unit
 ) {
-    if (uiState.pendingOutgoingOfferTarget != null) {
-        val target = uiState.pendingOutgoingOfferTarget
-        val itemCount = uiState.selectedItems.size
-        
+    if (uiState.send.pendingOutgoingOfferTarget != null) {
+        val target = uiState.send.pendingOutgoingOfferTarget
+        val itemCount = uiState.send.selectedItems.size
+
         AlertDialog(
             onDismissRequest = { onEvent(SyncEvent.CancelSendProposal) },
             shape = RoundedCornerShape(24.dp),

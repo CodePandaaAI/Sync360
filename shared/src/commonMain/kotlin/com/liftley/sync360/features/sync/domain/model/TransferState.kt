@@ -27,4 +27,15 @@ data class TransferSnapshot(
 
     val isActive: Boolean
         get() = progress != null
+
+    val blocksIncomingOffers: Boolean
+        get() = when (val current = state) {
+            TransferState.Idle,
+            is TransferState.Failed -> false
+            is TransferState.Succeeded -> current.direction == TransferDirection.RECEIVING &&
+                current.receivedBatch != null
+            is TransferState.Preparing,
+            is TransferState.Transferring,
+            is TransferState.Verifying -> true
+        }
 }

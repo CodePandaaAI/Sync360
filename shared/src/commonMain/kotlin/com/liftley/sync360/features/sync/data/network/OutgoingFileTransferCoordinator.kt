@@ -1,12 +1,10 @@
 package com.liftley.sync360.features.sync.data.network
 
-import com.liftley.sync360.core.security.SessionAuth
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FilePreviewDto
 import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
 import kotlin.time.TimeSource
@@ -21,38 +19,18 @@ class OutgoingFileTransferCoordinator(
         rawTcpFileTransport.closeActiveConnections()
     }
 
-    fun previews(files: List<PickedFile>): List<TransferFilePreview> {
-        return previewsForItems(files.map { SendItem.File(it) })
-    }
+
 
     fun previewsForItems(items: List<SendItem>): List<TransferFilePreview> {
         return items.map { TransferFilePreview(it.displayName, it.mimeType, it.sizeBytes) }
     }
 
-    suspend fun sendFiles(
-        peerHost: String,
-        peerPort: Int,
-        offerId: String,
-        files: List<PickedFile>,
-        sessionToken: String,
-        onProgress: (bytes: Long) -> Unit,
-        onVerifying: () -> Unit
-    ): FileSendResult = sendItems(
-        peerHost = peerHost,
-        peerPort = peerPort,
-        offerId = offerId,
-        items = files.map { SendItem.File(it) },
-        sessionToken = sessionToken,
-        onProgress = onProgress,
-        onVerifying = onVerifying
-    )
 
     suspend fun sendItems(
         peerHost: String,
         peerPort: Int,
         offerId: String,
         items: List<SendItem>,
-        sessionToken: String,
         onProgress: (bytes: Long) -> Unit,
         onVerifying: () -> Unit
     ): FileSendResult {
@@ -79,22 +57,13 @@ class OutgoingFileTransferCoordinator(
                 logEndToEnd("prepare_failure")
                 return FileSendResult.Failure(FileSendFailure.SOURCE_UNAVAILABLE)
             }
-        val offerAuth = SessionAuth.create(
-            sessionToken = sessionToken,
-            purpose = "file_offer",
-            parts = fileOfferAuthParts(offerId, localDevice.id, localDevice.name, preparedFiles)
-        )
         val offer = FileOfferDto(
             offerId = offerId,
             senderDeviceId = localDevice.id,
             senderName = localDevice.name,
             files = preparedFiles.map {
                 FilePreviewDto(it.item.displayName, it.item.mimeType, it.item.sizeBytes, it.sha256)
-            },
-            sessionToken = sessionToken,
-            issuedAtMillis = offerAuth.issuedAtMillis,
-            nonce = offerAuth.nonce,
-            signature = offerAuth.signature
+            }
         )
 
         val offerStarted = TimeSource.Monotonic.markNow()
@@ -136,22 +105,13 @@ class OutgoingFileTransferCoordinator(
         }
         onVerifying()
 
-        val completeAuth = SessionAuth.create(
-            sessionToken = sessionToken,
-            purpose = "file_complete",
-            parts = listOf(offerId, localDevice.id)
-        )
         val completeStarted = TimeSource.Monotonic.markNow()
         val completed = httpClient.sendFileComplete(
             peerHost,
             peerPort,
             FileCompleteDto(
                 offerId = offerId,
-                senderDeviceId = localDevice.id,
-                sessionToken = sessionToken,
-                issuedAtMillis = completeAuth.issuedAtMillis,
-                nonce = completeAuth.nonce,
-                signature = completeAuth.signature
+                senderDeviceId = localDevice.id
             )
         )
         TransferDiagnostics.log(
@@ -178,19 +138,6 @@ class OutgoingFileTransferCoordinator(
         }
     }
 
-    private fun fileOfferAuthParts(
-        offerId: String,
-        senderDeviceId: String,
-        senderName: String,
-        files: List<PreparedOutgoingFile>
-    ): List<String> {
-        return listOf(offerId, senderDeviceId, senderName) +
-            files.flatMap { prepared ->
-                val item = prepared.item
-                listOf(item.displayName, item.mimeType, item.sizeBytes.toString(), prepared.sha256)
-            }
-    }
-
     private companion object {
         const val TRANSFER_BUFFER_BYTES = 1024 * 1024
     }
@@ -208,18 +155,22 @@ enum class FileSendFailure {
     INTEGRITY_FAILED,
     TIMED_OUT,
     RECEIVER_UNAVAILABLE,
+    RECEIVER_BUSY,
     NETWORK_FAILED,
     TRANSFER_INTERRUPTED,
     RECEIVER_CANCELLED
 }
 
 private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Failure {
-    val reason = when {
-        error == HttpTransportError.REJECTED && detail == "receiver_declined" ->
-            FileSendFailure.RECEIVER_CANCELLED
-        error == HttpTransportError.REJECTED && detail == "receiver_timeout" ->
-            FileSendFailure.TIMED_OUT
-        else -> when (error) {
+    val reason = if (error == HttpTransportError.REJECTED) {
+        when (detail) {
+            "receiver_declined" -> FileSendFailure.RECEIVER_CANCELLED
+            "receiver_busy" -> FileSendFailure.RECEIVER_BUSY
+            "sender_not_discovered" -> FileSendFailure.RECEIVER_UNAVAILABLE
+            else -> FileSendFailure.TIMED_OUT
+        }
+    } else {
+        when (error) {
             HttpTransportError.SOURCE_READ_FAILED -> FileSendFailure.SOURCE_UNAVAILABLE
             HttpTransportError.REMOTE_STORAGE_FULL -> FileSendFailure.REMOTE_STORAGE_FULL
             HttpTransportError.REMOTE_STORAGE_UNAVAILABLE -> FileSendFailure.REMOTE_STORAGE_UNAVAILABLE
@@ -227,6 +178,7 @@ private fun HttpTransportResult.Failure.toFileSendFailure(): FileSendResult.Fail
             HttpTransportError.TIMEOUT -> FileSendFailure.TIMED_OUT
             HttpTransportError.TRANSFER_INTERRUPTED -> FileSendFailure.TRANSFER_INTERRUPTED
             HttpTransportError.RECEIVER_CANCELLED -> FileSendFailure.RECEIVER_CANCELLED
+            HttpTransportError.BUSY -> FileSendFailure.RECEIVER_BUSY
             HttpTransportError.UNREACHABLE -> FileSendFailure.RECEIVER_UNAVAILABLE
             else -> FileSendFailure.NETWORK_FAILED
         }

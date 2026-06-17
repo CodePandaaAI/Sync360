@@ -6,7 +6,9 @@ import com.liftley.sync360.core.platform.FilePickerKind
 import com.liftley.sync360.core.platform.NetworkEnvironment
 import com.liftley.sync360.core.platform.PlatformFileError
 import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.SyncForegroundServiceStatus
 import com.liftley.sync360.features.sync.domain.model.PickedFile
+import com.liftley.sync360.features.sync.domain.model.SendItem
 import kotlinx.coroutines.runBlocking
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -100,7 +102,7 @@ class RawTcpFileTransferTest {
         val platform = RecordingWritePlatform()
         val manager = FileTransferManager(platform)
 
-        assertTrue(manager.initIncomingFileWrite("partial", 0, "partial.bin", 10, "0".repeat(64)))
+        assertTrue(manager.initIncomingFileWrite("partial", 0, "partial.bin", "application/octet-stream", 10, "0".repeat(64)))
         assertTrue(manager.writeIncomingFileChunk("partial", 0, byteArrayOf(1, 2, 3), 0, 3))
         assertNull(manager.completeIncomingFileWrite("partial", 0))
         assertEquals(1, platform.cancelCount)
@@ -112,7 +114,7 @@ class RawTcpFileTransferTest {
         val manager = FileTransferManager(platform)
         val bytes = byteArrayOf(1, 2, 3)
 
-        assertTrue(manager.initIncomingFileWrite("hash", 0, "hash.bin", bytes.size.toLong(), "0".repeat(64)))
+        assertTrue(manager.initIncomingFileWrite("hash", 0, "hash.bin", "application/octet-stream", bytes.size.toLong(), "0".repeat(64)))
         assertTrue(manager.writeIncomingFileChunk("hash", 0, bytes, 0, bytes.size))
         assertNull(manager.completeIncomingFileWrite("hash", 0))
         assertEquals(1, platform.cancelCount)
@@ -123,8 +125,8 @@ class RawTcpFileTransferTest {
         val platform = RecordingWritePlatform()
         val manager = FileTransferManager(platform)
 
-        assertTrue(manager.initIncomingFileWrite("cancel", 0, "one.bin", 1, "0".repeat(64)))
-        assertTrue(manager.initIncomingFileWrite("cancel", 1, "two.bin", 1, "0".repeat(64)))
+        assertTrue(manager.initIncomingFileWrite("cancel", 0, "one.bin", "application/octet-stream", 1, "0".repeat(64)))
+        assertTrue(manager.initIncomingFileWrite("cancel", 1, "two.bin", "application/octet-stream", 1, "0".repeat(64)))
         manager.cancelAllIncomingWrites()
 
         assertEquals(2, platform.cancelCount)
@@ -156,9 +158,28 @@ private class RecordingRawSender : RawFileByteSender {
         onBytesSent(file.sizeBytes)
         return RawTcpSendResult.Success(file.sizeBytes)
     }
+
+    override suspend fun send(
+        host: String,
+        port: Int,
+        header: RawTcpFileHeader,
+        item: SendItem,
+        platformOperations: PlatformOperations,
+        onBytesSent: (Long) -> Unit
+    ): RawTcpSendResult {
+        headers += header
+        totalBytesSent += item.sizeBytes
+        onBytesSent(item.sizeBytes)
+        return RawTcpSendResult.Success(item.sizeBytes)
+    }
 }
 
 private object FakePlatformOperations : PlatformOperations {
+    override fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult =
+        BackgroundServiceStartResult.NOT_REQUIRED
+
+    override fun updateForegroundService(status: SyncForegroundServiceStatus) = Unit
+
     override fun startTransferService(): BackgroundServiceStartResult =
         BackgroundServiceStartResult.NOT_REQUIRED
 
@@ -206,12 +227,23 @@ private object FakePlatformOperations : PlatformOperations {
     override fun openFile(path: String): FileOperationResult<Unit> =
         FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
 
+    override fun showFileInFolder(path: String): FileOperationResult<Unit> =
+        FileOperationResult.Success(Unit)
+
+    override fun openDownloadsFolder(): FileOperationResult<Unit> =
+        FileOperationResult.Success(Unit)
+
     override fun getNetworkEnvironment(): NetworkEnvironment = NetworkEnvironment.Unavailable
 }
 
 private class RecordingWritePlatform : PlatformOperations {
     var cancelCount = 0
     private var nextHandle = 0
+
+    override fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult =
+        BackgroundServiceStartResult.NOT_REQUIRED
+
+    override fun updateForegroundService(status: SyncForegroundServiceStatus) = Unit
 
     override fun startTransferService(): BackgroundServiceStartResult =
         BackgroundServiceStartResult.NOT_REQUIRED
@@ -258,6 +290,12 @@ private class RecordingWritePlatform : PlatformOperations {
     }
 
     override fun openFile(path: String): FileOperationResult<Unit> =
+        FileOperationResult.Success(Unit)
+
+    override fun showFileInFolder(path: String): FileOperationResult<Unit> =
+        FileOperationResult.Success(Unit)
+
+    override fun openDownloadsFolder(): FileOperationResult<Unit> =
         FileOperationResult.Success(Unit)
 
     override fun getNetworkEnvironment(): NetworkEnvironment = NetworkEnvironment.Unavailable
