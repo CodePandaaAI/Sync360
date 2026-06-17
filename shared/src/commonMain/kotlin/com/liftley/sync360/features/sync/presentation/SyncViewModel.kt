@@ -6,8 +6,11 @@ import com.liftley.sync360.core.platform.ClipboardOperations
 import com.liftley.sync360.core.platform.FileOperations
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
+import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
+import com.liftley.sync360.features.sync.domain.model.TransferDirection
+import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
 import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
@@ -39,10 +42,23 @@ class SyncViewModel(
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
     private val _uiEffects = Channel<SyncUiEffect>(Channel.BUFFERED)
     val uiEffects: Flow<SyncUiEffect> = _uiEffects.receiveAsFlow()
+    private var shownSendingFailure: FileTransferFailure? = null
 
     init {
         viewModelScope.launch {
             runtimeController.snapshot.collect { snapshot ->
+                val sendingFailure = snapshot.transfer.failure
+                    ?.takeIf { it.direction == TransferDirection.SENDING }
+                val sendingProgress = snapshot.transfer.progress
+                    ?.takeIf { it.direction == TransferDirection.SENDING }
+                if (sendingProgress != null || sendingFailure == null) {
+                    shownSendingFailure = null
+                }
+                if (sendingFailure != null && sendingFailure != shownSendingFailure) {
+                    shownSendingFailure = sendingFailure
+                    showMessage(sendingFailure.snackbarMessage())
+                    transferController.dismissFailure()
+                }
                 _uiState.update {
                     it.copy(
                         runtime = it.runtime.copy(
@@ -197,6 +213,16 @@ class SyncViewModel(
 
     private fun showMessage(message: String) {
         _uiEffects.trySend(SyncUiEffect.ShowMessage(message))
+    }
+
+    private fun FileTransferFailure.snackbarMessage(): String = when (reason) {
+        TransferFailureReason.RECEIVER_CANCELLED -> "$peerName declined your request"
+        TransferFailureReason.RECEIVER_BUSY -> "$peerName is busy"
+        TransferFailureReason.RECEIVER_UNAVAILABLE -> "$peerName is unavailable"
+        TransferFailureReason.TIMED_OUT -> "Transfer to $peerName timed out"
+        TransferFailureReason.INVALID_SELECTION -> message
+        TransferFailureReason.SOURCE_UNAVAILABLE -> "Selected file could not be read"
+        else -> message.ifBlank { "Transfer to $peerName failed" }
     }
 
     private fun String.toSendTextItem(): SendItem.Text {

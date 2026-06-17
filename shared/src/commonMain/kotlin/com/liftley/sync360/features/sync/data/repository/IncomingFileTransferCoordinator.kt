@@ -18,6 +18,7 @@ internal class IncomingFileTransferCoordinator(
     private val platformOperations: PlatformOperations
 ) {
     private var activeOffer: PreparedIncomingFileOffer? = null
+    private var completedOffer: CompletedIncomingFileOffer? = null
     private val savedPaths = mutableMapOf<Int, String>()
 
     fun prepareOffer(
@@ -70,6 +71,7 @@ internal class IncomingFileTransferCoordinator(
         onProgress: (bytes: Long) -> Unit
     ): IncomingOfferStart {
         activeOffer = prepared
+        completedOffer = null
         savedPaths.clear()
 
         fileTransferManager.registerIncomingTotalSize(prepared.totalBytes, onProgress)
@@ -90,8 +92,14 @@ internal class IncomingFileTransferCoordinator(
 
     fun completeSignal(complete: FileCompleteDto, hasPeerGrant: Boolean): Boolean {
         if (!hasPeerGrant) return false
-        val currentOffer = activeOffer ?: return false
-        return currentOffer.offerId == complete.offerId && currentOffer.senderDeviceId == complete.senderDeviceId
+        val currentOffer = activeOffer
+        if (currentOffer != null) {
+            return currentOffer.offerId == complete.offerId &&
+                currentOffer.senderDeviceId == complete.senderDeviceId
+        }
+        val finishedOffer = completedOffer ?: return false
+        return finishedOffer.offerId == complete.offerId &&
+            finishedOffer.senderDeviceId == complete.senderDeviceId
     }
 
     fun initRawFileWrite(
@@ -143,6 +151,10 @@ internal class IncomingFileTransferCoordinator(
                     savedPaths = pathsList,
                     senderDeviceId = currentOffer.senderDeviceId
                 )
+                completedOffer = CompletedIncomingFileOffer(
+                    offerId = currentOffer.offerId,
+                    senderDeviceId = currentOffer.senderDeviceId
+                )
                 activeOffer = null
                 savedPaths.clear()
             }
@@ -164,6 +176,7 @@ internal class IncomingFileTransferCoordinator(
             fileTransferManager.deleteFiles(savedPaths.values.toList())
         }
         activeOffer = null
+        completedOffer = null
         savedPaths.clear()
     }
 }
@@ -185,6 +198,11 @@ internal data class PreparedIncomingFileOffer(
 internal data class IncomingFileWriteComplete(
     val savedPath: String?,
     val batch: ReceivedFileBatch?
+)
+
+private data class CompletedIncomingFileOffer(
+    val offerId: String,
+    val senderDeviceId: String
 )
 
 private const val HEX_CHARACTERS = "0123456789abcdefABCDEF"

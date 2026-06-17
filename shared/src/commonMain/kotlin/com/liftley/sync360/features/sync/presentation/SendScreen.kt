@@ -62,7 +62,6 @@ import com.liftley.sync360.features.sync.domain.model.DeviceType
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.presentation.components.ClipboardHistorySection
 import com.liftley.sync360.features.sync.presentation.components.ConfirmDialogs
-import com.liftley.sync360.features.sync.presentation.components.transfer.FileTransferErrorCard
 import com.liftley.sync360.features.sync.presentation.components.transfer.FileTransferProgressCard
 import com.liftley.sync360.features.sync.presentation.components.Sync360Surface
 import com.liftley.sync360.features.sync.presentation.components.SyncBottomNavigationBar
@@ -198,19 +197,11 @@ fun SendScreen(
             ) {
                 // Inline Sending Progress / Failure
                 val progress = uiState.receive.fileTransferProgress
-                val failure = uiState.receive.fileTransferFailure
                 if (progress != null && progress.direction == TransferDirection.SENDING) {
                     item {
                         FileTransferProgressCard(
                             progress = progress,
                             onCancel = { onEvent(SyncEvent.CancelTransfer) }
-                        )
-                    }
-                } else if (failure != null && failure.direction == TransferDirection.SENDING) {
-                    item {
-                        FileTransferErrorCard(
-                            failure = failure,
-                            onEvent = onEvent
                         )
                     }
                 }
