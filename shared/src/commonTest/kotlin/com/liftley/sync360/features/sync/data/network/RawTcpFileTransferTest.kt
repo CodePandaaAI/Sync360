@@ -20,7 +20,7 @@ class RawTcpFileTransferTest {
     @Test
     fun sendsOneFileThroughRawTransport() = runBlocking {
         val sender = RecordingRawSender()
-        val manager = FileTransferManager(FakePlatformOperations)
+        val manager = TransferPayloadStore(FakePlatformOperations)
         val file = pickedFile(index = 0, size = 2_500_000L)
         val progress = mutableListOf<Long>()
 
@@ -44,7 +44,7 @@ class RawTcpFileTransferTest {
     @Test
     fun sendsMultipleFilesInIndexOrderThroughRawTransport() = runBlocking {
         val sender = RecordingRawSender()
-        val manager = FileTransferManager(FakePlatformOperations)
+        val manager = TransferPayloadStore(FakePlatformOperations)
         val files = listOf(
             pickedFile(index = 0, size = 1_000_000L),
             pickedFile(index = 1, size = 2_000_000L),
@@ -100,7 +100,7 @@ class RawTcpFileTransferTest {
     @Test
     fun partialIncomingTransferDeletesTemporaryFile() {
         val platform = RecordingWritePlatform()
-        val manager = FileTransferManager(platform)
+        val manager = TransferPayloadStore(platform)
 
         assertTrue(manager.initIncomingFileWrite("partial", 0, "partial.bin", "application/octet-stream", 10, "0".repeat(64)))
         assertTrue(manager.writeIncomingFileChunk("partial", 0, byteArrayOf(1, 2, 3), 0, 3))
@@ -111,7 +111,7 @@ class RawTcpFileTransferTest {
     @Test
     fun hashMismatchDeletesTemporaryFile() {
         val platform = RecordingWritePlatform()
-        val manager = FileTransferManager(platform)
+        val manager = TransferPayloadStore(platform)
         val bytes = byteArrayOf(1, 2, 3)
 
         assertTrue(manager.initIncomingFileWrite("hash", 0, "hash.bin", "application/octet-stream", bytes.size.toLong(), "0".repeat(64)))
@@ -123,7 +123,7 @@ class RawTcpFileTransferTest {
     @Test
     fun cancellationDeletesAllTemporaryFiles() {
         val platform = RecordingWritePlatform()
-        val manager = FileTransferManager(platform)
+        val manager = TransferPayloadStore(platform)
 
         assertTrue(manager.initIncomingFileWrite("cancel", 0, "one.bin", "application/octet-stream", 1, "0".repeat(64)))
         assertTrue(manager.initIncomingFileWrite("cancel", 1, "two.bin", "application/octet-stream", 1, "0".repeat(64)))

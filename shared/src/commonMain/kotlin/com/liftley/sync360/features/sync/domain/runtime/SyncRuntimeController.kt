@@ -3,38 +3,42 @@ package com.liftley.sync360.features.sync.domain.runtime
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.SyncForegroundServiceMode
 import com.liftley.sync360.core.platform.SyncForegroundServiceStatus
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeFailure
 import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
-import com.liftley.sync360.features.sync.domain.model.SyncStartResult
 import com.liftley.sync360.features.sync.domain.model.SyncSnapshot
+import com.liftley.sync360.features.sync.domain.model.SyncStartResult
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
+import com.liftley.sync360.features.sync.domain.network.PeerDiscoveryCommandResult
+import com.liftley.sync360.features.sync.domain.network.LocalPeerDiscovery
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
-import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
-import com.liftley.sync360.features.sync.domain.network.DiscoveryCommandResult
-import com.liftley.sync360.features.sync.domain.diagnostics.SyncDiagnosticLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 class SyncRuntimeController(
     private val repository: SyncRepository,
     private val platformOperations: PlatformOperations,
-    private val discoveryController: SyncDiscoveryController,
-    val diagnosticLog: SyncDiagnosticLog
+    private val peerDiscovery: LocalPeerDiscovery,
+    private val localDevice: DeviceProfile,
+    private val syncPort: Int = 8080
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lifecycleLock = Any()
     private val _state = MutableStateFlow<SyncRuntimeState>(SyncRuntimeState.Stopped)
     private var lastForegroundStatus: SyncForegroundServiceStatus? = null
+    private var scanJob: Job? = null
     val state: StateFlow<SyncRuntimeState> = _state.asStateFlow()
     private val incomingDecisionState = combine(
         repository.quickSaveEnabled,
@@ -63,28 +67,8 @@ class SyncRuntimeController(
 
     init {
         scope.launch {
-            var previous = snapshot.value
             snapshot.collect { current ->
-                if (previous.runtime != current.runtime) {
-                    diagnosticLog.record(
-                        subsystem = "runtime",
-                        stateBefore = previous.runtime.stateCode(),
-                        event = "state_transition",
-                        stateAfter = current.runtime.stateCode(),
-                        outcomeCode = current.runtime.outcomeCode()
-                    )
-                }
-                if (previous.transfer.state != current.transfer.state) {
-                    diagnosticLog.record(
-                        subsystem = "transfer",
-                        stateBefore = previous.transfer.state.stateCode(),
-                        event = "state_transition",
-                        stateAfter = current.transfer.state.stateCode(),
-                        outcomeCode = current.transfer.state.outcomeCode()
-                    )
-                }
                 updateForegroundService(current)
-                previous = current
             }
         }
     }
@@ -99,9 +83,9 @@ class SyncRuntimeController(
                 SyncStartResult.STARTED,
                 SyncStartResult.ALREADY_RUNNING -> {
                     if (environment.isAvailable) {
-                        when (discoveryController.start()) {
-                            DiscoveryCommandResult.ACCEPTED,
-                            DiscoveryCommandResult.ALREADY_ACTIVE ->
+                        when (startPeerDiscovery()) {
+                            PeerDiscoveryCommandResult.ACCEPTED,
+                            PeerDiscoveryCommandResult.ALREADY_ACTIVE ->
                                 SyncRuntimeState.Ready(environment.addresses.map { it.address })
                             else -> SyncRuntimeState.Degraded(
                                 localAddresses = environment.addresses.map { it.address },
@@ -126,7 +110,7 @@ class SyncRuntimeController(
         synchronized(lifecycleLock) {
             if (_state.value is SyncRuntimeState.Stopped) return
             _state.value = SyncRuntimeState.Stopping
-            discoveryController.stop()
+            stopScan()
             repository.stopSync()
             _state.value = SyncRuntimeState.Stopped
             platformOperations.stopService()
@@ -137,7 +121,7 @@ class SyncRuntimeController(
     fun restart() {
         synchronized(lifecycleLock) {
             _state.value = SyncRuntimeState.Stopping
-            discoveryController.stop()
+            stopScan()
             repository.stopSync()
             _state.value = SyncRuntimeState.Stopped
             lastForegroundStatus = null
@@ -150,7 +134,7 @@ class SyncRuntimeController(
             _state.value is SyncRuntimeState.Ready ||
             _state.value is SyncRuntimeState.Degraded
         ) {
-            discoveryController.scan()
+            scanForDevices()
         }
     }
 
@@ -158,12 +142,53 @@ class SyncRuntimeController(
         synchronized(lifecycleLock) {
             if (_state.value is SyncRuntimeState.Stopping) return
             _state.value = SyncRuntimeState.Stopping
-            discoveryController.shutdown()
+            shutdownDiscovery()
             repository.shutdownSync()
             _state.value = SyncRuntimeState.Stopped
             platformOperations.stopService()
             lastForegroundStatus = null
         }
+    }
+
+    private fun startPeerDiscovery(): PeerDiscoveryCommandResult {
+        val registration = peerDiscovery.advertise(localDevice, syncPort)
+        if (
+            registration == PeerDiscoveryCommandResult.ACCEPTED ||
+            registration == PeerDiscoveryCommandResult.ALREADY_ACTIVE
+        ) {
+            scanForDevices()
+        }
+        return registration
+    }
+
+    private fun scanForDevices() {
+        scanJob?.cancel()
+        peerDiscovery.stopScan()
+        val result = peerDiscovery.scan()
+        if (
+            result != PeerDiscoveryCommandResult.ACCEPTED &&
+            result != PeerDiscoveryCommandResult.ALREADY_ACTIVE
+        ) {
+            scanJob = null
+            return
+        }
+        scanJob = scope.launch {
+            delay(SCAN_WINDOW_MILLIS.milliseconds)
+            peerDiscovery.stopScan()
+        }
+    }
+
+    private fun stopScan() {
+        scanJob?.cancel()
+        scanJob = null
+        peerDiscovery.stopScan()
+        peerDiscovery.stopAdvertising()
+    }
+
+    private fun shutdownDiscovery() {
+        scanJob?.cancel()
+        scanJob = null
+        peerDiscovery.shutdown()
     }
 
     private fun updateForegroundService(snapshot: SyncSnapshot) {
@@ -228,14 +253,8 @@ class SyncRuntimeController(
             SyncRuntimeState.Stopping -> null
         }
     }
-}
 
-private fun Any.stateCode(): String = this::class.simpleName.orEmpty()
-
-private fun Any.outcomeCode(): String = when (this) {
-    is com.liftley.sync360.features.sync.domain.model.SyncRuntimeState.Degraded -> reason.name
-    is com.liftley.sync360.features.sync.domain.model.SyncRuntimeState.Unavailable -> reason.name
-    is com.liftley.sync360.features.sync.domain.model.TransferState.Failed -> "FAILED"
-    is com.liftley.sync360.features.sync.domain.model.TransferState.Succeeded -> "SUCCEEDED"
-    else -> "OK"
+    private companion object {
+        const val SCAN_WINDOW_MILLIS = 10_000L
+    }
 }

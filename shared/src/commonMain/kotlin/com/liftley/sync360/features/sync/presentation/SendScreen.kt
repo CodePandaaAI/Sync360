@@ -358,11 +358,22 @@ fun SendScreen(
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Searching local network...", style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "Searching local network...",
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 } else {
-                                    Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                                    Icon(
+                                        Icons.Default.Search,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary
+                                    )
                                     Spacer(Modifier.width(8.dp))
-                                    Text("Scan for devices", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.bodyMedium)
+                                    Text(
+                                        "Scan for devices",
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 }
                             }
                         }
@@ -373,7 +384,11 @@ fun SendScreen(
                 if (!showManualInput) {
                     item {
                         TextButton(onClick = { showManualInput = true }) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(
+                                Icons.Default.Add,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
                             Spacer(Modifier.width(4.dp))
                             Text("Connect manually using IP address")
                         }

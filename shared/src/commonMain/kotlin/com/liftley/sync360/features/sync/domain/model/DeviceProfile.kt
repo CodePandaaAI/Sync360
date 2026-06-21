@@ -7,11 +7,7 @@ data class DeviceProfile(
     val hostAddress: String? = null,
     val port: Int = 8080,
     val isOnline: Boolean = true
-) {
-    /** IP or hostname used for HTTP connections. Null if no valid address. */
-    val connectionHost: String?
-        get() = hostAddress?.takeIf { it.isNotBlank() }
-}
+)
 
 enum class DeviceType {
     DESKTOP,

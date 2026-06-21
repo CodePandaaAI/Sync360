@@ -21,11 +21,11 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
-class DesktopDiscoveryService : NetworkDiscoveryService {
-    private val _discoveredDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
-    override val discoveredDevices: StateFlow<List<DeviceProfile>> = _discoveredDevices.asStateFlow()
-    private val _state = MutableStateFlow(DiscoveryState())
-    override val state: StateFlow<DiscoveryState> = _state.asStateFlow()
+class DesktopLocalPeerDiscovery : LocalPeerDiscovery {
+    private val _peers = MutableStateFlow<List<DeviceProfile>>(emptyList())
+    override val peers: StateFlow<List<DeviceProfile>> = _peers.asStateFlow()
+    private val _state = MutableStateFlow(LocalPeerDiscoveryState())
+    override val state: StateFlow<LocalPeerDiscoveryState> = _state.asStateFlow()
 
     private val jmdnsInstances = mutableListOf<JmDNS>()
     private val serviceType = "_sync360._tcp.local."
@@ -71,7 +71,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                     val lostName = event.name.replace('-', ' ')
                     val toRemove = devicesMap.filter { it.value.name == lostName }.keys
                     toRemove.forEach { devicesMap.remove(it) }
-                    _discoveredDevices.value = devicesMap.values.toList()
+                    _peers.value = devicesMap.values.toList()
                 }
             }
         }
@@ -99,7 +99,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                     )
                     devicesMap[deviceId] = device
                     serviceNameToIdMap[event.name] = deviceId
-                    _discoveredDevices.value = devicesMap.values.toList()
+                    _peers.value = devicesMap.values.toList()
                 }
             }
         }
@@ -201,7 +201,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
     }
 
-    override fun startDiscovery(): DiscoveryCommandResult {
+    override fun scan(): PeerDiscoveryCommandResult {
         val shouldStart = synchronized(lifecycleLock) {
             if (isShutdown || isDiscovering) false else {
                 isDiscovering = true
@@ -209,8 +209,8 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             }
         }
         if (!shouldStart) {
-            return if (isShutdown) DiscoveryCommandResult.SHUTDOWN
-            else DiscoveryCommandResult.ALREADY_ACTIVE
+            return if (isShutdown) PeerDiscoveryCommandResult.SHUTDOWN
+            else PeerDiscoveryCommandResult.ALREADY_ACTIVE
         }
         _state.value = _state.value.copy(scan = DiscoveryScanState.STARTING, failure = null)
 
@@ -219,7 +219,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                 mapMutex.withLock {
                     devicesMap.clear()
                     serviceNameToIdMap.clear()
-                    _discoveredDevices.value = emptyList()
+                    _peers.value = emptyList()
                 }
 
                 ensureJmDnsInstances()
@@ -263,10 +263,10 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             }
         }
 
-        return DiscoveryCommandResult.ACCEPTED
+        return PeerDiscoveryCommandResult.ACCEPTED
     }
 
-    override fun stopDiscovery(): DiscoveryCommandResult {
+    override fun stopScan(): PeerDiscoveryCommandResult {
         val shouldStop = synchronized(lifecycleLock) {
             if (!isDiscovering) false else {
                 isDiscovering = false
@@ -274,8 +274,8 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             }
         }
         if (!shouldStop) {
-            return if (isShutdown) DiscoveryCommandResult.SHUTDOWN
-            else DiscoveryCommandResult.ALREADY_IDLE
+            return if (isShutdown) PeerDiscoveryCommandResult.SHUTDOWN
+            else PeerDiscoveryCommandResult.ALREADY_IDLE
         }
         _state.value = _state.value.copy(scan = DiscoveryScanState.STOPPING)
 
@@ -299,19 +299,14 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
             }
         }
 
-        return DiscoveryCommandResult.ACCEPTED
+        return PeerDiscoveryCommandResult.ACCEPTED
     }
 
-    override fun registerHost(
-        port: Int,
-        deviceId: String,
-        deviceName: String,
-        deviceType: String
-    ): DiscoveryCommandResult {
-        if (isShutdown) return DiscoveryCommandResult.SHUTDOWN
+    override fun advertise(localDevice: DeviceProfile, port: Int): PeerDiscoveryCommandResult {
+        if (isShutdown) return PeerDiscoveryCommandResult.SHUTDOWN
 
         synchronized(lifecycleLock) {
-            lastRegisterInfo = RegisterInfo(port, deviceId, deviceName, deviceType)
+            lastRegisterInfo = RegisterInfo(port, localDevice.id, localDevice.name, localDevice.type.name)
         }
 
         _state.value = _state.value.copy(
@@ -338,11 +333,11 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                     } catch (_: Exception) {}
                 }
 
-                val properties = mapOf("type" to deviceType, "deviceId" to deviceId)
+                val properties = mapOf("type" to localDevice.type.name, "deviceId" to localDevice.id)
                 currentInstances.forEachIndexed { index, instance ->
                     val serviceInfo = ServiceInfo.create(
                         serviceType,
-                        if (index == 0) deviceName else "$deviceName-$index",
+                        if (index == 0) localDevice.name else "${localDevice.name}-$index",
                         port,
                         0, 0,
                         properties
@@ -361,13 +356,13 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                 e.printStackTrace()
             }
         }
-        return DiscoveryCommandResult.ACCEPTED
+        return PeerDiscoveryCommandResult.ACCEPTED
     }
 
-    override fun unregisterHost(): DiscoveryCommandResult {
+    override fun stopAdvertising(): PeerDiscoveryCommandResult {
         if (isShutdown) {
             val currentInstances = synchronized(lifecycleLock) { jmdnsInstances.toList() }
-            if (currentInstances.isEmpty()) return DiscoveryCommandResult.SHUTDOWN
+            if (currentInstances.isEmpty()) return PeerDiscoveryCommandResult.SHUTDOWN
         }
 
         synchronized(lifecycleLock) {
@@ -375,7 +370,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
         }
 
         if (_state.value.advertisement == DiscoveryAdvertisementState.IDLE) {
-            return DiscoveryCommandResult.ALREADY_IDLE
+            return PeerDiscoveryCommandResult.ALREADY_IDLE
         }
         _state.value = _state.value.copy(
             advertisement = DiscoveryAdvertisementState.IDLE,
@@ -392,7 +387,7 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
                 )
             }
         }
-        return DiscoveryCommandResult.ACCEPTED
+        return PeerDiscoveryCommandResult.ACCEPTED
     }
 
     override fun shutdown() {
@@ -432,8 +427,8 @@ class DesktopDiscoveryService : NetworkDiscoveryService {
 
         devicesMap.clear()
         serviceNameToIdMap.clear()
-        _discoveredDevices.value = emptyList()
-        _state.value = DiscoveryState(
+        _peers.value = emptyList()
+        _state.value = LocalPeerDiscoveryState(
             scan = DiscoveryScanState.SHUTDOWN,
             advertisement = DiscoveryAdvertisementState.SHUTDOWN
         )

@@ -5,22 +5,19 @@ import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.data.network.FileSendFailure
 import com.liftley.sync360.features.sync.data.network.FileSendResult
 import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
-import com.liftley.sync360.features.sync.data.network.OutgoingFileTransferCoordinator
+import com.liftley.sync360.features.sync.data.network.OutgoingTransferSender
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
-import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
-import com.liftley.sync360.features.sync.domain.diagnostics.transferExecutionContext
 import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
 import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
-
 import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import com.liftley.sync360.features.sync.domain.model.TransferDirection
 import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
 import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
-import com.liftley.sync360.features.sync.domain.model.TransferStage
 import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
+import com.liftley.sync360.features.sync.domain.model.TransferStage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -29,17 +26,13 @@ import kotlinx.coroutines.launch
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.milliseconds
-import kotlin.time.ExperimentalTime
-import kotlin.time.TimeMark
-import kotlin.time.TimeSource
 
-@OptIn(ExperimentalTime::class)
 internal class TransferEngine(
     private val scope: CoroutineScope,
     private val incomingNotifier: IncomingMessageNotifier,
     private val platformOperations: PlatformOperations,
-    private val incoming: IncomingFileTransferCoordinator,
-    private val outgoing: OutgoingFileTransferCoordinator,
+    private val incoming: IncomingTransferReceiver,
+    private val outgoing: OutgoingTransferSender,
     private val onIncomingTerminated: () -> Unit
 ) {
     private val store = TransferStore()
@@ -47,15 +40,6 @@ internal class TransferEngine(
     private var outgoingJob: Job? = null
     private var incomingTimeoutJob: Job? = null
     private var lastIncomingActivityMillis = 0L
-    private var progressDiagnosticStartedAt: TimeMark? = null
-    private var progressDiagnosticBytes = 0L
-    private var progressDiagnosticDirection: TransferDirection? = null
-    private var progressUpdateAttempts = 0L
-    private var progressStateUpdates = 0L
-    private var stageUpdateAttempts = 0L
-    private var stageStateUpdates = 0L
-    private var progressUpdateNanos = 0L
-    private var progressExecutionContext = ""
 
     val snapshot: Flow<TransferSnapshot> = store.snapshot
     val isActive: Boolean
@@ -140,7 +124,6 @@ internal class TransferEngine(
         outgoingJob?.cancel()
         outgoingJob = scope.launch {
             startService()
-            startProgressDiagnostics(TransferDirection.SENDING, totalBytes)
             store.start(
                 FileTransferProgress(
                     peerName = peerName,
@@ -153,7 +136,7 @@ internal class TransferEngine(
             )
 
             val result = outgoing.sendItems(
-                peerHost = peerHost!!,
+                peerHost = peerHost,
                 peerPort = peerPort,
                 offerId = offerId,
                 items = items,
@@ -170,7 +153,6 @@ internal class TransferEngine(
             if (result is FileSendResult.Success) {
                 updateProgress(totalBytes)
                 store.succeed(TransferDirection.SENDING)
-                finishProgressDiagnostics("success")
             } else {
                 val reason = (result as FileSendResult.Failure).reason.toFailureReason()
                 fail(reason.defaultMessage(), TransferDirection.SENDING, reason = reason)
@@ -223,10 +205,6 @@ internal class TransferEngine(
         val start = incoming.startPreparedOffer(prepared, ::updateProgress)
         startService()
         markIncomingActivity()
-        startProgressDiagnostics(
-            TransferDirection.RECEIVING,
-            start.progress.files.sumOf { it.sizeBytes }
-        )
         store.start(start.progress)
         incomingNotifier.notifyIncoming(
             start.senderName,
@@ -268,12 +246,11 @@ internal class TransferEngine(
 
     fun completeIncomingFile(offerId: String, fileIndex: Int): String? {
         updateStage(TransferStage.VERIFYING)
-        updateProgress(store.value.progress?.totalBytes ?: progressDiagnosticBytes)
+        updateProgress(store.value.progress?.totalBytes ?: 0L)
         val complete = incoming.completeFileWrite(offerId, fileIndex)
         if (complete.batch != null) {
             stopIncomingWatchdog()
             store.succeed(TransferDirection.RECEIVING, complete.batch)
-            finishProgressDiagnostics("success")
             stopService()
         }
         return complete.savedPath
@@ -306,51 +283,22 @@ internal class TransferEngine(
         stopIncomingWatchdog()
         incoming.clear()
         store.clear()
-        finishProgressDiagnostics("cancelled")
         if (updateService) stopService()
     }
 
 
 
     private fun updateProgress(bytesTransferred: Long) {
-        val updateStarted = TimeSource.Monotonic.markNow()
-        if (progressDiagnosticStartedAt != null) {
-            progressUpdateAttempts += 1
-            progressExecutionContext = transferExecutionContext()
-        }
         val current = store.value.progress
         if (current != null && current.bytesTransferred != bytesTransferred) {
-            val elapsedMs = progressDiagnosticStartedAt?.elapsedNow()?.inWholeMilliseconds ?: 0L
-            val speedBytesPerSecond = if (elapsedMs > 0) {
-                ((bytesTransferred.toDouble() / elapsedMs.toDouble()) * 1000.0).toLong()
-            } else null
-            
-            val remainingBytes = current.totalBytes - bytesTransferred
-            val estimatedTimeRemainingSeconds = if (speedBytesPerSecond != null && speedBytesPerSecond > 0) {
-                remainingBytes / speedBytesPerSecond
-            } else null
-            
-            store.updateProgress(bytesTransferred, speedBytesPerSecond, estimatedTimeRemainingSeconds)
-            if (progressDiagnosticStartedAt != null) progressStateUpdates += 1
-        }
-        if (progressDiagnosticStartedAt != null) {
-            progressUpdateNanos += updateStarted.elapsedNow().inWholeNanoseconds
+            store.updateProgress(bytesTransferred, null, null)
         }
     }
 
     private fun updateStage(stage: TransferStage) {
-        val updateStarted = TimeSource.Monotonic.markNow()
-        if (progressDiagnosticStartedAt != null) {
-            stageUpdateAttempts += 1
-            progressExecutionContext = transferExecutionContext()
-        }
         val current = store.value.progress
         if (current != null && current.stage != stage) {
             store.updateStage(stage)
-            if (progressDiagnosticStartedAt != null) stageStateUpdates += 1
-        }
-        if (progressDiagnosticStartedAt != null) {
-            progressUpdateNanos += updateStarted.elapsedNow().inWholeNanoseconds
         }
     }
 
@@ -371,7 +319,6 @@ internal class TransferEngine(
                 reason = reason
             )
         )
-        finishProgressDiagnostics("failure_${reason.name}")
     }
 
     private fun markIncomingActivity() {
@@ -409,52 +356,10 @@ internal class TransferEngine(
         }
     }
 
-    private fun startProgressDiagnostics(direction: TransferDirection, totalBytes: Long) {
-        progressDiagnosticStartedAt = TimeSource.Monotonic.markNow()
-        progressDiagnosticBytes = totalBytes
-        progressDiagnosticDirection = direction
-        progressUpdateAttempts = 0L
-        progressStateUpdates = 0L
-        stageUpdateAttempts = 0L
-        stageStateUpdates = 0L
-        progressUpdateNanos = 0L
-        progressExecutionContext = transferExecutionContext()
-    }
-
-    private fun finishProgressDiagnostics(outcome: String) {
-        val startedAt = progressDiagnosticStartedAt ?: return
-        val direction = progressDiagnosticDirection ?: return
-        TransferDiagnostics.log(
-            stage = "ui_progress_updates",
-            bytes = progressDiagnosticBytes,
-            elapsedNanos = progressUpdateNanos,
-            bufferBytes = TRANSFER_BUFFER_BYTES,
-            dispatcher = "Caller coroutine; sender Default, receiver Ktor CIO",
-            streamed = true,
-            fullFileInMemory = false,
-            base64 = false,
-            stringEncoding = false,
-            json = false,
-            multipart = false,
-            executionContext = progressExecutionContext,
-            details = "direction=${direction.name}" +
-                " attempts=$progressUpdateAttempts stateUpdates=$progressStateUpdates" +
-                " stageAttempts=$stageUpdateAttempts stageUpdates=$stageStateUpdates" +
-                " transferWallMs=${startedAt.elapsedNow().inWholeMilliseconds}" +
-                " outcome=$outcome"
-        )
-        progressDiagnosticStartedAt = null
-        progressDiagnosticBytes = 0L
-        progressDiagnosticDirection = null
-    }
-
     private fun startService() = platformOperations.startTransferService()
 
     private fun stopService() = Unit
 
-    private companion object {
-        const val TRANSFER_BUFFER_BYTES = 1024 * 1024
-    }
 }
 
 private fun FileSendFailure.toFailureReason(): TransferFailureReason = when (this) {

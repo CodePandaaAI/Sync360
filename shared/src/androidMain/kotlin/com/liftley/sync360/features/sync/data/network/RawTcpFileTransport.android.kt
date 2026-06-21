@@ -2,8 +2,6 @@ package com.liftley.sync360.features.sync.data.network
 
 import com.liftley.sync360.core.platform.FileOperationResult
 import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.features.sync.domain.diagnostics.TransferDiagnostics
-import com.liftley.sync360.features.sync.domain.diagnostics.transferExecutionContext
 import com.liftley.sync360.features.sync.domain.model.PickedFile
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
@@ -27,7 +25,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.coroutineContext
-import kotlin.time.TimeSource
 
 actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
     actual var listener: RawTcpFileListener? = null
@@ -135,11 +132,7 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
         platformOperations: PlatformOperations,
         onBytesSent: (Long) -> Unit
     ): RawTcpSendResult = withContext(Dispatchers.IO) {
-        val totalStarted = TimeSource.Monotonic.markNow()
-        var socketWriteNanos = 0L
-        var sourceNanos = 0L
         var bytesSent = 0L
-        var chunks = 0L
         var socket: Socket? = null
         var result: RawTcpSendResult = RawTcpSendResult.Failure(RawTcpFailure.IO_ERROR, 0L)
         val cancellationHandle = coroutineContext[Job]?.invokeOnCompletion { cause ->
@@ -166,7 +159,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                 throw RawTcpTransferException(readyFailure)
             }
 
-            val sourceStarted = TimeSource.Monotonic.markNow()
             val readResult = streamItemBytes(item, platformOperations) { bytes, offset, length ->
                 coroutineContext.ensureActive()
                 if (bytesSent + length > header.contentLength) {
@@ -178,16 +170,10 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                     }
                     throw RawTcpTransferException(RawTcpFailure.SIZE_MISMATCH)
                 }
-                val writeStarted = TimeSource.Monotonic.markNow()
                 output.write(bytes, offset, length)
-                socketWriteNanos += writeStarted.elapsedNow().inWholeNanoseconds
                 bytesSent += length
-                chunks += 1
                 onBytesSent(length.toLong())
             }
-            sourceNanos = (
-                sourceStarted.elapsedNow().inWholeNanoseconds - socketWriteNanos
-                ).coerceAtLeast(0L)
             val readBytes = (readResult as? FileOperationResult.Success<*>)?.value as? Long
             if (readBytes == null) {
                 result = RawTcpSendResult.Failure(RawTcpFailure.SOURCE_READ_FAILED, bytesSent)
@@ -208,19 +194,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                 bytesSent
             )
         } catch (error: CancellationException) {
-            logSender(
-                header,
-                bytesSent,
-                chunks,
-                sourceNanos,
-                socketWriteNanos,
-                totalStarted,
-                if (error is TimeoutCancellationException) {
-                    RawTcpFailure.TIMEOUT
-                } else {
-                    RawTcpFailure.CANCELLED
-                }
-            )
             throw error
         } catch (_: Exception) {
             result = RawTcpSendResult.Failure(
@@ -234,7 +207,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                 it.closeQuietly()
             }
         }
-        logSender(header, bytesSent, chunks, sourceNanos, socketWriteNanos, totalStarted, result.failureOrNull())
         result
     }
 
@@ -262,13 +234,10 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
             socket.tcpNoDelay = true
             socket.receiveBufferSize = RawTcpFileTransferConfig.BUFFER_BYTES
             socket.soTimeout = RawTcpFileTransferConfig.SOCKET_IDLE_TIMEOUT_MILLIS
-            val totalStarted = TimeSource.Monotonic.markNow()
             var header: RawTcpFileHeader? = null
             var initialized = false
             var completed = false
             var bytesReceived = 0L
-            var socketReadNanos = 0L
-            var chunks = 0L
             var failure: RawTcpFailure? = null
             var output: DataOutputStream? = null
             try {
@@ -291,7 +260,7 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                     failure = RawTcpFailure.RECEIVER_UNAVAILABLE
                     return
                 }
-                when (val init = activeListener.onRawFileInit(header, socket.inetAddress.hostAddress)) {
+                when (val init = activeListener.onRawFileInit(header, socket.inetAddress.hostAddress ?: "")) {
                     RawTcpReceiveResult.Success -> Unit
                     is RawTcpReceiveResult.Failure -> {
                         failure = init.reason
@@ -306,9 +275,7 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                     val target = minOf(buffer.size.toLong(), header.contentLength - bytesReceived).toInt()
                     var filled = 0
                     while (filled < target) {
-                        val readStarted = TimeSource.Monotonic.markNow()
                         val read = input.read(buffer, filled, target - filled)
-                        socketReadNanos += readStarted.elapsedNow().inWholeNanoseconds
                         if (read < 0) throw RawTcpTransferException(RawTcpFailure.PARTIAL_TRANSFER)
                         filled += read
                     }
@@ -316,7 +283,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                         throw RawTcpTransferException(RawTcpFailure.WRITE_FAILED)
                     }
                     bytesReceived += filled
-                    chunks += 1
                 }
                 if (input.read() != -1) throw RawTcpTransferException(RawTcpFailure.SIZE_MISMATCH)
                 when (val completion = activeListener.onRawFileComplete(header.transferId, header.fileIndex)) {
@@ -343,7 +309,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
                     output?.flush()
                 } catch (_: Exception) {
                 }
-                logReceiver(currentHeader, bytesReceived, chunks, socketReadNanos, totalStarted, failure, completed)
                 unregister(socket)
             }
         }
@@ -352,57 +317,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
     private fun register(socket: Socket) = synchronized(lock) { activeSockets += socket }
 
     private fun unregister(socket: Socket) = synchronized(lock) { activeSockets -= socket }
-
-    private fun logSender(
-        header: RawTcpFileHeader,
-        bytes: Long,
-        chunks: Long,
-        sourceNanos: Long,
-        socketWriteNanos: Long,
-        totalStarted: kotlin.time.TimeMark,
-        failure: RawTcpFailure?
-    ) {
-        val details = "transferId=${header.transferId} fileIndex=${header.fileIndex}" +
-            " chunks=$chunks outcome=${failure?.name ?: "success"}"
-        TransferDiagnostics.log(
-            "sender_raw_tcp_file_read", bytes, sourceNanos, RawTcpFileTransferConfig.BUFFER_BYTES,
-            "Dispatchers.IO", true, false, false, false, false, false,
-            transferExecutionContext(), details
-        )
-        TransferDiagnostics.log(
-            "sender_raw_tcp_socket_write", bytes, socketWriteNanos, RawTcpFileTransferConfig.BUFFER_BYTES,
-            "Dispatchers.IO raw TCP sender", true, false, false, false, false, false,
-            transferExecutionContext(), details
-        )
-        TransferDiagnostics.log(
-            "sender_raw_tcp_total", bytes, totalStarted.elapsedNow().inWholeNanoseconds,
-            RawTcpFileTransferConfig.BUFFER_BYTES, "Dispatchers.IO raw TCP sender",
-            true, false, false, false, false, false, transferExecutionContext(), details
-        )
-    }
-
-    private fun logReceiver(
-        header: RawTcpFileHeader?,
-        bytes: Long,
-        chunks: Long,
-        socketReadNanos: Long,
-        totalStarted: kotlin.time.TimeMark,
-        failure: RawTcpFailure?,
-        completed: Boolean
-    ) {
-        val details = "transferId=${header?.transferId} fileIndex=${header?.fileIndex}" +
-            " chunks=$chunks outcome=${if (completed) "success" else failure?.name ?: "failure"}"
-        TransferDiagnostics.log(
-            "receiver_raw_tcp_socket_read", bytes, socketReadNanos, RawTcpFileTransferConfig.BUFFER_BYTES,
-            "Dispatchers.IO raw TCP receiver", true, false, false, false, false, false,
-            transferExecutionContext(), details
-        )
-        TransferDiagnostics.log(
-            "receiver_raw_tcp_total", bytes, totalStarted.elapsedNow().inWholeNanoseconds,
-            RawTcpFileTransferConfig.BUFFER_BYTES, "Dispatchers.IO raw TCP receiver",
-            true, false, false, false, false, false, transferExecutionContext(), details
-        )
-    }
 
     private companion object {
         const val MAGIC = 0x53333630
@@ -516,8 +430,6 @@ actual class RawTcpFileTransport actual constructor() : RawFileByteSender {
 
 private class RawTcpTransferException(val reason: RawTcpFailure) : Exception()
 
-private fun RawTcpSendResult.failureOrNull(): RawTcpFailure? =
-    (this as? RawTcpSendResult.Failure)?.reason
 
 private fun Socket.closeQuietly() {
     try {

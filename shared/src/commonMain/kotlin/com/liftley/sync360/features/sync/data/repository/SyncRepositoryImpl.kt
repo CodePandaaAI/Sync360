@@ -3,11 +3,11 @@ package com.liftley.sync360.features.sync.data.repository
 import com.liftley.sync360.core.platform.IncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.security.SessionCrypto
-import com.liftley.sync360.features.sync.data.network.FileTransferManager
+import com.liftley.sync360.features.sync.data.network.TransferPayloadStore
 import com.liftley.sync360.features.sync.data.network.HttpSyncClient
 import com.liftley.sync360.features.sync.data.network.HttpSyncServer
 import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
-import com.liftley.sync360.features.sync.data.network.OutgoingFileTransferCoordinator
+import com.liftley.sync360.features.sync.data.network.OutgoingTransferSender
 import com.liftley.sync360.features.sync.data.network.RawTcpFailure
 import com.liftley.sync360.features.sync.data.network.RawTcpFileHeader
 import com.liftley.sync360.features.sync.data.network.RawTcpFileListener
@@ -19,7 +19,8 @@ import com.liftley.sync360.features.sync.data.network.SyncServerListener
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferResponseDto
-import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
+import com.liftley.sync360.features.sync.domain.network.DiscoveryScanState
+import com.liftley.sync360.features.sync.domain.network.LocalPeerDiscovery
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.SendItem
 import com.liftley.sync360.features.sync.domain.model.SyncStartResult
@@ -31,15 +32,18 @@ import com.liftley.sync360.features.sync.domain.repository.SyncRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlin.io.encoding.ExperimentalEncodingApi
 
 @OptIn(ExperimentalEncodingApi::class)
 class SyncRepositoryImpl(
-    private val discoveryController: SyncDiscoveryController,
+    private val peerDiscovery: LocalPeerDiscovery,
     private val localDevice: DeviceProfile,
     private val incomingNotifier: IncomingMessageNotifier,
     private val platformOperations: PlatformOperations,
@@ -47,13 +51,13 @@ class SyncRepositoryImpl(
     private val httpClient: HttpSyncClient = HttpSyncClient(syncPort),
     private val httpServer: HttpSyncServer = HttpSyncServer(syncPort),
     private val rawTcpFileTransport: RawTcpFileTransport = RawTcpFileTransport(),
-    fileTransferManager: FileTransferManager =
-        FileTransferManager(platformOperations),
-    outgoingFileTransferCoordinator: OutgoingFileTransferCoordinator =
-        OutgoingFileTransferCoordinator(
+    transferPayloadStore: TransferPayloadStore =
+        TransferPayloadStore(platformOperations),
+    outgoingTransferSender: OutgoingTransferSender =
+        OutgoingTransferSender(
             localDevice,
             httpClient,
-            fileTransferManager,
+            transferPayloadStore,
             rawTcpFileTransport
         )
 ) : SyncRepository, SyncServerListener, RawTcpFileListener {
@@ -67,8 +71,8 @@ class SyncRepositoryImpl(
 
     private val incomingOfferDecisions = IncomingOfferDecisionStore()
 
-    private val incomingFileTransferCoordinator = IncomingFileTransferCoordinator(
-        fileTransferManager,
+    private val incomingTransferReceiver = IncomingTransferReceiver(
+        transferPayloadStore,
         platformOperations
     )
 
@@ -76,29 +80,35 @@ class SyncRepositoryImpl(
         scope = scope,
         incomingNotifier = incomingNotifier,
         platformOperations = platformOperations,
-        incoming = incomingFileTransferCoordinator,
-        outgoing = outgoingFileTransferCoordinator,
+        incoming = incomingTransferReceiver,
+        outgoing = outgoingTransferSender,
         onIncomingTerminated = ::closeActiveRawTransfer
     )
 
     init {
         httpServer.listener = this
         rawTcpFileTransport.listener = this
+        scope.launch {
+            peerDiscovery.peers.collect(::publishNearbyDevices)
+        }
     }
 
     private val _clipboardHistory = MutableStateFlow<List<ClipboardEntry>>(emptyList())
     override val clipboardHistory: Flow<List<ClipboardEntry>> = _clipboardHistory.asStateFlow()
 
-    private fun addToClipboardHistory(text: String, senderName: String, isFromMe: Boolean) {
-        val label = if (isFromMe) "Sent by me" else "Received from $senderName"
-        val entry = ClipboardEntry(text = text, updatedLabel = label, isFromMe = isFromMe)
+    private fun addToClipboardHistory(text: String, senderName: String) {
+        val label = "Received from $senderName"
+        val entry = ClipboardEntry(text = text, senderName = label)
         _clipboardHistory.update { current ->
-            (listOf(entry) + current.filter { it.text != text }).take(10)
+            listOf(entry) + current
         }
     }
 
-    override val nearbyDevices: Flow<List<DeviceProfile>> = discoveryController.nearbyDevices
-    override val isScanning: Flow<Boolean> = discoveryController.isScanning
+    private val _nearbyDevices = MutableStateFlow<List<DeviceProfile>>(emptyList())
+    override val nearbyDevices: Flow<List<DeviceProfile>> = _nearbyDevices.asStateFlow()
+    override val isScanning: Flow<Boolean> = peerDiscovery.state.map { state ->
+        state.scan == DiscoveryScanState.STARTING || state.scan == DiscoveryScanState.ACTIVE
+    }
     override val quickSaveEnabled = incomingOfferDecisions.quickSaveEnabled
     override val pendingIncomingOffer = incomingOfferDecisions.pendingOffer
     override val transferSnapshot: Flow<TransferSnapshot> = transferEngine.snapshot
@@ -175,7 +185,7 @@ class SyncRepositoryImpl(
     }
 
     override fun offerItemsTo(deviceId: String, items: List<SendItem>) {
-        val device = discoveryController.nearbyDevices.value.firstOrNull { it.id == deviceId }
+        val device = _nearbyDevices.value.firstOrNull { it.id == deviceId }
         if (device != null) {
             transferEngine.offerItemsTo(device, items)
         }
@@ -364,7 +374,7 @@ class SyncRepositoryImpl(
                 try {
                     val base64 = path.substringAfter("text_content:")
                     val text = kotlin.io.encoding.Base64.decode(base64).decodeToString()
-                    addToClipboardHistory(text, batch.senderName, isFromMe = false)
+                    addToClipboardHistory(text, batch.senderName)
                     platformOperations.writeClipboard(text)
                     textCount++
                 } catch (e: Exception) {
@@ -396,6 +406,15 @@ class SyncRepositoryImpl(
         }
     }
 
+    private fun publishNearbyDevices(discovered: List<DeviceProfile>) {
+        val localAddresses = platformOperations.getNetworkEnvironment().addressSet
+        _nearbyDevices.value = discovered.filter { device ->
+            device.id != localDevice.id &&
+                device.hostAddress !in localAddresses &&
+                device.hostAddress != "127.0.0.1" &&
+                device.hostAddress != "localhost"
+        }
+    }
     private fun closeRawTransfer(transferId: String) {
         synchronized(incomingTransferLock) {
             rawTransferGrants.revoke(transferId)
@@ -444,7 +463,7 @@ class SyncRepositoryImpl(
     }
 
     private fun isKnownDiscoveredPeer(senderDeviceId: String, remoteHost: String): Boolean {
-        val peer = discoveryController.nearbyDevices.value.firstOrNull { it.id == senderDeviceId }
+        val peer = _nearbyDevices.value.firstOrNull { it.id == senderDeviceId }
             ?: return false
         val peerHost = peer.hostAddress?.normalizeHost() ?: return false
         return peerHost == remoteHost.normalizeHost()

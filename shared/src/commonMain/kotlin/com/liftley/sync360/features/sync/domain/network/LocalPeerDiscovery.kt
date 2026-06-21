@@ -3,22 +3,18 @@ package com.liftley.sync360.features.sync.domain.network
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import kotlinx.coroutines.flow.StateFlow
 
-interface NetworkDiscoveryService {
-    val discoveredDevices: StateFlow<List<DeviceProfile>>
-    val state: StateFlow<DiscoveryState>
-    fun startDiscovery(): DiscoveryCommandResult
-    fun stopDiscovery(): DiscoveryCommandResult
-    fun registerHost(
-        port: Int,
-        deviceId: String,
-        deviceName: String,
-        deviceType: String
-    ): DiscoveryCommandResult
-    fun unregisterHost(): DiscoveryCommandResult
+interface LocalPeerDiscovery {
+    val peers: StateFlow<List<DeviceProfile>>
+    val state: StateFlow<LocalPeerDiscoveryState>
+
+    fun advertise(localDevice: DeviceProfile, port: Int): PeerDiscoveryCommandResult
+    fun stopAdvertising(): PeerDiscoveryCommandResult
+    fun scan(): PeerDiscoveryCommandResult
+    fun stopScan(): PeerDiscoveryCommandResult
     fun shutdown()
 }
 
-data class DiscoveryState(
+data class LocalPeerDiscoveryState(
     val scan: DiscoveryScanState = DiscoveryScanState.IDLE,
     val advertisement: DiscoveryAdvertisementState = DiscoveryAdvertisementState.IDLE,
     val failure: DiscoveryFailure? = null
@@ -48,7 +44,7 @@ enum class DiscoveryFailure {
     PLATFORM_UNAVAILABLE
 }
 
-enum class DiscoveryCommandResult {
+enum class PeerDiscoveryCommandResult {
     ACCEPTED,
     ALREADY_ACTIVE,
     ALREADY_IDLE,
@@ -56,4 +52,4 @@ enum class DiscoveryCommandResult {
     FAILED
 }
 
-expect fun createNetworkDiscoveryService(context: Any? = null): NetworkDiscoveryService
+expect fun createLocalPeerDiscovery(context: Any? = null): LocalPeerDiscovery

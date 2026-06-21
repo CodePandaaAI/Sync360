@@ -2,7 +2,7 @@ package com.liftley.sync360.features.sync.data.repository
 
 import com.liftley.sync360.core.platform.FileOperationResult
 import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.features.sync.data.network.FileTransferManager
+import com.liftley.sync360.features.sync.data.network.TransferPayloadStore
 import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
 import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
 import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
@@ -13,8 +13,8 @@ import com.liftley.sync360.features.sync.domain.model.TransferFilePreview
 import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
 import com.liftley.sync360.features.sync.domain.model.TransferStage
 
-internal class IncomingFileTransferCoordinator(
-    private val fileTransferManager: FileTransferManager,
+internal class IncomingTransferReceiver(
+    private val transferPayloadStore: TransferPayloadStore,
     private val platformOperations: PlatformOperations
 ) {
     private var activeOffer: PreparedIncomingFileOffer? = null
@@ -74,7 +74,7 @@ internal class IncomingFileTransferCoordinator(
         completedOffer = null
         savedPaths.clear()
 
-        fileTransferManager.registerIncomingTotalSize(prepared.totalBytes, onProgress)
+        transferPayloadStore.registerIncomingTotalSize(prepared.totalBytes, onProgress)
 
         return IncomingOfferStart(
             progress = FileTransferProgress(
@@ -115,7 +115,7 @@ internal class IncomingFileTransferCoordinator(
         val file = currentOffer.files[fileIndex]
         if (declaredLength != file.sizeBytes || fileIdentifier != file.name) return false
         val expectedSha256 = file.sha256 ?: return false
-        return fileTransferManager.initIncomingFileWrite(
+        return transferPayloadStore.initIncomingFileWrite(
             offerId = offerId,
             fileIndex = fileIndex,
             fileName = file.name,
@@ -130,7 +130,7 @@ internal class IncomingFileTransferCoordinator(
         val currentOffer = activeOffer ?: return false
         if (currentOffer.offerId != offerId) return false
         if (fileIndex !in currentOffer.files.indices) return false
-        return fileTransferManager.writeIncomingFileChunk(offerId, fileIndex, chunk, offset, length)
+        return transferPayloadStore.writeIncomingFileChunk(offerId, fileIndex, chunk, offset, length)
     }
 
     fun completeFileWrite(offerId: String, fileIndex: Int): IncomingFileWriteComplete {
@@ -138,7 +138,7 @@ internal class IncomingFileTransferCoordinator(
         if (currentOffer.offerId != offerId) return IncomingFileWriteComplete(savedPath = null, batch = null)
         if (fileIndex !in currentOffer.files.indices) return IncomingFileWriteComplete(savedPath = null, batch = null)
 
-        val savedPath = fileTransferManager.completeIncomingFileWrite(offerId, fileIndex)
+        val savedPath = transferPayloadStore.completeIncomingFileWrite(offerId, fileIndex)
         var batch: ReceivedFileBatch? = null
         if (savedPath != null) {
             savedPaths[fileIndex] = savedPath
@@ -163,17 +163,17 @@ internal class IncomingFileTransferCoordinator(
     }
 
     fun errorFileWrite(offerId: String, fileIndex: Int) {
-        fileTransferManager.errorIncomingFileWrite(offerId, fileIndex)
+        transferPayloadStore.errorIncomingFileWrite(offerId, fileIndex)
     }
 
     fun consumeFileWriteFailure(offerId: String, fileIndex: Int): IncomingUploadFailure? {
-        return fileTransferManager.consumeIncomingFailure(offerId, fileIndex)
+        return transferPayloadStore.consumeIncomingFailure(offerId, fileIndex)
     }
 
     fun clear() {
-        fileTransferManager.cancelAllIncomingWrites()
+        transferPayloadStore.cancelAllIncomingWrites()
         if (savedPaths.isNotEmpty()) {
-            fileTransferManager.deleteFiles(savedPaths.values.toList())
+            transferPayloadStore.deleteFiles(savedPaths.values.toList())
         }
         activeOffer = null
         completedOffer = null

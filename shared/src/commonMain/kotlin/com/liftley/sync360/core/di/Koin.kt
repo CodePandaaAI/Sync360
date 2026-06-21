@@ -8,8 +8,6 @@ import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationV
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
 import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
 import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
-import com.liftley.sync360.features.sync.domain.controller.SyncDiscoveryController
-import com.liftley.sync360.features.sync.domain.diagnostics.SyncDiagnosticLog
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.core.platform.ClipboardOperations
 import com.liftley.sync360.core.platform.FileOperations
@@ -22,14 +20,12 @@ expect fun platformModule(): Module
 val commonModule = module {
     single<SyncRepository> {
         SyncRepositoryImpl(
-            discoveryController = get(),
+            peerDiscovery = get(),
             localDevice = get(),
             incomingNotifier = get(),
             platformOperations = get()
         )
     }
-    single { SyncDiscoveryController(get(), get(), get()) }
-    single { SyncDiagnosticLog() }
     single { SyncRuntimeController(get(), get(), get(), get()) }
     single { SyncTransferController(get()) }
 

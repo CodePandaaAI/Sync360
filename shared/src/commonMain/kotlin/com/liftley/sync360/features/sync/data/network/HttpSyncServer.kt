@@ -32,8 +32,6 @@ interface SyncServerListener {
 @OptIn(ExperimentalTime::class)
 class HttpSyncServer(private val port: Int = 8080) {
     private var serverEngine: ApplicationEngine? = null
-    private val connectRateLimiter =
-        FixedWindowRateLimiter(SyncProtocolLimits.MAX_CONNECT_REQUESTS_PER_MINUTE)
     private val controlRateLimiter =
         FixedWindowRateLimiter(SyncProtocolLimits.MAX_CONTROL_REQUESTS_PER_MINUTE)
     var listener: SyncServerListener? = null
