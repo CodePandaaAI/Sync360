@@ -194,7 +194,7 @@ class AndroidLocalPeerDiscovery(context: Context) : LocalPeerDiscovery {
 
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo) {
             advertisementListener = null
-            _state.value = _state.value.copy(advertisement = DiscoveryAdvertisementState.IDLE)
+            _state.value = _state.value.copy(advertisement = DiscoveryAdvertisementState.IDLE, failure = null)
         }
 
         override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
