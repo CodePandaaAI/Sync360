@@ -1,12 +1,16 @@
 package com.liftley.sync360.core.di
 
-import com.liftley.sync360.features.sync.data.network.KtorSyncNetworkService
 import com.liftley.sync360.features.sync.data.repository.SyncRepositoryImpl
-import com.liftley.sync360.features.sync.domain.network.SyncNetworkService
 import com.liftley.sync360.features.sync.domain.repository.SyncRepository
-import com.liftley.sync360.features.sync.domain.usecase.*
+import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
+import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
+import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationViewModel
 import com.liftley.sync360.features.sync.presentation.SyncViewModel
+import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
+import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
 import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.core.platform.ClipboardOperations
+import com.liftley.sync360.core.platform.FileOperations
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.module
@@ -14,84 +18,41 @@ import org.koin.dsl.module
 expect fun platformModule(): Module
 
 val commonModule = module {
-    single<SyncNetworkService> { KtorSyncNetworkService() }
-    
     single<SyncRepository> {
         SyncRepositoryImpl(
-            networkService = get(),
-            discoveryService = get(),
+            peerDiscovery = get(),
             localDevice = get(),
             incomingNotifier = get(),
-            localLanIp = get<PlatformOperations>().getLocalIpAddress(),
             platformOperations = get()
         )
     }
+    single { SyncRuntimeController(get(), get(), get(), get()) }
+    single { SyncTransferController(get()) }
 
-    // Use Cases
-    factory { ObservePairedDevicesUseCase(get()) }
-    factory { ObserveNearbyDevicesUseCase(get()) }
-    factory { ObservePendingIncomingConnectUseCase(get()) }
-    factory { ObservePendingOutgoingConnectUseCase(get()) }
-    factory { ObserveConnectionStatusUseCase(get()) }
-    factory { ObserveActiveDeviceIdUseCase(get()) }
-    factory { ObserveConversationMessagesUseCase(get()) }
-    factory { ObserveIncomingFileOfferUseCase(get()) }
-    factory { ObserveFileTransferProgressUseCase(get()) }
-    factory { ObserveReceivedFileBatchUseCase(get()) }
-    factory { RequestConnectUseCase(get()) }
-    factory { ConfirmOutgoingConnectUseCase(get()) }
-    factory { DismissOutgoingConnectUseCase(get()) }
-    factory { AcceptIncomingConnectUseCase(get()) }
-    factory { DeclineIncomingConnectUseCase(get()) }
-    factory { SwitchActiveDeviceUseCase(get()) }
-    factory { SendTextUseCase(get()) }
-    factory { OfferFilesUseCase(get()) }
-    factory { AcceptFileOfferUseCase(get()) }
-    factory { DeclineFileOfferUseCase(get()) }
-    factory { DismissReceivedFilesUseCase(get()) }
-    factory { DisconnectActivePeerUseCase(get()) }
     factory { ClearAllDataUseCase(get()) }
     factory { DisconnectAllUseCase(get()) }
-    factory { ObserveIsScanningUseCase(get()) }
-    factory { TriggerManualScanUseCase(get()) }
-    factory { StartSyncUseCase(get()) }
+    factory { SyncNavigationViewModel() }
 
-    // ViewModel factory
+    single<ClipboardOperations> { get<PlatformOperations>() }
+    single<FileOperations> { get<PlatformOperations>() }
+
     factory { (isDesktop: Boolean) ->
         SyncViewModel(
-            isDesktop = isDesktop,
-            platformOperations = get(),
-            observePairedDevicesUseCase = get(),
-            observeNearbyDevicesUseCase = get(),
-            observePendingIncomingConnectUseCase = get(),
-            observePendingOutgoingConnectUseCase = get(),
-            observeConnectionStatusUseCase = get(),
-            observeActiveDeviceIdUseCase = get(),
-            observeConversationMessagesUseCase = get(),
-            observeIncomingFileOfferUseCase = get(),
-            observeFileTransferProgressUseCase = get(),
-            observeReceivedFileBatchUseCase = get(),
-            observeIsScanningUseCase = get(),
-            triggerManualScanUseCase = get(),
-            requestConnectUseCase = get(),
-            confirmOutgoingConnectUseCase = get(),
-            dismissOutgoingConnectUseCase = get(),
-            acceptIncomingConnectUseCase = get(),
-            declineIncomingConnectUseCase = get(),
-            switchActiveDeviceUseCase = get(),
-            sendTextUseCase = get(),
-            offerFilesUseCase = get(),
-            acceptFileOfferUseCase = get(),
-            declineFileOfferUseCase = get(),
-            dismissReceivedFilesUseCase = get(),
-            disconnectActivePeerUseCase = get(),
-            startSyncUseCase = get(),
-            localIpAddress = get<PlatformOperations>().getLocalIpAddress()
+            repository = get(),
+            runtimeController = get(),
+            transferController = get(),
+            clipboardOperations = get(),
+            fileOperations = get(),
+            localIpAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress,
+            localDeviceName = get<com.liftley.sync360.features.sync.domain.model.DeviceProfile>().name
         )
     }
 }
 
-fun initKoin(appDeclaration: (org.koin.core.KoinApplication.() -> Unit)? = null) = startKoin {
-    appDeclaration?.invoke(this)
-    modules(platformModule(), commonModule)
-}
+fun initKoin(appDeclaration: (org.koin.core.KoinApplication.() -> Unit)? = null) =
+    startKoin {
+        appDeclaration?.invoke(this)
+        modules(platformModule(), commonModule)
+    }.also { application ->
+        application.koin.get<SyncRuntimeController>().start()
+    }

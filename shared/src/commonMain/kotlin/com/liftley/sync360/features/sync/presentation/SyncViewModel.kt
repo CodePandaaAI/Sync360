@@ -2,209 +2,261 @@ package com.liftley.sync360.features.sync.presentation
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.features.sync.domain.model.ConnectionStatus
+import com.liftley.sync360.core.platform.ClipboardOperations
+import com.liftley.sync360.core.platform.FileOperations
+import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
-import com.liftley.sync360.features.sync.domain.usecase.*
-import kotlinx.coroutines.flow.*
+import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
+import com.liftley.sync360.features.sync.domain.model.SendItem
+import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
+import com.liftley.sync360.features.sync.domain.model.SyncRuntimeState
+import com.liftley.sync360.features.sync.domain.model.TransferDirection
+import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
+import com.liftley.sync360.features.sync.domain.repository.SyncRepository
+import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class SyncViewModel(
-    val isDesktop: Boolean,
-    private val platformOperations: PlatformOperations,
-    private val observePairedDevicesUseCase: ObservePairedDevicesUseCase,
-    private val observeNearbyDevicesUseCase: ObserveNearbyDevicesUseCase,
-    private val observePendingIncomingConnectUseCase: ObservePendingIncomingConnectUseCase,
-    private val observePendingOutgoingConnectUseCase: ObservePendingOutgoingConnectUseCase,
-    private val observeConnectionStatusUseCase: ObserveConnectionStatusUseCase,
-    private val observeActiveDeviceIdUseCase: ObserveActiveDeviceIdUseCase,
-    private val observeConversationMessagesUseCase: ObserveConversationMessagesUseCase,
-    private val observeIncomingFileOfferUseCase: ObserveIncomingFileOfferUseCase,
-    private val observeFileTransferProgressUseCase: ObserveFileTransferProgressUseCase,
-    private val observeReceivedFileBatchUseCase: ObserveReceivedFileBatchUseCase,
-    private val observeIsScanningUseCase: ObserveIsScanningUseCase,
-    private val triggerManualScanUseCase: TriggerManualScanUseCase,
-    private val requestConnectUseCase: RequestConnectUseCase,
-    private val confirmOutgoingConnectUseCase: ConfirmOutgoingConnectUseCase,
-    private val dismissOutgoingConnectUseCase: DismissOutgoingConnectUseCase,
-    private val acceptIncomingConnectUseCase: AcceptIncomingConnectUseCase,
-    private val declineIncomingConnectUseCase: DeclineIncomingConnectUseCase,
-    private val switchActiveDeviceUseCase: SwitchActiveDeviceUseCase,
-    private val sendTextUseCase: SendTextUseCase,
-    private val offerFilesUseCase: OfferFilesUseCase,
-    private val acceptFileOfferUseCase: AcceptFileOfferUseCase,
-    private val declineFileOfferUseCase: DeclineFileOfferUseCase,
-    private val dismissReceivedFilesUseCase: DismissReceivedFilesUseCase,
-    private val disconnectActivePeerUseCase: DisconnectActivePeerUseCase,
-    private val startSyncUseCase: StartSyncUseCase,
-    private val localIpAddress: String
+    private val repository: SyncRepository,
+    private val runtimeController: SyncRuntimeController,
+    private val transferController: SyncTransferController,
+    private val clipboardOperations: ClipboardOperations,
+    private val fileOperations: FileOperations,
+    localIpAddress: String,
+    private val localDeviceName: String
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
         SyncUiState(
-            isDesktop = isDesktop,
-            serverIp = localIpAddress,
-            connectionStatus = ConnectionStatus.DISCONNECTED,
-            isScanningForDevices = true
+            runtime = RuntimeUiState(
+                localDeviceName = localDeviceName,
+                serverIp = localIpAddress
+            )
         )
     )
     val uiState: StateFlow<SyncUiState> = _uiState.asStateFlow()
+    private val _uiEffects = Channel<SyncUiEffect>(Channel.BUFFERED)
+    val uiEffects: Flow<SyncUiEffect> = _uiEffects.receiveAsFlow()
+    private var shownSendingFailure: FileTransferFailure? = null
 
     init {
-        // Bootstrap: register as NSD service, start WebSocket server, begin initial scan
-        startSyncUseCase()
-
         viewModelScope.launch {
-            observePairedDevicesUseCase().collect { paired ->
-                _uiState.update { it.copy(connectedDevices = paired) }
-            }
-        }
-        viewModelScope.launch {
-            observeNearbyDevicesUseCase().collect { nearby ->
-                _uiState.update { it.copy(nearbyDevices = nearby) }
-            }
-        }
-        viewModelScope.launch {
-            observeIsScanningUseCase().collect { scanning ->
-                _uiState.update { it.copy(isScanningForDevices = scanning) }
-            }
-        }
-        viewModelScope.launch {
-            observePendingIncomingConnectUseCase().collect { pending ->
-                _uiState.update { it.copy(pendingPairingRequests = pending) }
-            }
-        }
-        viewModelScope.launch {
-            observePendingOutgoingConnectUseCase().collect { pending ->
-                _uiState.update { it.copy(pendingConnectDevice = pending) }
-            }
-        }
-        viewModelScope.launch {
-            observeConnectionStatusUseCase().collect { status ->
-                _uiState.update { it.copy(connectionStatus = status) }
-            }
-        }
-        viewModelScope.launch {
-            observeIncomingFileOfferUseCase().collect { offer ->
-                _uiState.update { it.copy(incomingFileOffer = offer) }
-            }
-        }
-        viewModelScope.launch {
-            observeFileTransferProgressUseCase().collect { progress ->
-                _uiState.update { it.copy(fileTransferProgress = progress) }
-            }
-        }
-        viewModelScope.launch {
-            observeReceivedFileBatchUseCase().collect { batch ->
-                _uiState.update { it.copy(receivedFileBatch = batch) }
-            }
-        }
-        viewModelScope.launch {
-            combine(
-                observeActiveDeviceIdUseCase(),
-                observeConversationMessagesUseCase()
-            ) { activeId, messages ->
-                val streams = if (activeId != null) {
-                    mapOf(activeId to messages.toDeviceStream(activeId))
-                } else {
-                    emptyMap()
+            runtimeController.snapshot.collect { snapshot ->
+                val sendingFailure = snapshot.transfer.failure
+                    ?.takeIf { it.direction == TransferDirection.SENDING }
+                val sendingProgress = snapshot.transfer.progress
+                    ?.takeIf { it.direction == TransferDirection.SENDING }
+                if (sendingProgress != null || sendingFailure == null) {
+                    shownSendingFailure = null
                 }
-                activeId to streams
-            }.collect { (activeId, streams) ->
+                if (sendingFailure != null && sendingFailure != shownSendingFailure) {
+                    shownSendingFailure = sendingFailure
+                    showMessage(sendingFailure.snackbarMessage())
+                    transferController.dismissFailure()
+                }
                 _uiState.update {
                     it.copy(
-                        activeDeviceId = activeId,
-                        deviceStreams = streams
+                        runtime = it.runtime.copy(
+                            runtimeState = snapshot.runtime,
+                            localNetworkHealthy = snapshot.runtime is SyncRuntimeState.Ready
+                        ),
+                        receive = it.receive.copy(
+                            pendingIncomingOffer = snapshot.pendingIncomingOffer,
+                            quickSaveEnabled = snapshot.quickSaveEnabled,
+                            fileTransferProgress = snapshot.transfer.progress,
+                            fileTransferFailure = snapshot.transfer.failure,
+                            receivedFileBatch = snapshot.transfer.receivedBatch
+                        )
                     )
                 }
             }
         }
-    }
+        viewModelScope.launch {
+            repository.nearbyDevices.collect { nearby ->
+                _uiState.update { it.copy(discovery = it.discovery.copy(nearbyDevices = nearby)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.clipboardHistory.collect { history ->
+                _uiState.update { it.copy(send = it.send.copy(latestTexts = history)) }
+            }
+        }
+        viewModelScope.launch {
+            repository.isScanning.collect { scanning ->
+                _uiState.update { it.copy(discovery = it.discovery.copy(isScanningForDevices = scanning)) }
+            }
+        }
 
-    override fun onCleared() {
-        super.onCleared()
-        disconnectActivePeerUseCase()
     }
 
     fun onEvent(event: SyncEvent) {
         when (event) {
-            is SyncEvent.Disconnect -> {
-                disconnectActivePeerUseCase()
-                _uiState.update { it.copy(outgoingText = "") }
-            }
-            is SyncEvent.SendMessage -> {
-                sendTextUseCase(event.text)
-                _uiState.update { it.copy(outgoingText = "") }
-            }
             is SyncEvent.UpdateOutgoingText -> {
-                _uiState.update { it.copy(outgoingText = event.text) }
+                _uiState.update { it.copy(send = it.send.copy(outgoingText = event.text)) }
             }
-            is SyncEvent.RequestConnect -> {
-                val device = findDevice(event.deviceId) ?: return
-                requestConnectUseCase(device)
-            }
-            is SyncEvent.ConfirmConnect -> confirmOutgoingConnectUseCase()
-            is SyncEvent.DismissConnectRequest -> dismissOutgoingConnectUseCase()
-            is SyncEvent.AcceptPairing -> acceptIncomingConnectUseCase(event.deviceId)
-            is SyncEvent.DeclinePairing -> declineIncomingConnectUseCase(event.deviceId)
-            is SyncEvent.SwitchDevice -> switchActiveDeviceUseCase(event.deviceId)
+
             is SyncEvent.CopyClipboard -> {
-                val stream = _uiState.value.deviceStreams[event.deviceId]
-                val latest = stream?.latestTexts?.firstOrNull()?.text
-                if (!latest.isNullOrBlank()) {
-                    platformOperations.writeClipboard(latest)
-                    _uiState.update { it.copy(userMessage = "Copied to clipboard") }
+                if (event.text.isNotBlank()) {
+                    clipboardOperations.writeClipboard(event.text)
+                    showMessage("Copied to clipboard")
                 }
             }
+
             is SyncEvent.PasteFromClipboard -> {
-                val clipText = platformOperations.readClipboard()
+                val clipText = clipboardOperations.readClipboard()
                 if (!clipText.isNullOrBlank()) {
-                    _uiState.update { it.copy(outgoingText = clipText) }
+                    _uiState.update { it.copy(send = it.send.copy(outgoingText = clipText)) }
                 }
             }
+
             is SyncEvent.OpenFilePicker -> {
-                platformOperations.openFilePicker(event.kind) { files ->
+                fileOperations.openFilePicker(event.kind) { files ->
                     onEvent(SyncEvent.AddSelectedFiles(files))
                 }
             }
+
             is SyncEvent.AddSelectedFiles -> {
-                val merged = (_uiState.value.selectedFiles + event.files).take(MAX_SELECTED_FILES)
-                _uiState.update { it.copy(selectedFiles = merged) }
+                val merged =
+                    (_uiState.value.send.selectedItems + event.files.map { SendItem.File(it) })
+                        .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
+                _uiState.update { it.copy(send = it.send.copy(selectedItems = merged)) }
             }
-            SyncEvent.SendSelectedFiles -> {
-                val selected = _uiState.value.selectedFiles
-                offerFilesUseCase(selected)
-                _uiState.update {
-                    it.copy(
-                        selectedFiles = emptyList(),
-                        userMessage = if (selected.isEmpty()) null else "Request sent"
-                    )
+
+            is SyncEvent.AddCustomText -> {
+                if (event.text.isNotBlank()) {
+                    if (event.text.length > SyncProtocolLimits.MAX_TEXT_LENGTH) {
+                        showMessage("Text is too large")
+                        return
+                    }
+                    val textItem = event.text.toSendTextItem()
+                    val merged = (_uiState.value.send.selectedItems + textItem)
+                        .take(SyncProtocolLimits.MAX_FILES_PER_TRANSFER)
+                    _uiState.update {
+                        it.copy(
+                            send = it.send.copy(
+                                selectedItems = merged,
+                                outgoingText = ""
+                            )
+                        )
+                    }
                 }
             }
-            SyncEvent.ClearSelectedFiles -> {
-                _uiState.update { it.copy(selectedFiles = emptyList()) }
+
+            is SyncEvent.ProposeSendTo -> {
+                if (_uiState.value.send.selectedItems.isEmpty()) {
+                    showMessage("Add files or text first")
+                    return
+                }
+                val target = findDevice(event.deviceId)
+                if (target != null) {
+                    _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = target)) }
+                }
             }
-            is SyncEvent.AcceptFileOffer -> acceptFileOfferUseCase(event.offerId)
-            is SyncEvent.DeclineFileOffer -> declineFileOfferUseCase(event.offerId)
-            SyncEvent.DismissReceivedFiles -> dismissReceivedFilesUseCase()
-            is SyncEvent.ClearUserMessage -> {
-                _uiState.update { it.copy(userMessage = null) }
+
+            SyncEvent.CancelSendProposal -> {
+                _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = null)) }
             }
+
+            is SyncEvent.SendSelectedItemsTo -> {
+                _uiState.update { it.copy(send = it.send.copy(pendingOutgoingOfferTarget = null)) }
+                val selected = _uiState.value.send.selectedItems
+                if (selected.isEmpty()) {
+                    showMessage("Add files or text first")
+                    return
+                }
+                transferController.sendItemsTo(event.deviceId, selected)
+            }
+
+            is SyncEvent.SendSelectedItemsToHost -> {
+                val selected = _uiState.value.send.selectedItems
+                if (selected.isEmpty()) {
+                    showMessage("Add files or text first")
+                    return
+                }
+                transferController.sendItemsToHost(event.hostAddress, selected)
+            }
+
+            SyncEvent.ClearSelectedItems -> {
+                _uiState.update { it.copy(send = it.send.copy(selectedItems = emptyList())) }
+            }
+
+            is SyncEvent.RemoveSelectedItem -> {
+                val updated = _uiState.value.send.selectedItems.filter { it.id != event.itemId }
+                _uiState.update { it.copy(send = it.send.copy(selectedItems = updated)) }
+            }
+
+            SyncEvent.DismissReceivedFiles -> transferController.dismissReceived()
+            SyncEvent.DismissTransferFailure -> transferController.dismissFailure()
+            SyncEvent.CancelTransfer -> transferController.cancel()
             is SyncEvent.OpenFile -> {
                 if (event.path.isNotBlank()) {
-                    platformOperations.openFile(event.path)
+                    val res = fileOperations.openFile(event.path)
+                    if (res is com.liftley.sync360.core.platform.FileOperationResult.Failure) {
+                        showMessage("Could not open file (it might have been moved or deleted)")
+                    }
                 }
             }
-            SyncEvent.TriggerScan -> {
-                triggerManualScanUseCase()
+
+            is SyncEvent.ShowFileInFolder -> {
+                if (event.path.isNotBlank()) {
+                    val res = fileOperations.showFileInFolder(event.path)
+                    if (res is com.liftley.sync360.core.platform.FileOperationResult.Failure) {
+                        showMessage("Could not open containing folder")
+                    }
+                }
             }
+
+            is SyncEvent.OpenDownloadsFolder -> {
+                fileOperations.openDownloadsFolder()
+            }
+
+            SyncEvent.TriggerScan -> runtimeController.scan()
+            SyncEvent.RestartSharing -> {
+                runtimeController.restart()
+                showMessage("Restarted local sharing")
+            }
+
+            is SyncEvent.AcceptIncomingOffer -> repository.acceptIncomingOffer(event.offerId)
+            is SyncEvent.DeclineIncomingOffer -> repository.declineIncomingOffer(event.offerId)
+            SyncEvent.ToggleQuickSave -> repository.setQuickSaveEnabled(!_uiState.value.receive.quickSaveEnabled)
         }
     }
 
     private fun findDevice(deviceId: String): DeviceProfile? =
-        _uiState.value.allKnownDevices().firstOrNull { it.id == deviceId }
+        _uiState.value.discovery.nearbyDevices.firstOrNull { it.id == deviceId }
 
-    companion object {
-        private const val MAX_SELECTED_FILES = 12
+    private fun showMessage(message: String) {
+        _uiEffects.trySend(SyncUiEffect.ShowMessage(message))
+    }
+
+    private fun FileTransferFailure.snackbarMessage(): String = when (reason) {
+        TransferFailureReason.RECEIVER_CANCELLED -> "$peerName declined your request"
+        TransferFailureReason.RECEIVER_BUSY -> "$peerName is busy"
+        TransferFailureReason.RECEIVER_UNAVAILABLE -> "$peerName is unavailable"
+        TransferFailureReason.TIMED_OUT -> "Transfer to $peerName timed out"
+        TransferFailureReason.INVALID_SELECTION -> message
+        TransferFailureReason.SOURCE_UNAVAILABLE -> "Selected file could not be read"
+        else -> message.ifBlank { "Transfer to $peerName failed" }
+    }
+
+    private fun String.toSendTextItem(): SendItem.Text {
+        val normalized = replace("\n", " ").trim()
+        val shortPreview = if (normalized.length > 25) {
+            normalized.take(25) + "..."
+        } else {
+            normalized
+        }
+        return SendItem.Text(
+            id = "text:${kotlin.time.Clock.System.now().toEpochMilliseconds()}",
+            text = this,
+            preview = shortPreview
+        )
     }
 }

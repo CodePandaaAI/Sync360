@@ -5,12 +5,9 @@ data class DeviceProfile(
     val name: String,
     val type: DeviceType,
     val hostAddress: String? = null,
+    val port: Int = 8080,
     val isOnline: Boolean = true
-) {
-    /** IP or hostname used for WebSocket connections. Null if no valid address. */
-    val connectionHost: String?
-        get() = hostAddress?.takeIf { it.isNotBlank() }
-}
+)
 
 enum class DeviceType {
     DESKTOP,

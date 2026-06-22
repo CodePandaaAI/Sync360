@@ -6,20 +6,20 @@ import com.liftley.sync360.core.platform.NoOpIncomingMessageNotifier
 import com.liftley.sync360.core.platform.PlatformOperations
 import com.liftley.sync360.features.sync.domain.model.DeviceProfile
 import com.liftley.sync360.features.sync.domain.model.createLocalDeviceProfile
-import com.liftley.sync360.features.sync.domain.network.DesktopDiscoveryService
-import com.liftley.sync360.features.sync.domain.network.NetworkDiscoveryService
+import com.liftley.sync360.features.sync.data.network.DesktopLocalPeerDiscovery
+import com.liftley.sync360.features.sync.domain.network.LocalPeerDiscovery
 import org.koin.core.module.Module
 import org.koin.dsl.module
 
 actual fun platformModule(): Module = module {
     single<PlatformOperations> { DesktopPlatformOperations() }
-    single<NetworkDiscoveryService> { DesktopDiscoveryService() }
+    single<LocalPeerDiscovery> { DesktopLocalPeerDiscovery() }
     single<IncomingMessageNotifier> { NoOpIncomingMessageNotifier() }
     single<DeviceProfile> {
         createLocalDeviceProfile(
             context = null,
             isDesktop = true,
-            desktopAddress = get<PlatformOperations>().getLocalIpAddress()
+            desktopAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress
         )
     }
 }

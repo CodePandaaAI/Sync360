@@ -2,7 +2,6 @@ package com.liftley.sync360.features.sync.domain.model
 
 import android.content.Context
 import android.os.Build
-import android.provider.Settings
 
 actual fun createLocalDeviceProfile(
     context: Any?,

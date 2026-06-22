@@ -21,6 +21,8 @@ sqldelight = "2.0.2"
 sqlite = "2.5.0-alpha01"
 koin = "3.5.6"
 koinCompose = "1.1.5"
+androidxNavigation3 = "1.1.2"
+coil = "3.0.4"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -44,17 +46,14 @@ kotlinx-coroutinesSwing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-s
 
 ktor-client-core = { module = "io.ktor:ktor-client-core", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio", version.ref = "ktor" }
-ktor-client-websockets = { module = "io.ktor:ktor-client-websockets", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation", version.ref = "ktor" }
 ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx-json", version.ref = "ktor" }
 
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 ktor-server-netty = { module = "io.ktor:ktor-server-netty", version.ref = "ktor" }
-ktor-server-websockets = { module = "io.ktor:ktor-server-websockets", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
-kotlinx-serialization-protobuf = { module = "org.jetbrains.kotlinx:kotlinx-serialization-protobuf", version.ref = "kotlinx-serialization" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 sqldelight-android = { module = "app.cash.sqldelight:android-driver", version.ref = "sqldelight" }
 sqldelight-native = { module = "app.cash.sqldelight:native-driver", version.ref = "sqldelight" }
@@ -63,6 +62,9 @@ sqldelight-coroutines = { module = "app.cash.sqldelight:coroutines-extensions", 
 koin-core = { module = "io.insert-koin:koin-core", version.ref = "koin" }
 koin-compose = { module = "io.insert-koin:koin-compose", version.ref = "koinCompose" }
 koin-android = { module = "io.insert-koin:koin-android", version.ref = "koin" }
+androidx-navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "androidxNavigation3" }
+androidx-navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "androidxNavigation3" }
+coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

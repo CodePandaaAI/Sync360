@@ -39,6 +39,7 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
+            implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
             implementation(libs.koin.android)
         }
@@ -54,27 +55,29 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.navigation3.runtime)
+            implementation(libs.androidx.navigation3.ui)
             implementation(compose.material)
             implementation(compose.materialIconsExtended)
             
             // Ktor & Serialization
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.cio)
-            implementation(libs.ktor.client.websockets)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.kotlinx.serialization.json)
-            implementation(libs.kotlinx.serialization.protobuf)
             
             // Ktor Server
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
-            implementation(libs.ktor.server.websockets)
             implementation(libs.ktor.server.content.negotiation)
             
             // Koin Dependency Injection
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
+            
+            // Coil Image Loading
+            implementation(libs.coil.compose)
             
         }
         commonTest.dependencies {
@@ -85,4 +88,8 @@ kotlin {
 
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
+}
+
+compose.resources {
+    publicResClass = true
 }
