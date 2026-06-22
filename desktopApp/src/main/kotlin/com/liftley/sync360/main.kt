@@ -7,6 +7,9 @@ import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
 import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.context.GlobalContext
+import org.jetbrains.compose.resources.painterResource
+import sync360.shared.generated.resources.Res
+import sync360.shared.generated.resources.app_icon
 
 fun main() {
     System.setProperty("java.net.preferIPv4Stack", "true")
@@ -23,8 +26,9 @@ fun main() {
                 exitApplication()
             },
             title = "Sync360",
+            icon = painterResource(Res.drawable.app_icon)
         ) {
-            App(isDesktop = true)
+            DesktopRoot()
         }
     }
 }

@@ -1,44 +1,62 @@
 package com.liftley.sync360.core.platform
 
 import com.liftley.sync360.features.sync.domain.model.PickedFile
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
 import java.awt.datatransfer.StringSelection
 import java.io.File
 import java.io.OutputStream
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.NetworkInterface
+import kotlin.io.encoding.Base64
+import kotlin.io.encoding.ExperimentalEncodingApi
 
+@OptIn(ExperimentalEncodingApi::class)
 class DesktopPlatformOperations : PlatformOperations {
     private val activeFileWrites = mutableMapOf<String, DesktopFileWrite>()
 
-    override fun startService(hostIp: String) {}
+    override fun startForegroundService(status: SyncForegroundServiceStatus): BackgroundServiceStartResult =
+        BackgroundServiceStartResult.NOT_REQUIRED
+    override fun updateForegroundService(status: SyncForegroundServiceStatus) {}
     override fun stopService() {}
-    override fun showOverlay() {}
-    override fun hideOverlay() {}
 
     override fun readClipboard(): String? {
-        return try {
-            val transferable = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
-            if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
-                transferable.getTransferData(DataFlavor.stringFlavor) as String
-            } else null
-        } catch (e: Exception) {
-            null
+        var attempts = 3
+        while (attempts > 0) {
+            try {
+                val transferable = Toolkit.getDefaultToolkit().systemClipboard.getContents(null)
+                if (transferable != null && transferable.isDataFlavorSupported(DataFlavor.stringFlavor)) {
+                    return transferable.getTransferData(DataFlavor.stringFlavor) as String
+                }
+                return null
+            } catch (e: Exception) {
+                attempts--
+                if (attempts > 0) {
+                    try { Thread.sleep(50) } catch (_: Exception) {}
+                }
+            }
         }
+        return null
     }
 
     override fun writeClipboard(text: String) {
-        try {
-            val selection = StringSelection(text)
-            Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        var attempts = 3
+        while (attempts > 0) {
+            try {
+                val selection = StringSelection(text)
+                Toolkit.getDefaultToolkit().systemClipboard.setContents(selection, selection)
+                return
+            } catch (e: Exception) {
+                attempts--
+                if (attempts > 0) {
+                    try { Thread.sleep(50) } catch (_: Exception) {}
+                } else {
+                    e.printStackTrace()
+                }
+            }
         }
     }
 
@@ -74,174 +92,285 @@ class DesktopPlatformOperations : PlatformOperations {
         }
     }
 
-    override fun saveFile(
-        name: String,
-        content: ByteArray,
-        onResult: (success: Boolean, path: String?) -> Unit
-    ) {
-        try {
-            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
-            val syncDir = File(downloadsDir, "Sync360")
-            syncDir.mkdirs()
-            val selectedFile = File(syncDir, name)
-            selectedFile.writeBytes(content)
-            onResult(true, selectedFile.absolutePath)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            onResult(false, null)
-        }
-    }
-
     override suspend fun readFileChunks(
         file: PickedFile,
         chunkSizeBytes: Int,
-        onChunk: suspend (ByteArray) -> Unit
-    ): Boolean = withContext(Dispatchers.IO) {
+        onChunk: suspend (bytes: ByteArray, offset: Int, length: Int) -> Unit
+    ): FileOperationResult<Long> = withContext(Dispatchers.IO) {
         try {
+            if (file.mimeType == "application/x-sync360-text") {
+                val textContent = if (file.id.startsWith("text_content:")) {
+                    Base64.decode(file.id.substringAfter("text_content:")).decodeToString()
+                } else {
+                    ""
+                }
+                val bytes = textContent.encodeToByteArray()
+                onChunk(bytes, 0, bytes.size)
+                return@withContext FileOperationResult.Success(bytes.size.toLong())
+            }
+            var bytesRead = 0L
             File(file.id).inputStream().use { input ->
                 val buffer = ByteArray(chunkSizeBytes)
                 while (true) {
                     val read = input.read(buffer)
                     if (read <= 0) break
-                    onChunk(buffer.copyOf(read))
+                    bytesRead += read
+                    onChunk(buffer, 0, read)
                 }
             }
-            true
+            FileOperationResult.Success(bytesRead)
+        } catch (error: CancellationException) {
+            throw error
         } catch (_: Exception) {
-            false
+            FileOperationResult.Failure(PlatformFileError.READ_FAILED)
         }
     }
 
-    override fun saveFileChunks(
-        name: String,
-        chunks: List<ByteArray>,
-        onResult: (success: Boolean, path: String?) -> Unit
-    ) {
-        try {
-            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
-            val syncDir = File(downloadsDir, "Sync360")
-            syncDir.mkdirs()
-            val selectedFile = File(syncDir, name)
-            selectedFile.outputStream().use { output ->
-                chunks.forEach { output.write(it) }
-            }
-            onResult(true, selectedFile.absolutePath)
-        } catch (e: Exception) {
-            e.printStackTrace()
-            onResult(false, null)
-        }
-    }
-
-    override fun beginFileWrite(name: String): String? {
+    override fun beginFileWrite(name: String): FileOperationResult<String> {
         return try {
-            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
-            val syncDir = File(downloadsDir, "Sync360")
-            syncDir.mkdirs()
-            val selectedFile = File(syncDir, name)
-            val output = selectedFile.outputStream()
+            val userHome = System.getProperty("user.home")
+            val downloadsDir = File(userHome, "Downloads")
+            var syncDir = File(downloadsDir, "Sync360")
+            if ((!syncDir.exists() && !syncDir.mkdirs()) || !syncDir.isDirectory || !syncDir.canWrite()) {
+                syncDir = File(userHome, "Sync360")
+                if ((!syncDir.exists() && !syncDir.mkdirs()) || !syncDir.isDirectory || !syncDir.canWrite()) {
+                    return FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
+                }
+            }
+            val selectedFile = uniqueFile(syncDir, name)
+            val output = selectedFile.outputStream().buffered()
             val handle = selectedFile.absolutePath
             synchronized(activeFileWrites) {
                 activeFileWrites[handle] = DesktopFileWrite(selectedFile, output)
             }
-            handle
-        } catch (_: Exception) {
-            null
+            FileOperationResult.Success(handle)
+        } catch (error: Exception) {
+            FileOperationResult.Failure(fileError(error, PlatformFileError.DESTINATION_UNAVAILABLE))
         }
     }
 
-    override fun writeFileChunk(handle: String, bytes: ByteArray): Boolean {
+    override fun getAvailableStorageBytes(): FileOperationResult<Long> {
         return try {
-            val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output } ?: return false
-            output.write(bytes)
-            true
+            val userHome = System.getProperty("user.home")
+            val downloadsDir = File(userHome, "Downloads")
+            val storageRoot = downloadsDir.takeIf { it.exists() } ?: File(userHome)
+            val available = storageRoot.usableSpace
+            FileOperationResult.Success(available)
         } catch (_: Exception) {
+            FileOperationResult.Failure(PlatformFileError.DESTINATION_UNAVAILABLE)
+        }
+    }
+
+    override fun writeFileChunk(handle: String, bytes: ByteArray, offset: Int, length: Int): FileOperationResult<Int> {
+        return try {
+            val output = synchronized(activeFileWrites) { activeFileWrites[handle]?.output }
+                ?: return FileOperationResult.Failure(PlatformFileError.INVALID_HANDLE)
+            output.write(bytes, offset, length)
+            FileOperationResult.Success(length)
+        } catch (error: Exception) {
             cancelFileWrite(handle)
-            false
+            FileOperationResult.Failure(fileError(error, PlatformFileError.WRITE_FAILED))
         }
     }
 
-    override fun finishFileWrite(handle: String): String? {
+    override fun finishFileWrite(handle: String): FileOperationResult<String> {
+        val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) }
+            ?: return FileOperationResult.Failure(PlatformFileError.INVALID_HANDLE)
         return try {
-            val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return null
             write.output.flush()
             write.output.close()
-            write.file.absolutePath
-        } catch (_: Exception) {
-            cancelFileWrite(handle)
-            null
+            FileOperationResult.Success(write.file.absolutePath)
+        } catch (error: Exception) {
+            runCatching { write.output.close() }
+            runCatching { write.file.delete() }
+            FileOperationResult.Failure(fileError(error, PlatformFileError.FINALIZE_FAILED))
         }
     }
 
-    override fun cancelFileWrite(handle: String) {
-        val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) } ?: return
+    override fun cancelFileWrite(handle: String): FileOperationResult<Unit> {
+        val write = synchronized(activeFileWrites) { activeFileWrites.remove(handle) }
+            ?: return FileOperationResult.Failure(PlatformFileError.INVALID_HANDLE)
+        var failed = false
         try {
             write.output.close()
         } catch (_: Exception) {
+            failed = true
         }
-        runCatching {
-            write.file.delete()
+        if (!write.file.delete() && write.file.exists()) failed = true
+        return if (failed) {
+            FileOperationResult.Failure(PlatformFileError.CANCEL_FAILED)
+        } else {
+            FileOperationResult.Success(Unit)
         }
     }
 
-    override fun openFile(path: String) {
-        try {
+    override fun deleteFile(path: String): FileOperationResult<Unit> {
+        return try {
+            val file = File(path)
+            if (!file.exists() || file.delete()) {
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+            }
+        } catch (_: Exception) {
+            FileOperationResult.Failure(PlatformFileError.DELETE_FAILED)
+        }
+    }
+
+    override fun openFile(path: String): FileOperationResult<Unit> {
+        return try {
             val file = File(path)
             if (file.exists() && java.awt.Desktop.isDesktopSupported()) {
                 java.awt.Desktop.getDesktop().open(file)
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
             }
         } catch (e: Exception) {
             e.printStackTrace()
+            FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
         }
     }
 
-    // No-op for Server operations since we use Ktor CIO Network service
-    override fun startServer(port: Int) {}
-    override fun stopServer() {}
-    override fun broadcastToServer(text: String) {}
-    override fun disconnectServerClient(deviceId: String) {}
-
-    override fun getLocalIpAddress(): String {
-        try {
-            val interfaces = NetworkInterface.getNetworkInterfaces()
-            while (interfaces.hasMoreElements()) {
-                val networkInterface = interfaces.nextElement()
-                if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) continue
-                
-                // Filter out virtual interfaces (Hyper-V, WSL, VirtualBox, Docker, etc.)
-                val name = networkInterface.name.lowercase()
-                val displayName = networkInterface.displayName.lowercase()
-                if (name.contains("virtual") || displayName.contains("virtual") ||
-                    name.contains("hyper-v") || displayName.contains("hyper-v") ||
-                    name.contains("host-only") || displayName.contains("host-only") ||
-                    name.contains("wsl") || displayName.contains("wsl") ||
-                    name.contains("vmware") || displayName.contains("vmware") ||
-                    name.contains("vbox") || displayName.contains("vbox") ||
-                    name.contains("vpn") || displayName.contains("vpn") ||
-                    name.contains("virtualbox") || displayName.contains("virtualbox") ||
-                    name.contains("zerotier") || displayName.contains("zerotier") ||
-                    name.contains("docker") || displayName.contains("docker") ||
-                    name.contains("vethernet") || displayName.contains("vethernet")) {
-                    continue
+    override fun showFileInFolder(path: String): FileOperationResult<Unit> {
+        return try {
+            val file = File(path)
+            if (file.exists() && java.awt.Desktop.isDesktopSupported()) {
+                val osName = System.getProperty("os.name").lowercase()
+                if (osName.contains("win")) {
+                    Runtime.getRuntime().exec(arrayOf("explorer.exe", "/select,", file.absolutePath))
+                } else if (osName.contains("mac")) {
+                    Runtime.getRuntime().exec(arrayOf("open", "-R", file.absolutePath))
+                } else {
+                    java.awt.Desktop.getDesktop().open(file.parentFile)
                 }
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        }
+    }
 
-                val addresses = networkInterface.inetAddresses
-                while (addresses.hasMoreElements()) {
-                    val address = addresses.nextElement()
-                    if (!address.isLoopbackAddress && address is Inet4Address) {
-                        return address.hostAddress
+    override fun openDownloadsFolder(): FileOperationResult<Unit> {
+        return try {
+            val downloadsDir = File(System.getProperty("user.home"), "Downloads")
+            if (downloadsDir.exists() && java.awt.Desktop.isDesktopSupported()) {
+                java.awt.Desktop.getDesktop().open(downloadsDir)
+                FileOperationResult.Success(Unit)
+            } else {
+                FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            FileOperationResult.Failure(PlatformFileError.OPEN_FAILED)
+        }
+    }
+
+    override fun getNetworkEnvironment(): NetworkEnvironment {
+        val addresses = try {
+            buildList {
+                val interfaces = NetworkInterface.getNetworkInterfaces()
+                while (interfaces.hasMoreElements()) {
+                    val networkInterface = interfaces.nextElement()
+                    if (!networkInterface.isUp || networkInterface.isLoopback || networkInterface.isVirtual) continue
+                    val kind = networkInterfaceKind(
+                        networkInterface.name,
+                        networkInterface.displayName.orEmpty()
+                    )
+
+                    val interfaceAddresses = networkInterface.inetAddresses
+                    while (interfaceAddresses.hasMoreElements()) {
+                        val address = interfaceAddresses.nextElement()
+                        if (
+                            !address.isLoopbackAddress &&
+                            !address.isLinkLocalAddress &&
+                            address is Inet4Address
+                        ) {
+                            add(LocalNetworkAddress(address.hostAddress, networkInterface.name, kind))
+                        }
                     }
                 }
             }
-        } catch (_: Exception) {}
-        return try {
-            InetAddress.getLocalHost().hostAddress
-        } catch (e: Exception) {
-            "127.0.0.1"
+        } catch (_: Exception) {
+            emptyList()
+        }
+        return NetworkEnvironment(
+            addresses
+                .distinctBy { it.address }
+                .sortedWith(
+                    compareBy<LocalNetworkAddress> { networkAddressPriority(it) }
+                        .thenBy { it.address }
+                )
+        )
+    }
+
+    private fun uniqueFile(directory: File, fileName: String): File {
+        val cleanName = safeReceivedFileName(fileName)
+        val dotIndex = cleanName.lastIndexOf('.').takeIf { it > 0 }
+        val baseName = dotIndex?.let { cleanName.substring(0, it) } ?: cleanName
+        val extension = dotIndex?.let { cleanName.substring(it) }.orEmpty()
+
+        var candidate = File(directory, cleanName)
+        var index = 1
+        while (candidate.exists()) {
+            candidate = File(directory, "$baseName ($index)$extension")
+            index += 1
+        }
+        return candidate
+    }
+
+    private fun safeReceivedFileName(name: String): String {
+        val sanitized = name
+            .replace('\\', '_')
+            .replace('/', '_')
+            .filterNot { it.isISOControl() }
+            .trim()
+            .trim('.')
+            .take(180)
+        return sanitized.ifBlank { "received_file" }
+    }
+
+    private fun networkInterfaceKind(name: String, displayName: String): NetworkInterfaceKind {
+        val value = "$name $displayName".lowercase()
+        return when {
+            listOf("vpn", "tun", "tap", "wireguard", "zerotier").any { it in value } ->
+                NetworkInterfaceKind.VPN
+            listOf("wi-fi", "wifi", "wlan", "wireless").any { it in value } ->
+                NetworkInterfaceKind.WIFI
+            listOf("ethernet", "eth", "en").any { it in value } ->
+                NetworkInterfaceKind.ETHERNET
+            listOf("mobile hotspot", "softap").any { it in value } ->
+                NetworkInterfaceKind.HOTSPOT
+            else -> NetworkInterfaceKind.OTHER
         }
     }
 
-    override fun getIncomingMessagesFlow(): Flow<String>? {
-        return emptyFlow()
+    private fun networkAddressPriority(address: LocalNetworkAddress): Int =
+        when (address.kind) {
+            NetworkInterfaceKind.WIFI -> 0
+            NetworkInterfaceKind.HOTSPOT -> 1
+            NetworkInterfaceKind.ETHERNET -> 2
+            NetworkInterfaceKind.OTHER -> 3
+            NetworkInterfaceKind.VPN -> 4
+        }
+
+    private fun fileError(error: Throwable, fallback: PlatformFileError): PlatformFileError {
+        var current: Throwable? = error
+        while (current != null) {
+            val message = current.message.orEmpty().lowercase()
+            if (
+                "no space" in message ||
+                "disk full" in message ||
+                "not enough space" in message
+            ) {
+                return PlatformFileError.STORAGE_FULL
+            }
+            current = current.cause
+        }
+        return fallback
     }
 }
 

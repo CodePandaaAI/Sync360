@@ -1,0 +1,403 @@
+package com.liftley.sync360.features.sync.data.repository
+
+import com.liftley.sync360.core.platform.IncomingMessageNotifier
+import com.liftley.sync360.core.platform.PlatformOperations
+import com.liftley.sync360.features.sync.data.network.FileSendFailure
+import com.liftley.sync360.features.sync.data.network.FileSendResult
+import com.liftley.sync360.features.sync.data.network.IncomingUploadFailure
+import com.liftley.sync360.features.sync.data.network.OutgoingTransferSender
+import com.liftley.sync360.features.sync.data.network.api.FileCompleteDto
+import com.liftley.sync360.features.sync.data.network.api.FileOfferDto
+import com.liftley.sync360.features.sync.domain.model.FileTransferFailure
+import com.liftley.sync360.features.sync.domain.model.FileTransferProgress
+import com.liftley.sync360.features.sync.domain.model.PendingIncomingOffer
+import com.liftley.sync360.features.sync.domain.model.SendItem
+import com.liftley.sync360.features.sync.domain.model.SyncProtocolLimits
+import com.liftley.sync360.features.sync.domain.model.TransferDirection
+import com.liftley.sync360.features.sync.domain.model.TransferFailureReason
+import com.liftley.sync360.features.sync.domain.model.TransferSnapshot
+import com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch
+import com.liftley.sync360.features.sync.domain.model.TransferStage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
+import com.liftley.sync360.features.sync.domain.model.DeviceProfile
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.milliseconds
+
+internal class TransferEngine(
+    private val scope: CoroutineScope,
+    private val incomingNotifier: IncomingMessageNotifier,
+    private val platformOperations: PlatformOperations,
+    private val incoming: IncomingTransferReceiver,
+    private val outgoing: OutgoingTransferSender,
+    private val onIncomingTerminated: () -> Unit
+) {
+    private val store = TransferStore()
+    private val incomingActivityLock = Any()
+    private var outgoingJob: Job? = null
+    private var incomingTimeoutJob: Job? = null
+    private var lastIncomingActivityMillis = 0L
+
+    val snapshot: Flow<TransferSnapshot> = store.snapshot
+    val isActive: Boolean
+        get() = store.value.isActive
+    val blocksIncomingOffers: Boolean
+        get() = store.value.blocksIncomingOffers
+    val receivedBatchValue: com.liftley.sync360.features.sync.domain.model.ReceivedFileBatch?
+        get() = store.value.receivedBatch
+
+    fun offerItemsTo(device: DeviceProfile, items: List<SendItem>) {
+        val peerName = device.name
+        val peerHost = device.hostAddress
+        if (peerHost.isNullOrBlank()) {
+            fail(
+                message = "Target device has no reachable address",
+                direction = TransferDirection.SENDING,
+                reason = TransferFailureReason.RECEIVER_UNAVAILABLE,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        val peerPort = device.port
+        if (isActive) {
+            fail(
+                message = "A transfer is already in progress",
+                direction = TransferDirection.SENDING,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        if (items.isEmpty() || items.size > SyncProtocolLimits.MAX_FILES_PER_TRANSFER) {
+            fail(
+                "Select up to ${SyncProtocolLimits.MAX_FILES_PER_TRANSFER} items",
+                TransferDirection.SENDING,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        if (items.filterIsInstance<SendItem.Text>().any { it.text.length > SyncProtocolLimits.MAX_TEXT_LENGTH }) {
+            fail(
+                message = "One or more text snippets are too large",
+                direction = TransferDirection.SENDING,
+                reason = TransferFailureReason.INVALID_SELECTION,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        if (items.any {
+                it.sizeBytes < 0L ||
+                    it.sizeBytes > SyncProtocolLimits.MAX_FILE_BYTES ||
+                    it.displayName.isBlank() ||
+                    it.displayName.length > SyncProtocolLimits.MAX_FILE_NAME_LENGTH ||
+                    it.mimeType.length > SyncProtocolLimits.MAX_MIME_TYPE_LENGTH
+            }
+        ) {
+            fail(
+                message = "One or more selected files are invalid",
+                direction = TransferDirection.SENDING,
+                peerNameOverride = peerName
+            )
+            return
+        }
+        var totalBytes = 0L
+        for (item in items) {
+            if (
+                item.sizeBytes > Long.MAX_VALUE - totalBytes ||
+                    totalBytes + item.sizeBytes > SyncProtocolLimits.MAX_BATCH_BYTES
+            ) {
+                fail(
+                    message = "Selected files are too large",
+                    direction = TransferDirection.SENDING,
+                    peerNameOverride = peerName
+                )
+                return
+            }
+            totalBytes += item.sizeBytes
+        }
+
+
+        val offerId = newSyncItemId()
+
+        outgoingJob?.cancel()
+        outgoingJob = scope.launch {
+            startService()
+            store.start(
+                FileTransferProgress(
+                    peerName = peerName,
+                    files = outgoing.previewsForItems(items),
+                    bytesTransferred = 0L,
+                    totalBytes = totalBytes,
+                    direction = TransferDirection.SENDING,
+                    stage = TransferStage.PREPARING
+                )
+            )
+
+            val result = outgoing.sendItems(
+                peerHost = peerHost,
+                peerPort = peerPort,
+                offerId = offerId,
+                items = items,
+                onProgress = {
+                    updateStage(TransferStage.TRANSFERRING)
+                    updateProgress(it)
+                },
+                onVerifying = {
+                    updateStage(TransferStage.VERIFYING)
+                    updateProgress(totalBytes)
+                }
+            )
+
+            if (result is FileSendResult.Success) {
+                updateProgress(totalBytes)
+                store.succeed(TransferDirection.SENDING)
+            } else {
+                val reason = (result as FileSendResult.Failure).reason.toFailureReason()
+                fail(reason.defaultMessage(), TransferDirection.SENDING, reason = reason)
+            }
+            stopService()
+            outgoingJob = null
+        }
+    }
+
+    fun dismissReceivedFiles() = store.dismissReceivedBatch()
+
+    fun updateReceivedBatch(batch: ReceivedFileBatch) {
+        store.succeed(TransferDirection.RECEIVING, batch)
+    }
+
+    fun dismissFailure() = store.dismissFailure()
+
+    fun receiveOffer(offer: FileOfferDto, remoteHost: String): Boolean {
+        val prepared = prepareIncomingOffer(
+            offer = offer,
+            remoteHost = remoteHost,
+            hasPeerGrant = true
+        ) ?: return false
+        startPreparedIncomingOffer(prepared)
+        return true
+    }
+
+    fun prepareIncomingOffer(
+        offer: FileOfferDto,
+        remoteHost: String,
+        hasPeerGrant: Boolean
+    ): PreparedIncomingFileOffer? =
+        incoming.prepareOffer(
+            offer,
+            hasPeerGrant = hasPeerGrant,
+            hasActiveTransfer = blocksIncomingOffers
+        )
+
+    fun pendingIncomingOffer(prepared: PreparedIncomingFileOffer): PendingIncomingOffer.Files =
+        PendingIncomingOffer.Files(
+            offerId = prepared.offerId,
+            senderDeviceId = prepared.senderDeviceId,
+            senderName = prepared.senderName,
+            fileCount = prepared.files.size,
+            totalBytes = prepared.totalBytes,
+            files = prepared.files
+        )
+
+    fun startPreparedIncomingOffer(prepared: PreparedIncomingFileOffer) {
+        val start = incoming.startPreparedOffer(prepared, ::updateProgress)
+        startService()
+        markIncomingActivity()
+        store.start(start.progress)
+        incomingNotifier.notifyIncoming(
+            start.senderName,
+            "Receiving ${start.fileCount} files...",
+            true
+        )
+    }
+
+    fun receiveComplete(complete: FileCompleteDto, remoteHost: String): Boolean {
+        val accepted = incoming.completeSignal(complete, hasPeerGrant = true)
+        if (accepted) markIncomingActivity()
+        return accepted
+    }
+
+    fun initIncomingRawFile(
+        offerId: String,
+        fileIndex: Int,
+        declaredLength: Long,
+        fileIdentifier: String,
+        remoteHost: String
+    ): Boolean {
+        updateStage(TransferStage.TRANSFERRING)
+        val initialized = incoming.initRawFileWrite(
+            offerId = offerId,
+            fileIndex = fileIndex,
+            declaredLength = declaredLength,
+            fileIdentifier = fileIdentifier
+        )
+        if (initialized) markIncomingActivity()
+        return initialized
+    }
+
+    fun receiveChunk(offerId: String, fileIndex: Int, chunk: ByteArray, offset: Int, length: Int): Boolean {
+        updateStage(TransferStage.TRANSFERRING)
+        val written = incoming.writeChunk(offerId, fileIndex, chunk, offset, length)
+        if (written) markIncomingActivity()
+        return written
+    }
+
+    fun completeIncomingFile(offerId: String, fileIndex: Int): String? {
+        updateStage(TransferStage.VERIFYING)
+        updateProgress(store.value.progress?.totalBytes ?: 0L)
+        val complete = incoming.completeFileWrite(offerId, fileIndex)
+        if (complete.batch != null) {
+            stopIncomingWatchdog()
+            store.succeed(TransferDirection.RECEIVING, complete.batch)
+            stopService()
+        }
+        return complete.savedPath
+    }
+
+    fun failIncomingFile(
+        offerId: String,
+        fileIndex: Int,
+        knownFailure: IncomingUploadFailure?
+    ): IncomingUploadFailure? {
+        val failure = knownFailure ?: incoming.consumeFileWriteFailure(offerId, fileIndex)
+        stopIncomingWatchdog()
+        incoming.errorFileWrite(offerId, fileIndex)
+        incoming.clear()
+        val reason = failure.toFailureReason()
+        fail(reason.defaultMessage(), TransferDirection.RECEIVING, reason = reason)
+        stopService()
+        return failure
+    }
+
+    fun consumeIncomingFailure(
+        offerId: String,
+        fileIndex: Int
+    ): IncomingUploadFailure? = incoming.consumeFileWriteFailure(offerId, fileIndex)
+
+    fun cancel(updateService: Boolean = true) {
+        outgoing.cancelActiveTransfer()
+        outgoingJob?.cancel()
+        outgoingJob = null
+        stopIncomingWatchdog()
+        incoming.clear()
+        store.clear()
+        if (updateService) stopService()
+    }
+
+
+
+    private fun updateProgress(bytesTransferred: Long) {
+        val current = store.value.progress
+        if (current != null && current.bytesTransferred != bytesTransferred) {
+            store.updateProgress(bytesTransferred, null, null)
+        }
+    }
+
+    private fun updateStage(stage: TransferStage) {
+        val current = store.value.progress
+        if (current != null && current.stage != stage) {
+            store.updateStage(stage)
+        }
+    }
+
+    private fun fail(
+        message: String,
+        direction: TransferDirection,
+        failedFileName: String? = null,
+        reason: TransferFailureReason = TransferFailureReason.UNKNOWN,
+        peerNameOverride: String? = null
+    ) {
+        val peerName = peerNameOverride ?: store.value.progress?.peerName ?: "Peer"
+        store.fail(
+            FileTransferFailure(
+                peerName = peerName,
+                message = message,
+                failedFileName = failedFileName,
+                direction = direction,
+                reason = reason
+            )
+        )
+    }
+
+    private fun markIncomingActivity() {
+        synchronized(incomingActivityLock) {
+            lastIncomingActivityMillis = Clock.System.now().toEpochMilliseconds()
+        }
+        if (incomingTimeoutJob?.isActive == true) return
+
+        incomingTimeoutJob = scope.launch {
+            while (true) {
+                val idleMillis = synchronized(incomingActivityLock) {
+                    Clock.System.now().toEpochMilliseconds() - lastIncomingActivityMillis
+                }
+                val remainingMillis = SyncProtocolLimits.FILE_IDLE_TIMEOUT_MILLIS - idleMillis
+                if (remainingMillis <= 0L) break
+                delay(remainingMillis.milliseconds)
+            }
+            incoming.clear()
+            fail(
+                message = TransferFailureReason.TIMED_OUT.defaultMessage(),
+                direction = TransferDirection.RECEIVING,
+                reason = TransferFailureReason.TIMED_OUT
+            )
+            stopService()
+            onIncomingTerminated()
+            incomingTimeoutJob = null
+        }
+    }
+
+    private fun stopIncomingWatchdog() {
+        incomingTimeoutJob?.cancel()
+        incomingTimeoutJob = null
+        synchronized(incomingActivityLock) {
+            lastIncomingActivityMillis = 0L
+        }
+    }
+
+    private fun startService() = platformOperations.startTransferService()
+
+    private fun stopService() = Unit
+
+}
+
+private fun FileSendFailure.toFailureReason(): TransferFailureReason = when (this) {
+    FileSendFailure.SOURCE_UNAVAILABLE -> TransferFailureReason.SOURCE_UNAVAILABLE
+    FileSendFailure.REMOTE_STORAGE_FULL -> TransferFailureReason.STORAGE_FULL
+    FileSendFailure.REMOTE_STORAGE_UNAVAILABLE -> TransferFailureReason.STORAGE_UNAVAILABLE
+    FileSendFailure.INTEGRITY_FAILED -> TransferFailureReason.INTEGRITY_FAILED
+    FileSendFailure.TIMED_OUT -> TransferFailureReason.TIMED_OUT
+    FileSendFailure.RECEIVER_UNAVAILABLE -> TransferFailureReason.RECEIVER_UNAVAILABLE
+    FileSendFailure.RECEIVER_BUSY -> TransferFailureReason.RECEIVER_BUSY
+    FileSendFailure.NETWORK_FAILED -> TransferFailureReason.NETWORK_FAILED
+    FileSendFailure.TRANSFER_INTERRUPTED -> TransferFailureReason.INTERRUPTED
+    FileSendFailure.RECEIVER_CANCELLED -> TransferFailureReason.RECEIVER_CANCELLED
+}
+
+private fun IncomingUploadFailure?.toFailureReason(): TransferFailureReason = when (this) {
+    IncomingUploadFailure.STORAGE_FULL -> TransferFailureReason.STORAGE_FULL
+    IncomingUploadFailure.STORAGE_UNAVAILABLE -> TransferFailureReason.STORAGE_UNAVAILABLE
+    IncomingUploadFailure.INTEGRITY -> TransferFailureReason.INTEGRITY_FAILED
+    IncomingUploadFailure.WRITE_FAILED -> TransferFailureReason.WRITE_FAILED
+    IncomingUploadFailure.INTERRUPTED -> TransferFailureReason.INTERRUPTED
+    IncomingUploadFailure.INVALID_REQUEST -> TransferFailureReason.UNKNOWN
+    null -> TransferFailureReason.UNKNOWN
+}
+
+private fun TransferFailureReason.defaultMessage(): String = when (this) {
+    TransferFailureReason.SOURCE_UNAVAILABLE -> "The selected file could not be read"
+    TransferFailureReason.STORAGE_FULL -> "The receiving device does not have enough storage"
+    TransferFailureReason.STORAGE_UNAVAILABLE -> "The receiving device cannot access storage"
+    TransferFailureReason.INTEGRITY_FAILED -> "File integrity verification failed"
+    TransferFailureReason.RECEIVER_UNAVAILABLE -> "The receiving device is unavailable"
+    TransferFailureReason.RECEIVER_BUSY -> "The receiving device is busy"
+    TransferFailureReason.NETWORK_FAILED -> "The file transfer was interrupted by the network"
+    TransferFailureReason.TIMED_OUT -> "The file transfer timed out"
+    TransferFailureReason.WRITE_FAILED -> "The received file could not be saved"
+    TransferFailureReason.INVALID_SELECTION -> "The selected files are invalid"
+    TransferFailureReason.SENDER_CANCELLED -> "The sender cancelled the transfer"
+    TransferFailureReason.RECEIVER_CANCELLED -> "Receiver declined the transfer."
+    TransferFailureReason.INTERRUPTED -> "The transfer was interrupted"
+    TransferFailureReason.UNKNOWN -> "File transfer failed"
+}

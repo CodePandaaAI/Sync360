@@ -1,19 +1,61 @@
-*.iml
-.kotlin
-.gradle
+# Gradle / Kotlin
+.gradle/
+.kotlin/
 **/build/
-xcuserdata
 !src/**/build/
 local.properties
-.idea
-.DS_Store
-captures
-.externalNativeBuild
-.cxx
+
+# IDE / local agent tooling
+.idea/
+.cursor/
+*.iml
+*.ipr
+*.iws
+
+# Generated Android packages and metadata
+androidApp/release/
+*.apk
+*.aab
+**/output.json
+**/output-metadata.json
+.externalNativeBuild/
+.cxx/
+captures/
+
+# Signing secrets
+*.jks
+*.keystore
+keystore.properties
+
+# Local logs, dumps, and temporary files
+*.log
+*.hprof
+*.tmp
+*.temp
+*.swp
+*~
+
+# Project-local planning documents
+guide/
+
+# Project-local agent skills/tooling
+.agents/skills/caveman/
+skills-main/
+
+# JavaScript
+node_modules/
+
+# Apple / Xcode
+xcuserdata/
 *.xcodeproj/*
 !*.xcodeproj/project.pbxproj
 !*.xcodeproj/xcshareddata/
 !*.xcodeproj/project.xcworkspace/
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
-node_modules/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+META-INF

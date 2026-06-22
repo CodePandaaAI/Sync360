@@ -2,36 +2,14 @@ package com.liftley.sync360.features.sync.data.network.api
 
 import kotlinx.serialization.Serializable
 
-@Serializable
-data class ConnectRequestDto(
-    val deviceId: String,
-    val deviceName: String,
-    val deviceType: String,
-    val senderIp: String
-)
 
-@Serializable
-data class ConnectAcceptDto(
-    val deviceId: String,
-    val deviceName: String,
-    val deviceType: String,
-    val senderIp: String
-)
-
-@Serializable
-data class MessageDto(
-    val messageId: String,
-    val senderDeviceId: String,
-    val senderName: String,
-    val content: String,
-    val timestamp: Long
-)
 
 @Serializable
 data class FilePreviewDto(
     val fileName: String,
     val mimeType: String,
-    val fileSize: Long
+    val fileSize: Long,
+    val sha256: String
 )
 
 @Serializable
@@ -43,15 +21,13 @@ data class FileOfferDto(
 )
 
 @Serializable
-data class FileAcceptDto(
-    val offerId: String,
-    val senderDeviceId: String
-)
-
-@Serializable
-data class FileRejectDto(
-    val offerId: String,
-    val senderDeviceId: String
+data class FileOfferResponseDto(
+    val accepted: Boolean,
+    val rawTcpHost: String? = null,
+    val rawTcpPort: Int? = null,
+    val transferId: String? = null,
+    val transferToken: String? = null,
+    val failureReason: String? = null
 )
 
 @Serializable

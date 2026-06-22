@@ -39,6 +39,7 @@ kotlin {
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
+            implementation(libs.androidx.activity.compose)
             implementation(libs.androidx.core.ktx)
             implementation(libs.koin.android)
         }
@@ -54,6 +55,8 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.lifecycle.viewmodelCompose)
             implementation(libs.androidx.lifecycle.runtimeCompose)
+            implementation(libs.androidx.navigation3.runtime)
+            implementation(libs.androidx.navigation3.ui)
             implementation(compose.material)
             implementation(compose.materialIconsExtended)
             
@@ -73,6 +76,9 @@ kotlin {
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
             
+            // Coil Image Loading
+            implementation(libs.coil.compose)
+            
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
@@ -82,4 +88,8 @@ kotlin {
 
 dependencies {
     androidRuntimeClasspath(libs.compose.uiTooling)
+}
+
+compose.resources {
+    publicResClass = true
 }

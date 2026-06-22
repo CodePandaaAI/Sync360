@@ -3,7 +3,6 @@ package com.liftley.sync360.features.sync.presentation.components
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material3.Icon
@@ -13,11 +12,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.Spacing
-import com.liftley.sync360.core.designsystem.SyncDimens
 import com.liftley.sync360.features.sync.domain.model.ClipboardEntry
 
 @Composable
@@ -26,7 +24,7 @@ fun ClipboardHistorySection(
     onCopyClick: (ClipboardEntry) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val received = textsList.filter { !it.isFromMe }.take(3)
+    val received = textsList.take(3)
 
     Column(
         verticalArrangement = Arrangement.spacedBy(Spacing.md),
@@ -40,14 +38,10 @@ fun ClipboardHistorySection(
         )
 
         if (received.isEmpty()) {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(SyncDimens.cornerMedium),
-                color = MaterialTheme.colorScheme.surfaceContainerLow
-            ) {
+            Sync360Surface(color = MaterialTheme.colorScheme.surface) {
                 Text(
                     text = "Received clipboard text will appear here.",
-                    modifier = Modifier.padding(Spacing.md),
+                    modifier = Modifier.padding(Spacing.lg),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -57,7 +51,6 @@ fun ClipboardHistorySection(
                 received.forEach { clipboard ->
                     ClipboardItemCard(
                         clipboard = clipboard,
-                        isReceived = true,
                         onCopyClick = onCopyClick
                     )
                 }
@@ -69,20 +62,13 @@ fun ClipboardHistorySection(
 @Composable
 private fun ClipboardItemCard(
     clipboard: ClipboardEntry,
-    isReceived: Boolean,
     onCopyClick: (ClipboardEntry) -> Unit
 ) {
-    Surface(
+    Sync360Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(SyncDimens.cornerMedium))
             .clickable { onCopyClick(clipboard) },
-        shape = RoundedCornerShape(SyncDimens.cornerMedium),
-        color = if (isReceived) {
-            MaterialTheme.colorScheme.surfaceContainerHigh
-        } else {
-            MaterialTheme.colorScheme.surfaceContainerLow
-        }
+        cornerRadius = 24.dp,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
         Row(
             modifier = Modifier.padding(
@@ -100,38 +86,26 @@ private fun ClipboardItemCard(
                 Text(
                     text = clipboard.text,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = if (isReceived) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
-                    },
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    text = clipboard.updatedLabel,
+                    text = clipboard.senderName,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
             Surface(
                 shape = CircleShape,
-                color = if (isReceived) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant
-                },
-                modifier = Modifier.size(SyncDimens.touchTarget * 0.65f)
+                color = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.size(36.dp)
             ) {
                 Box(contentAlignment = Alignment.Center) {
                     Icon(
                         imageVector = Icons.Default.ContentCopy,
                         contentDescription = "Copy to clipboard",
-                        tint = if (isReceived) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(Spacing.md)
                     )
                 }
