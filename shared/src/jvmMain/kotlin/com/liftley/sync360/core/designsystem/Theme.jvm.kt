@@ -4,7 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 
 @Composable
-actual fun AppTheme(
+actual fun Sync360Theme(
     darkTheme: Boolean,
     dynamicColor: Boolean,
     content: @Composable () -> Unit

@@ -7,7 +7,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
 @Composable
-actual fun AppTheme(
+actual fun Sync360Theme(
     darkTheme: Boolean,
     dynamicColor: Boolean,
     content: @Composable () -> Unit

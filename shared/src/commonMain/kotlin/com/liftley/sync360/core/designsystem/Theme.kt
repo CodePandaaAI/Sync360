@@ -93,7 +93,7 @@ val AppShapes = Shapes(
 )
 
 @Composable
-expect fun AppTheme(
+expect fun Sync360Theme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
