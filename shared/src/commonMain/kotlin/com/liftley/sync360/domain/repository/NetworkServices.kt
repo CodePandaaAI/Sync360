@@ -1,10 +1,9 @@
 package com.liftley.sync360.domain.repository
 
-import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 
 interface NetworkServices {
-    val nearbyDevices: MutableStateFlow<List<NearbyDevice>>
-
+    val nearbyDevices: StateFlow<List<NearbyDevice>>
     fun startNetworkServices()
 
     fun stopNetworkServices()

@@ -9,6 +9,8 @@ import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.repository.NearbyDevice
 import com.liftley.sync360.domain.repository.NetworkServices
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -22,7 +24,9 @@ class AndroidNetworkServices(
         Log.d("Android Network Services", "Created!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     }
 
-    override val nearbyDevices: MutableStateFlow<List<NearbyDevice>> = MutableStateFlow(emptyList())
+    private val _nearbyDevices: MutableStateFlow<List<NearbyDevice>> = MutableStateFlow(emptyList())
+
+    override val nearbyDevices: StateFlow<List<NearbyDevice>> = _nearbyDevices.asStateFlow()
     val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
 
     val executor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -134,7 +138,7 @@ class AndroidNetworkServices(
 
                 override fun onServiceUpdated(resolvedDeviceInfo: NsdServiceInfo) {
                     Log.d("AndroidNetworkServices", "onServiceUpdated: $resolvedDeviceInfo")
-                    nearbyDevices.update { currentList ->
+                    _nearbyDevices.update { currentList ->
                         val newDevice = resolvedDeviceInfo.toNearbyDevice() ?: return@update currentList
                         val withoutOldDeviceId = currentList.filterNot { device -> device.id == newDevice.id }
 
