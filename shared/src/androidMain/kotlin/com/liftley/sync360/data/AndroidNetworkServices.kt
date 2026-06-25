@@ -21,7 +21,7 @@ class AndroidNetworkServices(
 ) : NetworkServices {
 
     init {
-        Log.d("Android Network Services", "Created!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+        Log.d("Android Network Services", "Created!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
     }
 
     private val _nearbyDevices: MutableStateFlow<List<NearbyDevice>> = MutableStateFlow(emptyList())
@@ -37,7 +37,7 @@ class AndroidNetworkServices(
 
     val serviceInfo = NsdServiceInfo().apply {
         serviceType = "_sync360._tcp."
-        serviceName = "Sync360 Network Services"
+        serviceName = "${Build.MODEL} Sync360"
         port = 8080
 
         setAttribute("deviceUuid", deviceUuid)
@@ -46,7 +46,7 @@ class AndroidNetworkServices(
         setAttribute("protocolVersion", "1")
     }
 
-    val resolveListener = createResolveListener()
+    val serviceInfoCallbackMap = mutableMapOf<String, NsdManager.ServiceInfoCallback>()
 
     val discoveryListener = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String?) {
@@ -58,27 +58,124 @@ class AndroidNetworkServices(
         }
 
         @Suppress("NewApi", "DEPRECATION")
-        override fun onServiceFound(serviceInfo: NsdServiceInfo?) {
-            Log.d("AndroidNetworkServices", "onServiceFound: $serviceInfo")
-            serviceInfo?.let {
-                when (resolveListener) {
-                    is NsdManager.ResolveListener -> {
-                        nsdManager.resolveService(serviceInfo, resolveListener)
+        override fun onServiceFound(foundDiscoveryServiceInfo: NsdServiceInfo?) {
+            Log.d("AndroidNetworkServices", "onServiceFound: $foundDiscoveryServiceInfo")
+            foundDiscoveryServiceInfo?.let {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+
+                    val serviceInfoCallbackListener = object : NsdManager.ServiceInfoCallback {
+                        var resolvedNearbyDeviceInfo: NearbyDevice? = null
+
+                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+                            Log.d(
+                                "AndroidNetworkServices",
+                                "onServiceInfoCallbackRegistrationFailed: $errorCode"
+                            )
+                            if (serviceInfoCallbackMap.containsKey(resolvedNearbyDeviceInfo?.id)) {
+                                serviceInfoCallbackMap.remove(resolvedNearbyDeviceInfo?.id)
+                            }
+                        }
+
+                        override fun onServiceInfoCallbackUnregistered() {
+                            Log.d("AndroidNetworkServices", "onServiceInfoCallbackUnregistered")
+                            resolvedNearbyDeviceInfo = null
+                        }
+
+                        override fun onServiceLost() {
+                            Log.d("AndroidNetworkServices", "onServiceLost on Resolve")
+                            _nearbyDevices.update { currentList ->
+                                Log.d(
+                                    "AndroidNetworkServices",
+                                    "onServiceLost previous list: $currentList"
+                                )
+
+                                val listWithoutLostDevice =
+                                    currentList.filterNot { it.id == resolvedNearbyDeviceInfo?.id }
+                                Log.d(
+                                    "AndroidNetworkServices",
+                                    "onServiceLost current list: $listWithoutLostDevice"
+                                )
+                                listWithoutLostDevice
+                            }
+
+                            if (serviceInfoCallbackMap.containsKey(resolvedNearbyDeviceInfo?.id)) {
+                                val serviceCallbackObject =
+                                    serviceInfoCallbackMap.remove(resolvedNearbyDeviceInfo?.id)
+                                serviceCallbackObject?.let { listener ->
+                                    nsdManager.unregisterServiceInfoCallback(listener)
+                                }
+                            }
+                        }
+
+                        override fun onServiceUpdated(updatedResolvedDeviceInfo: NsdServiceInfo) {
+                            Log.d(
+                                "AndroidNetworkServices",
+                                "onServiceUpdated: $updatedResolvedDeviceInfo"
+                            )
+                            resolvedNearbyDeviceInfo = updatedResolvedDeviceInfo.toNearbyDevice()
+                            if (resolvedNearbyDeviceInfo == null) {
+                                nsdManager.unregisterServiceInfoCallback(this)
+                                return
+                            }
+
+                            if (resolvedNearbyDeviceInfo?.id == deviceUuid) return
+
+                            _nearbyDevices.update { currentList ->
+                                val newDevice =
+                                    resolvedNearbyDeviceInfo ?: return@update currentList
+                                val withoutOldDeviceId =
+                                    currentList.filterNot { device -> device.id == newDevice.id }
+
+                                val newList = withoutOldDeviceId + newDevice
+                                newList
+                            }
+
+                            val foundDeviceKey = resolvedNearbyDeviceInfo?.id
+
+                            serviceInfoCallbackMap[foundDeviceKey!!] = this
+                        }
                     }
 
-                    is NsdManager.ServiceInfoCallback -> {
-                        nsdManager.registerServiceInfoCallback(
-                            serviceInfo,
-                            executor,
-                            resolveListener
-                        )
+                    nsdManager.registerServiceInfoCallback(
+                        foundDiscoveryServiceInfo,
+                        executor,
+                        serviceInfoCallbackListener
+                    )
+                } else {
+                    val resolveListener = object : NsdManager.ResolveListener {
+                        override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+                            Log.d(
+                                "AndroidNetworkServices",
+                                "onResolveFailed: $serviceInfo, $errorCode"
+                            )
+                        }
+
+                        override fun onServiceResolved(resolvedDeviceInfo: NsdServiceInfo?) {
+                            Log.d(
+                                "AndroidNetworkServices",
+                                "onServiceResolved: $resolvedDeviceInfo"
+                            )
+                            _nearbyDevices.update { currentList ->
+                                val newDevice = resolvedDeviceInfo?.toNearbyDevice()
+                                    ?: return@update currentList
+                                val withoutOldDeviceId =
+                                    currentList.filterNot { device -> device.id == newDevice.id }
+
+                                val newList = withoutOldDeviceId + newDevice
+                                newList
+                            }
+                        }
                     }
+                    nsdManager.resolveService(
+                        foundDiscoveryServiceInfo,
+                        resolveListener
+                    )
                 }
             }
         }
 
-        override fun onServiceLost(serviceInfo: NsdServiceInfo?) {
-            Log.d("AndroidNetworkServices", "onServiceLost: $serviceInfo")
+        override fun onServiceLost(lostServiceInfo: NsdServiceInfo?) {
+            Log.d("AndroidNetworkServices", "onServiceLost on Discovery: $lostServiceInfo")
         }
 
         override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
@@ -110,70 +207,27 @@ class AndroidNetworkServices(
 
     override fun startNetworkServices() {
         Log.d("AndroidNetworkServices", "startNetworkServices: Starting discovery and registration")
-        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
+        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
     override fun stopNetworkServices() {
         Log.d("AndroidNetworkServices", "stopNetworkServices: Stopping network services")
     }
 
-    fun createResolveListener(): Any {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            return object : NsdManager.ServiceInfoCallback {
-                override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
-                    Log.d(
-                        "AndroidNetworkServices",
-                        "onServiceInfoCallbackRegistrationFailed: $errorCode"
-                    )
-                }
-
-                override fun onServiceInfoCallbackUnregistered() {
-                    Log.d("AndroidNetworkServices", "onServiceInfoCallbackUnregistered")
-                }
-
-                override fun onServiceLost() {
-                    Log.d("AndroidNetworkServices", "onServiceLost")
-                }
-
-                override fun onServiceUpdated(resolvedDeviceInfo: NsdServiceInfo) {
-                    Log.d("AndroidNetworkServices", "onServiceUpdated: $resolvedDeviceInfo")
-                    _nearbyDevices.update { currentList ->
-                        val newDevice = resolvedDeviceInfo.toNearbyDevice() ?: return@update currentList
-                        val withoutOldDeviceId = currentList.filterNot { device -> device.id == newDevice.id }
-
-                        val newList = withoutOldDeviceId + newDevice
-                        newList
-                    }
-                }
-            }
-        } else {
-            return object : NsdManager.ResolveListener {
-                override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
-                    Log.d("AndroidNetworkServices", "onResolveFailed: $serviceInfo, $errorCode")
-                }
-
-                override fun onServiceResolved(serviceInfo: NsdServiceInfo?) {
-                    Log.d("AndroidNetworkServices", "onServiceResolved: $serviceInfo")
-                }
-            }
-        }
-    }
-
     fun NsdServiceInfo.toNearbyDevice(): NearbyDevice? {
-        val deviceUuid =
-            serviceInfo.attributes["deviceUuid"]?.toString(Charsets.UTF_8) ?: return null
-        val deviceName = serviceInfo.attributes["deviceName"]?.toString(Charsets.UTF_8)
-        val deviceType = serviceInfo.attributes["deviceType"]?.toString(Charsets.UTF_8)
-        val protocolVersion = serviceInfo.attributes["protocolVersion"]?.toString(Charsets.UTF_8)
+        val deviceUuid = this.attributes["deviceUuid"]?.toString(Charsets.UTF_8) ?: return null
+        val deviceName = this.attributes["deviceName"]?.toString(Charsets.UTF_8) ?: return null
+        val deviceType = this.attributes["deviceType"]?.toString(Charsets.UTF_8) ?: return null
+        val protocolVersion = this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
         return NearbyDevice(
             id = deviceUuid,
-            deviceName = deviceName!!,
-            deviceType = deviceType!!,
-            protocolVersion = protocolVersion!!,
-            port = port,
-            serviceName = serviceName,
-            serviceType = serviceType,
+            deviceName = deviceName,
+            deviceType = deviceType,
+            protocolVersion = protocolVersion,
+            port = this.port,
+            serviceName = this.serviceName,
+            serviceType = this.serviceType,
         )
     }
 }

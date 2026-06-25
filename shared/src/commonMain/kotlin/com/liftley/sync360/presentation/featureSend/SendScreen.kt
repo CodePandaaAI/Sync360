@@ -14,6 +14,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.presentation.viewmodel.NavigationViewModel
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
 import org.koin.compose.koinInject
@@ -22,7 +23,7 @@ import org.koin.compose.koinInject
 fun SendScreen() {
     Surface(modifier = Modifier.fillMaxSize()) {
         val viewModel = koinInject<SendScreenViewModel>()
-        val navigationViewModel = koinInject<NavigationViewModel>()
+        val myDeviceId = koinInject<LocalDeviceIdentityStore>()
 
         val nearbyDevices by viewModel.nearbyDevices.collectAsStateWithLifecycle()
 
@@ -44,6 +45,8 @@ fun SendScreen() {
                     }
                 }
             }
+
+            Text(myDeviceId.getOrCreateDeviceUuid())
         }
     }
 }
