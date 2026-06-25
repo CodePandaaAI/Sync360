@@ -5,6 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
+import com.liftley.sync360.domain.local.DiscoveryStatus
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.repository.NearbyDevice
 import com.liftley.sync360.domain.repository.NetworkServices
@@ -27,6 +28,10 @@ class AndroidNetworkServices(
     private val _nearbyDevices: MutableStateFlow<List<NearbyDevice>> = MutableStateFlow(emptyList())
 
     override val nearbyDevices: StateFlow<List<NearbyDevice>> = _nearbyDevices.asStateFlow()
+
+    private val _discoveryServiceStatus: MutableStateFlow<DiscoveryStatus> = MutableStateFlow(DiscoveryStatus.Idle)
+    override val discoveryServiceStatus: StateFlow<DiscoveryStatus> = _discoveryServiceStatus.asStateFlow()
+
     val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
 
     val executor: ExecutorService = Executors.newSingleThreadExecutor()
@@ -50,10 +55,12 @@ class AndroidNetworkServices(
 
     val discoveryListener = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String?) {
+            _discoveryServiceStatus.value = DiscoveryStatus.Running
             Log.d("AndroidNetworkServices", "onDiscoveryStarted: $serviceType")
         }
 
         override fun onDiscoveryStopped(serviceType: String?) {
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
             Log.d("AndroidNetworkServices", "onDiscoveryStopped: $serviceType")
         }
 
@@ -179,11 +186,13 @@ class AndroidNetworkServices(
         }
 
         override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
             Log.d("AndroidNetworkServices", "onStartDiscoveryFailed: $serviceType, $errorCode")
         }
 
         override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {
             Log.d("AndroidNetworkServices", "onStopDiscoveryFailed: $serviceType, $errorCode")
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
         }
     }
 
@@ -207,11 +216,13 @@ class AndroidNetworkServices(
 
     override fun startNetworkServices() {
         Log.d("AndroidNetworkServices", "startNetworkServices: Starting discovery and registration")
+        _discoveryServiceStatus.value = DiscoveryStatus.Starting
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
     override fun stopDiscoveryServices() {
+        _discoveryServiceStatus.value = DiscoveryStatus.Stopping
         Log.d("AndroidNetworkServices", "stopDiscoveryServices: Stopping Discovery Services")
         nsdManager.stopServiceDiscovery(discoveryListener)
 
@@ -221,6 +232,7 @@ class AndroidNetworkServices(
     }
 
     override fun restartDiscoveryServices() {
+        _discoveryServiceStatus.value = DiscoveryStatus.Starting
         Log.d("AndroidNetworkServices", "restartDiscoveryServices: Restarting discovery")
         _nearbyDevices.update {
             emptyList()

@@ -1,9 +1,11 @@
 package com.liftley.sync360.domain.repository
 
+import com.liftley.sync360.domain.local.DiscoveryStatus
 import kotlinx.coroutines.flow.StateFlow
 
 interface NetworkServices {
     val nearbyDevices: StateFlow<List<NearbyDevice>>
+    val discoveryServiceStatus: StateFlow<DiscoveryStatus>
     fun startNetworkServices()
 
     fun restartDiscoveryServices()
