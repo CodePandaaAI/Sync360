@@ -211,15 +211,39 @@ class AndroidNetworkServices(
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }
 
-    override fun stopNetworkServices() {
-        Log.d("AndroidNetworkServices", "stopNetworkServices: Stopping network services")
+    override fun stopDiscoveryServices() {
+        Log.d("AndroidNetworkServices", "stopDiscoveryServices: Stopping Discovery Services")
+        nsdManager.stopServiceDiscovery(discoveryListener)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            clearAndStopResolvingServices()
+        }
+    }
+
+    override fun restartDiscoveryServices() {
+        Log.d("AndroidNetworkServices", "restartDiscoveryServices: Restarting discovery")
+        _nearbyDevices.update {
+            emptyList()
+        }
+        nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+    }
+
+    @Suppress("NewApi")
+    private fun clearAndStopResolvingServices() {
+        val callbacks = serviceInfoCallbackMap.values.toList()
+        serviceInfoCallbackMap.clear()
+
+        callbacks.forEach { callback ->
+            nsdManager.unregisterServiceInfoCallback(callback)
+        }
     }
 
     fun NsdServiceInfo.toNearbyDevice(): NearbyDevice? {
         val deviceUuid = this.attributes["deviceUuid"]?.toString(Charsets.UTF_8) ?: return null
         val deviceName = this.attributes["deviceName"]?.toString(Charsets.UTF_8) ?: return null
         val deviceType = this.attributes["deviceType"]?.toString(Charsets.UTF_8) ?: return null
-        val protocolVersion = this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
+        val protocolVersion =
+            this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
         return NearbyDevice(
             id = deviceUuid,
             deviceName = deviceName,

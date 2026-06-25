@@ -6,7 +6,9 @@ interface NetworkServices {
     val nearbyDevices: StateFlow<List<NearbyDevice>>
     fun startNetworkServices()
 
-    fun stopNetworkServices()
+    fun restartDiscoveryServices()
+
+    fun stopDiscoveryServices()
 }
 
 data class NearbyDevice(

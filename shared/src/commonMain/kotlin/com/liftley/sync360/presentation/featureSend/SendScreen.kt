@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -15,7 +16,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
-import com.liftley.sync360.presentation.viewmodel.NavigationViewModel
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
 import org.koin.compose.koinInject
 
@@ -44,6 +44,12 @@ fun SendScreen() {
                         Text(device.serviceType, modifier = Modifier.padding(16.dp))
                     }
                 }
+            }
+            Button(onClick = { viewModel.stopDiscoveryServices() }) {
+                Text("Stop Discovery")
+            }
+            Button(onClick = { viewModel.restartDiscoveryServices() }) {
+                Text("Restart Discovery Services")
             }
 
             Text(myDeviceId.getOrCreateDeviceUuid())
