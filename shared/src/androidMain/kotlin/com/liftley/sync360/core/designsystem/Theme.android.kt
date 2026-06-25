@@ -24,7 +24,7 @@ actual fun Sync360Theme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = appTypography(),
-        shapes = AppShapes,
+        shapes = Sync360Shapes,
         content = content
     )
 }

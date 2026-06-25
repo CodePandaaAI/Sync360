@@ -1,7 +1,9 @@
 package com.liftley.sync360
 
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
@@ -51,7 +53,9 @@ fun Sync360Root() {
                         }
                     )
                 }
-            }
+            },
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
         ) { innerPadding ->
             NavDisplay(
                 navigationViewModel.backstack,
