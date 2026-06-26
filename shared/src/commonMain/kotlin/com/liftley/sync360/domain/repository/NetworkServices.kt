@@ -1,6 +1,7 @@
 package com.liftley.sync360.domain.repository
 
-import com.liftley.sync360.domain.local.DiscoveryStatus
+import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.NearbyDevice
 import kotlinx.coroutines.flow.StateFlow
 
 interface NetworkServices {
@@ -12,13 +13,3 @@ interface NetworkServices {
 
     fun stopDiscoveryServices()
 }
-
-data class NearbyDevice(
-    val id: String,
-    val deviceName: String,
-    val deviceType: String,
-    val protocolVersion: String,
-    val port: Int,
-    val serviceName: String,
-    val serviceType: String
-)

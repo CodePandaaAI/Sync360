@@ -5,10 +5,11 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
-import com.liftley.sync360.domain.local.DiscoveryStatus
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
-import com.liftley.sync360.domain.repository.NearbyDevice
+import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.repository.NetworkServices
+import com.liftley.sync360.domain.toNearbyDeviceAndroidImpl
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,8 +30,10 @@ class AndroidNetworkServices(
 
     override val nearbyDevices: StateFlow<List<NearbyDevice>> = _nearbyDevices.asStateFlow()
 
-    private val _discoveryServiceStatus: MutableStateFlow<DiscoveryStatus> = MutableStateFlow(DiscoveryStatus.Idle)
-    override val discoveryServiceStatus: StateFlow<DiscoveryStatus> = _discoveryServiceStatus.asStateFlow()
+    private val _discoveryServiceStatus: MutableStateFlow<DiscoveryStatus> =
+        MutableStateFlow(DiscoveryStatus.Idle)
+    override val discoveryServiceStatus: StateFlow<DiscoveryStatus> =
+        _discoveryServiceStatus.asStateFlow()
 
     val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
 
@@ -119,7 +122,7 @@ class AndroidNetworkServices(
                                 "AndroidNetworkServices",
                                 "onServiceUpdated: $updatedResolvedDeviceInfo"
                             )
-                            resolvedNearbyDeviceInfo = updatedResolvedDeviceInfo.toNearbyDevice()
+                            resolvedNearbyDeviceInfo = updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
                             if (resolvedNearbyDeviceInfo == null) {
                                 nsdManager.unregisterServiceInfoCallback(this)
                                 return
@@ -163,7 +166,7 @@ class AndroidNetworkServices(
                                 "onServiceResolved: $resolvedDeviceInfo"
                             )
                             _nearbyDevices.update { currentList ->
-                                val newDevice = resolvedDeviceInfo?.toNearbyDevice()
+                                val newDevice = resolvedDeviceInfo?.toNearbyDeviceAndroidImpl()
                                     ?: return@update currentList
                                 val withoutOldDeviceId =
                                     currentList.filterNot { device -> device.id == newDevice.id }
@@ -248,22 +251,5 @@ class AndroidNetworkServices(
         callbacks.forEach { callback ->
             nsdManager.unregisterServiceInfoCallback(callback)
         }
-    }
-
-    fun NsdServiceInfo.toNearbyDevice(): NearbyDevice? {
-        val deviceUuid = this.attributes["deviceUuid"]?.toString(Charsets.UTF_8) ?: return null
-        val deviceName = this.attributes["deviceName"]?.toString(Charsets.UTF_8) ?: return null
-        val deviceType = this.attributes["deviceType"]?.toString(Charsets.UTF_8) ?: return null
-        val protocolVersion =
-            this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
-        return NearbyDevice(
-            id = deviceUuid,
-            deviceName = deviceName,
-            deviceType = deviceType,
-            protocolVersion = protocolVersion,
-            port = this.port,
-            serviceName = this.serviceName,
-            serviceType = this.serviceType,
-        )
     }
 }

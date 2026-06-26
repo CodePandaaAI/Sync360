@@ -2,7 +2,7 @@ package com.liftley.sync360.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.liftley.sync360.domain.local.DiscoveryStatus
+import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.repository.NetworkServices
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
