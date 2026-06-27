@@ -9,6 +9,30 @@ plugins {
 }
 
 kotlin {
+    jvm {
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
+    android {
+        namespace = "com.liftley.sync360.shared"
+        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        minSdk = libs.versions.android.minSdk.get().toInt()
+
+        androidResources {
+            enable = true
+        }
+
+        withHostTest {
+            isIncludeAndroidResources = true
+        }
+
+        compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
+        }
+    }
+
     /*
     listOf(
         iosArm64(),
@@ -20,22 +44,7 @@ kotlin {
         }
     }
     */
-    
-    jvm()
-    
-    androidLibrary {
-       namespace = "com.liftley.sync360.shared"
-       compileSdk = libs.versions.android.compileSdk.get().toInt()
-       minSdk = libs.versions.android.minSdk.get().toInt()
-    
-       androidResources {
-           enable = true
-       }
-       withHostTest {
-           isIncludeAndroidResources = true
-       }
-     }
-    
+
     sourceSets {
         androidMain.dependencies {
             implementation(libs.compose.uiToolingPreview)
@@ -43,9 +52,11 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.koin.android)
         }
+
         jvmMain.dependencies {
             implementation(libs.jmdns)
         }
+
         commonMain.dependencies {
             implementation(libs.compose.runtime)
             implementation(libs.compose.foundation)
@@ -57,29 +68,23 @@ kotlin {
             implementation(libs.androidx.lifecycle.runtimeCompose)
             implementation(libs.androidx.navigation3.runtime)
             implementation(libs.androidx.navigation3.ui)
-            implementation(compose.material)
-            implementation(compose.materialIconsExtended)
-            
-            // Ktor & Serialization
+
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.cio)
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.kotlinx.json)
             implementation(libs.kotlinx.serialization.json)
-            
-            // Ktor Server
+
             implementation(libs.ktor.server.core)
             implementation(libs.ktor.server.cio)
             implementation(libs.ktor.server.content.negotiation)
-            
-            // Koin Dependency Injection
+
             implementation(libs.koin.core)
             implementation(libs.koin.compose)
-            
-            // Coil Image Loading
+
             implementation(libs.coil.compose)
-            
         }
+
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }

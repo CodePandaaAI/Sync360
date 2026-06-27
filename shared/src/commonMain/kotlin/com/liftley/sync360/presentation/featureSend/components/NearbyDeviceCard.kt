@@ -18,11 +18,21 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Android
+import com.liftley.sync360.domain.model.NearbyDevice
 
 @Preview
 @Composable
 fun NearbyDeviceCard(
-    deviceName: String = "Oneplus Nord CE 5",
+    device: NearbyDevice = NearbyDevice(
+        id = "uuid-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
+        deviceName = "Living Room TV",
+        deviceType = "Smart TV",
+        protocolVersion = "v2.4.1",
+        hostAddresses = listOf("192.168.1.45", "fe80::1ff:fe23:4567:890a"),
+        port = 8080,
+        serviceName = "Chromecast-Ultra-Stream",
+        serviceType = "_googlecast._tcp.local."
+    ),
     onClick: () -> Unit = {}
 ) {
     Box(
@@ -49,12 +59,12 @@ fun NearbyDeviceCard(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    deviceName,
+                    device.deviceName,
                     style = MaterialTheme.typography.titleMedium
                 )
 
                 Text(
-                    "Ready to send",
+                    "Ready to send on port: ${device.port}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

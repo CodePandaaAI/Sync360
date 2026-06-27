@@ -31,7 +31,6 @@ import org.koin.compose.koinInject
 @Composable
 fun SendScreen() {
     val viewModel = koinInject<SendScreenViewModel>()
-
     val nearbyDevices by viewModel.nearbyDevices.collectAsStateWithLifecycle()
     val discoveryStatus by viewModel.discoveryServiceStatus.collectAsStateWithLifecycle()
 
@@ -78,8 +77,9 @@ fun SendScreen() {
 
                 nearbyDevices.forEach { device ->
                     NearbyDeviceCard(
-                        deviceName = device.deviceName,
-                        onClick = {}
+                        device = device,
+                        onClick = {
+                        }
                     )
                 }
 

@@ -2,65 +2,36 @@ package com.liftley.sync360.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.domain.repository.NetworkServices
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
+import com.liftley.sync360.data.NetworkServicesController
+import com.liftley.sync360.data.remote.OutgoingRequestsController
+import com.liftley.sync360.domain.model.NearbyDevice
+import com.liftley.sync360.domain.remote.response.PingRequestResponse
+import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.milliseconds
 
-class SendScreenViewModel(private val networkServices: NetworkServices) : ViewModel() {
+class SendScreenViewModel(
+    private val networkServicesController: NetworkServicesController,
+    private val outgoingRequestsController: OutgoingRequestsController,
+) : ViewModel() {
     init {
         viewModelScope.launch {
-            networkServices.startNetworkServices()
-
-            delay(15000.milliseconds)
-
-            stopDiscoveryServices()
+            networkServicesController.startNetworkServices()
         }
     }
 
-    val nearbyDevices = networkServices.nearbyDevices
+    val nearbyDevices = networkServicesController.nearbyDevices
 
-    val discoveryServiceStatus = networkServices.discoveryServiceStatus
-
-    fun stopDiscoveryServices() {
-        when (discoveryServiceStatus.value) {
-            DiscoveryStatus.Idle -> {}
-            DiscoveryStatus.Stopping -> {}
-            DiscoveryStatus.Starting -> {}
-            DiscoveryStatus.Running -> {
-                networkServices.stopDiscoveryServices()
-            }
-        }
-    }
+    val discoveryServiceStatus = networkServicesController.discoveryServiceStatus
 
     fun restartDiscoveryServices() {
         viewModelScope.launch {
-            when (discoveryServiceStatus.value) {
-                DiscoveryStatus.Idle -> {
-                    networkServices.restartDiscoveryServices()
-                    delay(15000.milliseconds)
-
-                    stopDiscoveryServices()
-                }
-
-                DiscoveryStatus.Stopping -> {}
-                DiscoveryStatus.Starting -> {}
-                DiscoveryStatus.Running -> {
-                    stopDiscoveryServices()
-
-                    discoveryServiceStatus.first {
-                        it == DiscoveryStatus.Idle
-                    }
-
-                    networkServices.restartDiscoveryServices()
-
-                    delay(15000.milliseconds)
-
-                    stopDiscoveryServices()
-                }
-            }
+            networkServicesController.restartDiscoveryServices()
         }
+    }
+
+    suspend fun onDeviceClick(device: NearbyDevice): PingRequestResponse {
+        return viewModelScope.async {
+         outgoingRequestsController.sendPingRequestToDevice(device)
+        }.await()
     }
 }

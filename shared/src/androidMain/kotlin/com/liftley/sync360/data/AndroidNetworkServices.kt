@@ -5,6 +5,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
+import com.liftley.sync360.data.remote.Sync360HttpServer
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.model.NearbyDevice
@@ -19,7 +20,8 @@ import java.util.concurrent.Executors
 
 class AndroidNetworkServices(
     context: Context,
-    androidLocalDeviceIdentityStore: LocalDeviceIdentityStore
+    androidLocalDeviceIdentityStore: LocalDeviceIdentityStore,
+    private val sync360HttpServer: Sync360HttpServer
 ) : NetworkServices {
 
     init {
@@ -42,17 +44,6 @@ class AndroidNetworkServices(
     val serviceType = "_sync360._tcp."
 
     val deviceUuid = androidLocalDeviceIdentityStore.getOrCreateDeviceUuid()
-
-    val serviceInfo = NsdServiceInfo().apply {
-        serviceType = "_sync360._tcp."
-        serviceName = "${Build.MODEL} Sync360"
-        port = 8080
-
-        setAttribute("deviceUuid", deviceUuid)
-        setAttribute("deviceName", Build.MODEL ?: "Android Device")
-        setAttribute("deviceType", "Android")
-        setAttribute("protocolVersion", "1")
-    }
 
     val serviceInfoCallbackMap = mutableMapOf<String, NsdManager.ServiceInfoCallback>()
 
@@ -217,9 +208,21 @@ class AndroidNetworkServices(
         }
     }
 
-    override fun startNetworkServices() {
+    override suspend fun startNetworkServices() {
         Log.d("AndroidNetworkServices", "startNetworkServices: Starting discovery and registration")
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
+
+        val serviceInfo = NsdServiceInfo().apply {
+            serviceType = "_sync360._tcp."
+            serviceName = "${Build.MODEL} Sync360"
+            port = sync360HttpServer.start()
+
+            setAttribute("deviceUuid", deviceUuid)
+            setAttribute("deviceName", Build.MODEL ?: "Android Device")
+            setAttribute("deviceType", "Android")
+            setAttribute("protocolVersion", "1")
+        }
+
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
     }

@@ -9,6 +9,6 @@ import org.koin.dsl.module
 
 
 val androidModule = module {
-    single<NetworkServices> { AndroidNetworkServices(context = androidContext(), get()) }
+    single<NetworkServices> { AndroidNetworkServices(context = androidContext(), get(), get()) }
     factory<LocalDeviceIdentityStore> { AndroidLocalDeviceIdentityStore(context = androidContext()) }
 }
