@@ -209,6 +209,14 @@ class AndroidNetworkServices(
     }
 
     override suspend fun startNetworkServices() {
+        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) {
+            Log.d(
+                "AndroidNetworkServices",
+                "startNetworkServices ignored because status=${discoveryServiceStatus.value}"
+            )
+            return
+        }
+
         Log.d("AndroidNetworkServices", "startNetworkServices: Starting discovery and registration")
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
 
@@ -228,6 +236,14 @@ class AndroidNetworkServices(
     }
 
     override fun stopDiscoveryServices() {
+        if (discoveryServiceStatus.value != DiscoveryStatus.Running) {
+            Log.d(
+                "AndroidNetworkServices",
+                "stopDiscoveryServices ignored because status=${discoveryServiceStatus.value}"
+            )
+            return
+        }
+
         _discoveryServiceStatus.value = DiscoveryStatus.Stopping
         Log.d("AndroidNetworkServices", "stopDiscoveryServices: Stopping Discovery Services")
         nsdManager.stopServiceDiscovery(discoveryListener)
@@ -238,6 +254,13 @@ class AndroidNetworkServices(
     }
 
     override fun restartDiscoveryServices() {
+        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) {
+            Log.d(
+                "AndroidNetworkServices",
+                "restartDiscoveryServices ignored because status=${discoveryServiceStatus.value}"
+            )
+            return
+        }
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
         Log.d("AndroidNetworkServices", "restartDiscoveryServices: Restarting discovery")
         _nearbyDevices.update {

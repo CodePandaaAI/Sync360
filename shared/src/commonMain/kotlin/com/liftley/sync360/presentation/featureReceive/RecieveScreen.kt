@@ -22,7 +22,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 import com.liftley.sync360.domain.model.ServerState
 import com.liftley.sync360.domain.model.UserDecision
-import com.liftley.sync360.presentation.brandComponents.Sync360Surface
+import com.liftley.sync360.presentation.presentationComponents.Sync360Surface
 import com.liftley.sync360.presentation.viewmodel.ReceiveScreenViewModel
 import org.koin.compose.koinInject
 

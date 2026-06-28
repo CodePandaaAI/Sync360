@@ -22,7 +22,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.presentation.brandComponents.Sync360Surface
+import com.liftley.sync360.presentation.presentationComponents.Sync360Surface
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceCard
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceEmptyCard
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel

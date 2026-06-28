@@ -1,4 +1,4 @@
-package com.liftley.sync360.presentation.brandComponents
+package com.liftley.sync360.presentation.presentationComponents
 
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
