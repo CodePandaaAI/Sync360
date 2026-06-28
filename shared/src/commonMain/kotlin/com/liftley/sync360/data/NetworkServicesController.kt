@@ -17,9 +17,9 @@ class NetworkServicesController(
     val discoveryServiceStatus = networkServices.discoveryServiceStatus
 
     suspend fun startNetworkServices() {
-        httpServer.start()
+        val port = httpServer.start()
 
-        networkServices.startNetworkServices()
+        networkServices.startNetworkServices(port)
 
         delay(15000.milliseconds)
 

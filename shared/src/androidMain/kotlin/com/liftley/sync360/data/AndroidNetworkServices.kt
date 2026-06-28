@@ -5,7 +5,6 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
-import com.liftley.sync360.data.remote.Sync360HttpServer
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.model.NearbyDevice
@@ -20,8 +19,7 @@ import java.util.concurrent.Executors
 
 class AndroidNetworkServices(
     context: Context,
-    androidLocalDeviceIdentityStore: LocalDeviceIdentityStore,
-    private val sync360HttpServer: Sync360HttpServer
+    androidLocalDeviceIdentityStore: LocalDeviceIdentityStore
 ) : NetworkServices {
 
     init {
@@ -113,7 +111,8 @@ class AndroidNetworkServices(
                                 "AndroidNetworkServices",
                                 "onServiceUpdated: $updatedResolvedDeviceInfo"
                             )
-                            resolvedNearbyDeviceInfo = updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
+                            resolvedNearbyDeviceInfo =
+                                updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
                             if (resolvedNearbyDeviceInfo == null) {
                                 nsdManager.unregisterServiceInfoCallback(this)
                                 return
@@ -208,7 +207,7 @@ class AndroidNetworkServices(
         }
     }
 
-    override suspend fun startNetworkServices() {
+    override suspend fun startNetworkServices(httpServerPort: Int) {
         if (discoveryServiceStatus.value != DiscoveryStatus.Idle) {
             Log.d(
                 "AndroidNetworkServices",
@@ -223,7 +222,7 @@ class AndroidNetworkServices(
         val serviceInfo = NsdServiceInfo().apply {
             serviceType = "_sync360._tcp."
             serviceName = "${Build.MODEL} Sync360"
-            port = sync360HttpServer.start()
+            port = httpServerPort
 
             setAttribute("deviceUuid", deviceUuid)
             setAttribute("deviceName", Build.MODEL ?: "Android Device")

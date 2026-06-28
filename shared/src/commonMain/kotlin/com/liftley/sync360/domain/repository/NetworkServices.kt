@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 interface NetworkServices {
     val nearbyDevices: StateFlow<List<NearbyDevice>>
     val discoveryServiceStatus: StateFlow<DiscoveryStatus>
-    suspend fun startNetworkServices()
+    suspend fun startNetworkServices(httpServerPort: Int)
 
     fun restartDiscoveryServices()
 
