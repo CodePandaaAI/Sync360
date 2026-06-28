@@ -16,31 +16,93 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.presentation.presentationComponents.Sync360Surface
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceCard
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceEmptyCard
+import com.liftley.sync360.presentation.featureSend.model.SendScreenUiState
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
+import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
 fun SendScreen() {
-    val viewModel = koinInject<SendScreenViewModel>()
-    val nearbyDevices by viewModel.nearbyDevices.collectAsStateWithLifecycle()
-    val discoveryStatus by viewModel.discoveryServiceStatus.collectAsStateWithLifecycle()
+    val sendScreenViewModel = koinInject<SendScreenViewModel>()
+    val nearbyDevices by sendScreenViewModel.nearbyDevices.collectAsStateWithLifecycle()
+    val discoveryStatus by sendScreenViewModel.discoveryServiceStatus.collectAsStateWithLifecycle()
+
+    val sendScreenUiState by sendScreenViewModel.sendScreenUiState.collectAsStateWithLifecycle()
+    val coroutineScope = rememberCoroutineScope()
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp)
             .verticalScroll(rememberScrollState()),
-        horizontalAlignment = Alignment.CenterHorizontally
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        Sync360Surface {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                if (sendScreenUiState != SendScreenUiState.Idle) {
+                    IconButton(
+                        onClick = {
+                            sendScreenViewModel.resetState()
+                        },
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
+                        ),
+                        modifier = Modifier.align(Alignment.End)
+                    ) {
+                        Icon(
+                            imageVector = Close, null
+                        )
+                    }
+                }
+                when (val state = sendScreenUiState) {
+                    is SendScreenUiState.Idle -> {
+                        Text(
+                            "Your Sending Nothing Right Now",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    is SendScreenUiState.Sending -> {
+                        Text(
+                            "Sending ${state.data} Request To ${state.sendingTo}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    is SendScreenUiState.Sent -> {
+                        Text(
+                            "Request ${state.data} Sent Successfully to ${state.sentTo}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+
+                    is SendScreenUiState.NotSent -> {
+                        Text(
+                            "Request Rejected because ${state.reason}",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
+            }
+        }
         Sync360Surface {
             Column(
                 modifier = Modifier
@@ -65,7 +127,7 @@ fun SendScreen() {
                         modifier = Modifier.height(48.dp),
                         enabled = discoveryStatus == DiscoveryStatus.Idle,
                         onClick = {
-                            viewModel.restartDiscoveryServices()
+                            sendScreenViewModel.restartDiscoveryServices()
                         }
                     ) {
                         Icon(
@@ -79,6 +141,9 @@ fun SendScreen() {
                     NearbyDeviceCard(
                         device = device,
                         onClick = {
+                            coroutineScope.launch {
+                                sendScreenViewModel.onDeviceClick(device)
+                            }
                         }
                     )
                 }
@@ -86,7 +151,7 @@ fun SendScreen() {
                 NearbyDeviceEmptyCard(
                     status = discoveryStatus,
                     onReloadClick = {
-                        viewModel.restartDiscoveryServices()
+                        sendScreenViewModel.restartDiscoveryServices()
                     }
                 )
             }

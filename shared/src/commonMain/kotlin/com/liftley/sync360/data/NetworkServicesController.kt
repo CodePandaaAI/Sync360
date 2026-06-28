@@ -4,7 +4,6 @@ import com.liftley.sync360.data.remote.Sync360HttpServer
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.repository.NetworkServices
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import kotlin.time.Duration.Companion.milliseconds
 
 class NetworkServicesController(
@@ -21,7 +20,7 @@ class NetworkServicesController(
 
         networkServices.startNetworkServices(port)
 
-        delay(15000.milliseconds)
+        delay(30000.milliseconds)
 
         stopDiscoveryServices()
     }
@@ -30,34 +29,22 @@ class NetworkServicesController(
         when (discoveryServiceStatus.value) {
             DiscoveryStatus.Idle -> {
                 networkServices.restartDiscoveryServices()
-                delay(15000.milliseconds)
+                delay(30000.milliseconds)
 
                 stopDiscoveryServices()
             }
 
-            DiscoveryStatus.Stopping -> {}
-            DiscoveryStatus.Starting -> {}
-            DiscoveryStatus.Running -> {
-                stopDiscoveryServices()
-
-                discoveryServiceStatus.first {
-                    it == DiscoveryStatus.Idle
-                }
-
-                networkServices.restartDiscoveryServices()
-
-                delay(15000.milliseconds)
-
-                stopDiscoveryServices()
-            }
+            DiscoveryStatus.Stopping -> { return }
+            DiscoveryStatus.Starting -> { return }
+            DiscoveryStatus.Running -> { return }
         }
     }
 
     fun stopDiscoveryServices() {
         when (discoveryServiceStatus.value) {
-            DiscoveryStatus.Idle -> {}
-            DiscoveryStatus.Stopping -> {}
-            DiscoveryStatus.Starting -> {}
+            DiscoveryStatus.Idle -> { return }
+            DiscoveryStatus.Stopping -> { return }
+            DiscoveryStatus.Starting -> { return }
             DiscoveryStatus.Running -> {
                 networkServices.stopDiscoveryServices()
             }
