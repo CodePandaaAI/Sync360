@@ -155,9 +155,13 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
 - JDK 17
 - Android Studio or IntelliJ IDEA with Kotlin support
-- Android SDK installed
+- Android SDK Platform 37 installed
+- Android SDK Build Tools 36.0.0 or newer
+- Gradle is provided by the wrapper (`9.4.1`)
 - At least one Android device or emulator for app launch
 - Two physical Android devices on the same local network for real discovery testing
+
+The project currently uses Android Gradle Plugin 9.2.1. Use a recent Android Studio version that supports AGP 9.2.x.
 
 ### Clone
 
@@ -273,7 +277,3 @@ Created by **Romit Sharma**.
 - LinkedIn: TODO: add LinkedIn profile link
 
 If this project sounds interesting, star it, follow the rebuild, or open a discussion when the repository goes public.
-
-
-
-

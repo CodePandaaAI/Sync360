@@ -5,10 +5,14 @@ This guide explains how to set up and work on Sync360 locally.
 ## Requirements
 
 - JDK 17
-- Android Studio or IntelliJ IDEA
-- Android SDK
+- Android Studio or IntelliJ IDEA with Kotlin support
+- Android SDK Platform 37
+- Android SDK Build Tools 36.0.0 or newer
+- Gradle wrapper 9.4.1, already included in this repository
 - Git
 - Two Android devices on the same local network for real discovery testing
+
+The project currently uses Android Gradle Plugin 9.2.1. Use a recent Android Studio version that supports AGP 9.2.x.
 
 ## Open the project
 

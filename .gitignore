@@ -39,7 +39,9 @@ keystore.properties
 guide/
 
 # Project-local agent skills/tooling
-.agents/skills/caveman/
+.agents/
+_CODEX_CONTEXT_DO_NOT_DELETE/
+recover.py
 skills-main/
 
 # JavaScript

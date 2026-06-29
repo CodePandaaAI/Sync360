@@ -1,32 +1,32 @@
 # Sync360 Privacy
 
-Last updated: June 15, 2026
+Last updated: June 29, 2026
 
-Sync360 transfers user-selected text and files directly between approved devices on the same local network.
+Sync360 is currently an early rebuild prototype. The current Android-first milestone supports local discovery and a simple Ktor request/response proof between nearby devices. Real text transfer, file transfer, production security, and public releases are not implemented yet.
 
 ## Data Handling
 
 - No account is required.
-- No cloud service is used for transfers.
+- No cloud service is used by the current prototype flow.
 - No analytics, advertising, tracking, or telemetry is included.
-- Device approvals, session tokens, and shared text remain in memory for the current app session.
 - A random installation identifier is stored locally so devices can identify each other.
-- Received files are saved only on the receiving device.
-- Sync360 does not intentionally collect or upload user content to the developer.
+- Nearby-device discovery data stays on the local device while the app is running.
+- The current prototype does not transfer or save user-selected files.
+- The current prototype does not send user content to the developer.
 
 ## Network Security
 
-Current transfers use authenticated HTTP on the local network. Session approval, random session tokens, HMAC signatures, timestamps, and nonce replay checks reject unauthorized or replayed requests.
+The current prototype uses cleartext HTTP on the local network for learning and testing. Final authentication, session validation, request signing, replay protection, and encryption are not implemented yet.
 
-Transfer content is not encrypted by Sync360. Anyone with sufficient access to the same network may be able to observe transferred content. Use Sync360 only on a private home network or personal hotspot controlled by you. Do not use it on public or shared networks.
+Do not treat the current code as production-secure file-transfer software. Use it only on private networks you control while testing.
 
 ## Permissions
 
-Sync360 uses network permissions for local device discovery and direct transfer. Android may use notification, foreground-service, wake-lock, and Wi-Fi multicast permissions to keep an active session or file transfer reliable.
+Sync360 uses network access for local discovery and request/response testing. Future versions may require additional Android permissions for reliable transfer sessions, notifications, foreground services, wake locks, Wi-Fi multicast behavior, and file access.
 
 ## Retention
 
-Session approvals, tokens, and shared text are cleared when the runtime ends. Received files remain on the receiving device until the user deletes them.
+The current prototype stores a local installation identifier. Discovery/request state is runtime state. Real transfer retention behavior will be documented when file transfer is implemented.
 
 ## Contact
 
