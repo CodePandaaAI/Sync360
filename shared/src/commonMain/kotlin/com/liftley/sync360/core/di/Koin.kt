@@ -1,58 +1,45 @@
 package com.liftley.sync360.core.di
 
-import com.liftley.sync360.features.sync.data.repository.SyncRepositoryImpl
-import com.liftley.sync360.features.sync.domain.repository.SyncRepository
-import com.liftley.sync360.features.sync.domain.usecase.ClearAllDataUseCase
-import com.liftley.sync360.features.sync.domain.usecase.DisconnectAllUseCase
-import com.liftley.sync360.features.sync.presentation.navigation.SyncNavigationViewModel
-import com.liftley.sync360.features.sync.presentation.SyncViewModel
-import com.liftley.sync360.features.sync.domain.runtime.SyncRuntimeController
-import com.liftley.sync360.features.sync.domain.controller.SyncTransferController
-import com.liftley.sync360.core.platform.PlatformOperations
-import com.liftley.sync360.core.platform.ClipboardOperations
-import com.liftley.sync360.core.platform.FileOperations
+import com.liftley.sync360.data.NetworkServicesController
+import com.liftley.sync360.data.remote.IncomingServerRequestsController
+import com.liftley.sync360.data.remote.OutgoingRequestsController
+import com.liftley.sync360.data.remote.Sync360HttpClient
+import com.liftley.sync360.data.remote.Sync360HttpServer
+import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
+import com.liftley.sync360.presentation.viewmodel.NavigationViewModel
+import com.liftley.sync360.presentation.viewmodel.ReceiveScreenViewModel
+import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
+import org.koin.dsl.KoinAppDeclaration
 import org.koin.dsl.module
 
-expect fun platformModule(): Module
+val appModule = module {
+    single<ReceiveScreenViewModel> { ReceiveScreenViewModel(get()) }
+    single<SendScreenViewModel> {
+        SendScreenViewModel(get(), get())
+    }
+    single<NavigationViewModel> {
+        NavigationViewModel()
+    }
 
-val commonModule = module {
-    single<SyncRepository> {
-        SyncRepositoryImpl(
-            peerDiscovery = get(),
-            localDevice = get(),
-            incomingNotifier = get(),
-            platformOperations = get()
+    single<Sync360HttpClient> { Sync360HttpClient() }
+    single<Sync360HttpServer> {
+        Sync360HttpServer(
+            deviceUuid = get<LocalDeviceIdentityStore>().getOrCreateDeviceUuid(),
+            get()
         )
     }
-    single { SyncRuntimeController(get(), get(), get(), get()) }
-    single { SyncTransferController(get()) }
 
-    factory { ClearAllDataUseCase(get()) }
-    factory { DisconnectAllUseCase(get()) }
-    factory { SyncNavigationViewModel() }
+    single<IncomingServerRequestsController> { IncomingServerRequestsController() }
+    single<OutgoingRequestsController> { OutgoingRequestsController(get()) }
+    single<NetworkServicesController> { NetworkServicesController(get(), get()) }
 
-    single<ClipboardOperations> { get<PlatformOperations>() }
-    single<FileOperations> { get<PlatformOperations>() }
-
-    factory { (isDesktop: Boolean) ->
-        SyncViewModel(
-            repository = get(),
-            runtimeController = get(),
-            transferController = get(),
-            clipboardOperations = get(),
-            fileOperations = get(),
-            localIpAddress = get<PlatformOperations>().getNetworkEnvironment().preferredAddress,
-            localDeviceName = get<com.liftley.sync360.features.sync.domain.model.DeviceProfile>().name
-        )
-    }
 }
 
-fun initKoin(appDeclaration: (org.koin.core.KoinApplication.() -> Unit)? = null) =
+fun initKoin(platformModule: Module, appDeclaration: KoinAppDeclaration) {
     startKoin {
-        appDeclaration?.invoke(this)
-        modules(platformModule(), commonModule)
-    }.also { application ->
-        application.koin.get<SyncRuntimeController>().start()
+        appDeclaration()
+        modules(platformModule, appModule)
     }
+}

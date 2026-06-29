@@ -9,9 +9,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-
         setContent {
-            AndroidRoot()
+            Sync360Root()
         }
     }
 }

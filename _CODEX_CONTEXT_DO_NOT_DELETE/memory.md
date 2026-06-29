@@ -1,197 +1,216 @@
-# Project Memory
+﻿# Project Memory
 
 ## Purpose of this file
 
 This file preserves working context for future Codex chats when the previous chat becomes too long or the context window fills up. Future Codex chats should read this file before making changes, then inspect the current repository state because files may have changed after this memory was written.
 
+This memory is context, not absolute truth. If the repository contradicts this file, trust the repository, mention the mismatch, and update this file.
+
 ## Project overview
 
-Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local-network device-to-device sharing. The current product direction is a nearby-device drop app, closer to Quick Share than a Bluetooth-style connected-device UX.
+Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local-network device-to-device sharing. The product direction is a nearby-device drop app, closer to Quick Share than a chat app or permanent device manager.
 
-Current intended flow:
+The current rebuild is Android-first and manual/learning-focused. The user deleted the large AI-generated sync implementation and is rebuilding the app from small understandable slices. The current live slice is Android local-network discovery using Android NSD.
 
-1. The app opens on the Send screen.
-2. The user builds one outgoing bundle containing real files and/or direct text snippets.
-3. Nearby devices on the same local network appear as send targets.
-4. The user taps a target and confirms sending.
-5. The receiver uses the Receive screen for approval, progress, and received results.
+Current intended product flow:
 
-Current supported targets in this repo are Android and JVM Desktop. iOS folders exist, but the live implementation focus is Android + Desktop.
+1. User opens on the Send screen.
+2. User sees nearby devices on the same local network.
+3. User later selects files and/or direct text snippets.
+4. User taps a nearby device to send a request.
+5. Receiver uses the Receive screen for approval, progress, and result.
 
-This project is not an Excel/document/PDF generation workspace. The pasted instruction mentioned the user's father, data entry, quality, health, safety, and generated Excel/doc/PDF outputs, but those facts are not supported by this Sync360 repository or this chat. Treat them as not applicable to this project unless the user later confirms otherwise.
+Current active platform focus:
 
-## User and work context
+- Android first.
+- Desktop/JVM later.
+- iOS exists in the repo but is not active in the rebuild.
 
-The user is the project owner/developer. They are learning the networking/backend concepts while also improving the project by hand. They want the codebase to become understandable, predictable, and stable instead of AI-generated over-architecture.
+This project is not an Excel/document/PDF/data-entry workspace.
 
-Known user goals and concerns:
+## User and project context
 
-- Understand local network fundamentals: TCP, HTTP, JSON, NSD/mDNS, ports, raw bytes, file bytes, and security tokens.
-- Stabilize backend/data/domain layers before relying on UI.
-- Keep UI dumb: render current state and send events upward.
-- Avoid unnecessary clean-architecture layers when the app flow is simple.
-- Prefer simple, direct code whose class/file names say what they do.
-- Avoid hallucinated explanations; explain exact code paths.
-- User prefers short, direct answers when asking code-learning questions.
+The user is the project owner/developer and is intentionally rebuilding manually to regain ownership of the code. They want to understand local network fundamentals by writing the app in small pieces instead of reading or refactoring a large AI-generated codebase.
+
+Known user goals:
+
+- Learn and own Android NSD/mDNS discovery, TCP/HTTP, host addresses, ports, JSON, local servers, file bytes, and later security.
+- Keep the code understandable enough that the user can explain every line.
+- Build behavior first, then extract structure only when needed.
+- Use AI as teacher/reviewer/reference/debug helper, not as full project architect.
+- Avoid over-architecture and vague class names.
+
+The user prefers direct explanations. When they ask code-learning questions, answer concretely and avoid abstract architecture talk unless it directly helps.
 
 ## Current folder structure
 
 Important root files/folders:
 
-- `README.md`: current handoff plus older historical product vision. The top sections are more authoritative than older roadmap sections.
-- `context.md`: long project handoff and architecture notes. Contains both current and stale/historical sections. The `Current State First` section should win when there is conflict.
-- `android-architecture-skill.md`: architecture guidance used by the project.
-- `KMP GUIDE.md`: generic Kotlin Multiplatform project guide and run/test commands.
-- `PRIVACY.md`: privacy policy draft for Sync360. States local network transfer, no account/cloud/analytics, local install identifier, session-scoped approvals/tokens, and no Sync360 encryption.
-- `STORE_LISTING.md`: app store listing draft.
-- `androidApp/`: Android app container, manifest, application, `MainActivity`, foreground service, FileProvider config.
-- `desktopApp/`: JVM Desktop app container.
-- `shared/`: shared KMP code, Compose UI, domain/data/repository/network/platform abstractions.
-- `iosApp/`: iOS app folder exists but is not the current active implementation focus.
-- `guide/`: project-local planning documents; ignored by git per `.gitignore`.
-- `.agents/skills/caveman/` and `skills-main/`: project-local agent skill/tooling paths; ignored by git per `.gitignore`.
-- `_CODEX_CONTEXT_DO_NOT_DELETE/`: Codex memory folder. Do not delete or move.
+- `README.md`: old/current project handoff with many stale sections from the previous generated implementation. The top product direction still matters, but current source state is the manual rebuild.
+- `_CODEX_CONTEXT_DO_NOT_DELETE/`: Codex context folder. Do not delete, rename, or move.
+- `_CODEX_CONTEXT_DO_NOT_DELETE/sync360-rebuild-plan.md`: product and engineering brief for the manual rebuild. This is highly relevant.
+- `androidApp/`: Android app entry module.
+- `desktopApp/`: JVM desktop app module. Present but not actively rebuilt yet.
+- `iosApp/`: iOS app folder exists; not active.
+- `shared/`: KMP shared code, Compose UI, design system, domain contracts, and Android actual discovery implementation.
+- `gradle/libs.versions.toml`, `settings.gradle.kts`, `build.gradle.kts`, module `build.gradle.kts` files: Gradle/KMP/Compose dependency setup.
+- `android-architecture-skill.md`, `context.md`, `KMP GUIDE.md`, `PRIVACY.md`, `STORE_LISTING.md`: project docs from previous phases; may contain useful context but can be stale.
 
-Important shared code areas:
+Important current source files:
 
-- `shared/src/commonMain/kotlin/com/liftley/sync360/App.kt`: shared Compose app frame, mobile navigation, desktop/mobile split.
-- `features/sync/presentation/`: Compose screens, ViewModel, UI state/effects/events.
-- `features/sync/domain/`: common domain models, runtime controller, repository interface, transfer controller, local peer discovery interface.
-- `features/sync/data/repository/`: repository integration, transfer engine/store, incoming offer decisions, incoming transfer receiver.
-- `features/sync/data/network/`: HTTP client/server/control DTOs, raw TCP transport abstraction, outgoing transfer sender, transfer payload store, transfer grants.
-- `shared/src/androidMain/...`: Android actual implementations for platform operations, local peer discovery via Android `NsdManager`, raw TCP transport, local device identity, theme, and Android root wiring.
-- `shared/src/jvmMain/...`: Desktop actual implementations including JmDNS discovery and JVM raw TCP transport.
+- `androidApp/src/main/kotlin/com/liftley/sync360/Sync360Application.kt`: starts Koin once at app process startup with `androidContext`.
+- `androidApp/src/main/kotlin/com/liftley/sync360/MainActivity.kt`: Android activity; only enables edge-to-edge and renders `Sync360Root()`.
+- `androidApp/src/main/AndroidManifest.xml`: declares `Sync360Application`, `MainActivity`, and `INTERNET`.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/Sync360Root.kt`: shared Compose root with `Sync360Theme`, Navigation 3 `NavDisplay`, and bottom nav for Send/Receive.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/core/di/Koin.kt`: common Koin startup and common app module.
+- `shared/src/androidMain/kotlin/com/liftley/sync360/core/di/koin.android.kt`: Android Koin bindings for `NetworkServices` and `LocalDeviceIdentityStore`.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/domain/local/DiscoveryStatus.kt`: `Idle`, `Starting`, `Running`, `Stopping`.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/domain/local/LocalDeviceIdentityStore.kt`: common interface for stable per-install device UUID.
+- `shared/src/androidMain/kotlin/com/liftley/sync360/data/AndroidLocalDeviceIdentityStore.kt`: Android SharedPreferences-backed UUID store.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/domain/repository/NetworkServices.kt`: current discovery contract and `NearbyDevice` model.
+- `shared/src/androidMain/kotlin/com/liftley/sync360/data/AndroidNetworkServices.kt`: Android NSD advertising/discovery implementation.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/presentation/featureSend/SendScreen.kt`: current Send UI showing nearby devices, reload/status card, and a custom loading arc.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/presentation/featureReceive/RecieveScreen.kt`: placeholder Receive screen. Note spelling is currently `RecieveScreen.kt`.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/presentation/viewmodel/SendScreenViewModel.kt`: starts timed discovery and exposes discovery state.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/presentation/viewmodel/NavigationViewModel.kt`: simple Navigation 3 back stack holder.
+- `shared/src/commonMain/kotlin/com/liftley/sync360/core/designsystem/`: current theme/colors/type/shapes and Compose icon files.
 
 ## Existing scripts/tools/templates
 
-Known project tooling:
+Known tools:
 
 - `gradlew` / `gradlew.bat`: Gradle wrapper.
-- `build.gradle.kts`, `settings.gradle.kts`, `gradle/libs.versions.toml`: Gradle/KMP/app dependency configuration.
-- `recover.py`: present in root; purpose not inspected in detail during this memory update. Needs confirmation before use.
+- `recover.py`: present in root. Purpose not inspected in this update; needs confirmation before use.
 
-Common commands from project docs:
+Common project commands from docs:
 
-- Android app build: `./gradlew :androidApp:assembleDebug` or Windows `./gradlew.bat :androidApp:assembleDebug`.
+- Android app build: `./gradlew.bat :androidApp:assembleDebug` on Windows.
 - Desktop run: `./gradlew :desktopApp:run`.
 - Desktop hot reload: `./gradlew :desktopApp:hotRun --auto`.
-- Shared Android compile sometimes used during debugging: `./gradlew.bat :shared:compileAndroidMain`.
-- JVM shared compile/test compile used during refactor checks: `./gradlew.bat :shared:compileKotlinJvm`, `./gradlew.bat :shared:compileTestKotlinJvm`.
 
-Important user preference: README/context say the project owner prefers to run Gradle builds/tests manually unless explicitly requested. Future Codex chats should not run builds/tests by default.
+Important user preference: do not run Gradle builds/tests unless explicitly asked. The user prefers to run builds/tests manually.
 
 ## Generated outputs
 
-This repo produces application artifacts, not office documents.
+This repo produces app artifacts:
 
-Known output types:
+- Android build outputs under Gradle/Android build directories.
+- Desktop JVM build outputs under Gradle build directories.
+- Received Sync360 files will eventually be saved by the running app, not generated by the repo itself.
 
-- Android APK/AAB outputs under Android/Gradle build directories.
-- Desktop JVM application/build outputs under Gradle build directories.
-- Received Sync360 files are saved by the running app, not generated by the repo itself:
-  - Android: intended `Downloads/Sync360` through platform storage APIs.
-  - Desktop: intended `Downloads/Sync360` in the user filesystem.
-
-No confirmed Excel, Word, PDF, report, form, or data-entry generated outputs exist in this Sync360 repo.
+No confirmed document/PDF/spreadsheet/report outputs exist for this project.
 
 ## Current workflow
 
-Typical current app workflow:
+Current app/rebuild startup flow:
 
-1. Koin is initialized.
-2. `SyncRuntimeController.start()` starts the runtime.
-3. Local HTTP server starts through `SyncRepositoryImpl.startSync()`.
-4. Local peer discovery advertises the current device and scans for nearby peers.
-5. `LocalPeerDiscovery` publishes `List<DeviceProfile>`.
-6. `SyncRepositoryImpl` filters local/self addresses and exposes nearby devices.
-7. `SyncViewModel` maps repository/runtime state into `SyncUiState`.
-8. `SendScreen` displays selected files/text and nearby devices.
-9. User selects target device and confirms send.
-10. `TransferEngine` and `OutgoingTransferSender` send an HTTP offer/control messages and raw TCP file bytes.
-11. Receiver handles offer through incoming offer decisions and `IncomingTransferReceiver`.
-12. Raw TCP receive writes bytes through `TransferPayloadStore` and platform operations.
-13. Receive UI shows approval/progress/result depending on quick-save and transfer state.
+1. Android process starts `Sync360Application`.
+2. `Sync360Application` calls `initKoin(androidModule) { androidContext(applicationContext) }`.
+3. `MainActivity` renders `Sync360Root()`.
+4. `Sync360Root` shows Navigation 3 bottom navigation with Send and Receive.
+5. `SendScreen` injects `SendScreenViewModel`.
+6. `SendScreenViewModel` starts network services on init, waits about 15 seconds, then stops discovery.
+7. `AndroidNetworkServices.startNetworkServices()` advertises this device with NSD and starts discovery.
+8. Android NSD service registration advertises service type `_sync360._tcp.`, service name `${Build.MODEL} Sync360`, currently hardcoded port `8080`, and TXT attributes `deviceUuid`, `deviceName`, `deviceType`, `protocolVersion`.
+9. Android discovery resolves nearby services: API 34+ uses `registerServiceInfoCallback`; older APIs use `resolveService`.
+10. Resolved `NsdServiceInfo` maps to `NearbyDevice` only if required TXT attributes exist, host addresses exist, and port is greater than 0.
+11. `NearbyDevice` currently includes `id`, `deviceName`, `deviceType`, `protocolVersion`, `hostAddresses: List<String>`, `port`, `serviceName`, and `serviceType`.
+12. `SendScreen` renders device rows and discovery status/reload UI.
 
-Current intended product rules:
+Discovery model:
 
-- Nearby devices are send targets, not long-lived connected-device UI.
-- Direct text snippets are `SendItem.Text`, not `.txt` files.
-- Real `.txt` files remain normal files.
-- Selected send items should remain selected after sending until the user explicitly clears/removes them.
-- Quick Save OFF: incoming offers require Accept/Decline.
-- Quick Save ON: valid offers are accepted automatically.
-- Busy receiver states should reject/ignore new incoming offers until idle.
-- Transfer errors should be one-time UI events/snackbars where possible instead of large persistent error surfaces.
+- `DiscoveryStatus.Idle`: safe to start/reload.
+- `Starting`: discovery was requested.
+- `Running`: `onDiscoveryStarted` fired.
+- `Stopping`: stop was requested.
+- Failures are currently logged and status returns to `Idle`; there is no user-facing `Failed` state.
 
 ## Important project rules
 
-Confirmed rules from chat/files:
+Confirmed rules:
 
-- UI should render state and emit events; business logic belongs above UI.
-- Data/repository/network/platform layers own networking, auth, storage, and transfer orchestration.
-- Keep Android APIs out of common composables.
-- Use lifecycle-aware state collection at app/screen entry points where applicable.
-- Do not reintroduce connection-first/Bluetooth-like UX as the main product flow.
-- Do not reintroduce `selectedFiles` as the main send state; use selected `SendItem`s.
-- Do not treat direct pasted text as a `.txt` file.
-- Do not weaken session security, HMAC validation, session tokens, peer grants, raw TCP transfer token validation, header validation, byte-count validation, or SHA-256 validation without explicit instruction.
-- Do not reintroduce WebSockets or base64/protobuf file-byte payloads unless product direction changes.
-- Prefer raw TCP for file bytes; HTTP/Ktor is the control plane.
-- Avoid unnecessary layers and vague class names.
-- Keep code developer-readable before adding more abstraction.
-- Do not run builds/tests unless user asks or grants approval.
-- Never invent missing project facts. Use `Unknown` or `Needs confirmation`.
+- Build Android first. Desktop/iOS later.
+- Keep code small and understandable.
+- Do not add security first.
+- Do not add full clean architecture up front.
+- Discovery should only provide reachable nearby devices; it should not own transfer/request/receive logic.
+- UI should render state and call ViewModel actions; business/networking logic stays out of composables.
+- Direct text snippets are not `.txt` files.
+- Selected send items should eventually stay selected after sending until explicitly cleared.
+- Do not run Gradle builds/tests unless the user asks.
+- Do not hallucinate missing project facts. Use `Unknown` or `Needs confirmation`.
+- Do not rewrite large systems without user request; the user is intentionally learning step by step.
 
 Inferred rules:
 
-- Prefer small targeted refactors over sweeping rewrites.
-- Prefer direct, simple explanations when the user is learning code.
-- The user values exact path/flow explanations more than abstract architecture talk.
+- Prefer one small vertical slice at a time.
+- Prefer explicit names and direct flow over clever abstractions.
+- Keep debug UI acceptable during learning, but do not let it become permanent product logic without deciding.
+- Use exact code-path explanations when teaching.
 
 ## Known preferences
 
 Confirmed:
 
-- The user wants straightforward, minimal explanations for learning questions.
-- The user gets frustrated by vague naming and over-layered architecture.
-- The user wants backend/domain/data flow stabilized first, then UI skin/state can be simplified.
-- The user prefers app stories/boundaries such as discovery/presence vs transfer/request/receive instead of many tiny interfaces/classes with unclear responsibility.
-- The user does not want caveman mode currently.
-- The user often asks to understand code before changing it; obey when they say not to code.
+- The user wants short, direct explanations for code-learning questions.
+- The user gets frustrated by vague or overly technical explanations when a simple answer would do.
+- The user wants to know whether code is actually wrong/can break versus merely stylistically improvable.
+- The user prefers manual coding for ownership, using AI as reviewer/teacher/reference.
+- The user likes the current simple Material/Compose style with rounded surfaces, `surfaceContainer`, compact device cards, icon rows, and restrained UI.
+- The user wants to preserve theme/fonts/icons/design identity while rebuilding behavior manually.
 
 Inferred:
 
-- Prefer class names like `LocalPeerDiscovery`, `AndroidLocalPeerDiscovery`, `OutgoingTransferSender`, `IncomingTransferReceiver`, and `TransferPayloadStore` because they say what they do.
-- Avoid adding diagnostic-only infrastructure unless it directly supports app behavior or a temporary debugging task.
+- Explain networking with practical mental models such as `deviceUuid = identity`, `hostAddresses + port = route`.
+- When presenting options, label what is good enough now versus what should be improved later.
+- Avoid pushing perfect production lifecycle handling before the current milestone needs it.
 
 ## Current status
 
-As of 2026-06-22:
+As of 2026-06-25:
 
-- The repo currently contains refactored discovery and transfer names such as `LocalPeerDiscovery`, `AndroidLocalPeerDiscovery`, `DesktopLocalPeerDiscovery`, `OutgoingTransferSender`, `IncomingTransferReceiver`, and `TransferPayloadStore`.
-- `SyncDiscoveryController`, `NetworkDiscoveryService`, `AndroidDiscoveryService`, `DesktopDiscoveryService`, `SyncDiagnosticLog`, and `TransferDiagnostics` appear to have been removed from the current source tree.
-- Current active conversation is focused on reading and understanding `AndroidLocalPeerDiscovery` and the discovery flow, not making new code changes unless asked.
-- `git status --short` at memory creation showed one modified file: `shared/src/androidMain/kotlin/com/liftley/sync360/features/sync/data/network/AndroidLocalPeerDiscovery.kt`. The user said they rolled back recent infinite-scanning changes, so future agents should inspect the actual diff before assuming what changed.
-- The user is currently asking code-understanding questions around Android NSD discovery, registration, scanning, resolving, multicast locks, shutdown, and state/error modeling.
+- The old generated sync implementation has been removed in prior commits/working sessions.
+- The current rebuild has a working Android-first app shell with Koin, Navigation 3, Send/Receive screens, theme/icons, and Android NSD discovery.
+- Android discovery can advertise a device, discover other devices on the same network, map resolved services to `NearbyDevice`, and show nearby devices in the Send screen.
+- Discovery uses a timed scan window around 15 seconds and manual reload.
+- Discovery status is exposed to UI with `Idle`, `Starting`, `Running`, `Stopping`.
+- `NearbyDevice` now includes `hostAddresses: List<String>` and `port`, which are needed for the next request/response milestone.
+- Current `AndroidNetworkServices` still has known learning-stage rough edges: port is hardcoded to `8080`; user wants dynamic OS-assigned port later; API 34+ callback map currently uses device id after resolve; `stopDiscoveryServices` stops scan/callbacks but does not unregister the advertised NSD service; repeated/restart lifecycle is simple learning-stage handling.
+- Worktree at this update showed uncommitted changes in `AndroidNetworkServices.kt`, `NetworkServices.kt`, and a staged/deleted stale path `shared/src/commonMain/kotlin/com/liftley/sync360/presentation/features/SendScreen.kt`.
+
+Latest intended next milestone:
+
+- Move from discovery to simple request/response: tap nearby device, send a simple offer/request to its `hostAddresses + port`, receiver shows incoming request, receiver accepts/declines, sender sees accepted/declined.
+- No file transfer yet.
+- No security yet.
+- Likely next learning topic: tiny local Ktor HTTP server/client, JSON DTOs, and dynamic port selection.
 
 ## Open questions / unknowns
 
-- Unknown: whether Android discovery currently works reliably on two physical devices after the latest local rollback.
-- Unknown: exact current desired final structure for discovery error state. User noticed one shared `failure` field is confusing when scan and advertisement can independently succeed/fail, but explicitly said not to change it yet.
-- Unknown: whether port `8080` should remain fixed or later become dynamic. User has asked conceptually how to ask the OS for a free port.
-- Unknown: whether the Android app should add `NEARBY_WIFI_DEVICES` permission for newer target SDK behavior. This has not been confirmed or implemented in this memory update.
-- Needs confirmation: any future shift back to HTTP file-byte upload would conflict with current raw TCP direction.
-- Needs confirmation: any Excel/document/PDF/data-entry workflow from the pasted instruction is not present in this repo.
+- Unknown: exact final server/control-plane design for the rebuild.
+- Needs confirmation: whether to use Ktor HTTP for the first request/response slice, though it is likely.
+- Needs confirmation: how to choose primary host from `hostAddresses`; current plan is to store all and prefer IPv4 first later.
+- Needs confirmation: dynamic port implementation details. The intended concept is to start the local server on port `0`, read the OS-assigned port, then advertise that port through NSD.
+- Unknown: whether additional Android permissions such as `NEARBY_WIFI_DEVICES` are needed for target SDK/device behavior.
+- Unknown: whether discovery is fully reliable across the user’s two Android devices after the latest host-address changes.
+- Needs confirmation: when to add Desktop discovery and JVM network services. Current plan is after Android behavior is understood.
+- Needs confirmation: whether `RecieveScreen.kt` spelling should be corrected now or later.
 
 ## Recent decisions
 
-- Current product model is nearby-device drop, not connection-first device pairing.
-- Discovery/presence should be a clean independent component that outputs nearby `DeviceProfile`s.
-- Transfer/request/receive should be separate from discovery.
-- Direct text snippets and files share one send bundle UI/data surface, but text snippets are separate `SendItem.Text` objects rather than generated `.txt` files.
-- User prefers manually learning the backend from the bottom up instead of asking AI to keep refactoring blindly.
-- One universal discovery `failure` field is currently understood as simple but potentially confusing; splitting scan/advertisement errors is a possible later improvement, not a current task.
-- `shutdown()` in discovery means permanently close this discovery instance, while `stopScan()` / `stopAdvertising()` are temporary lifecycle operations.
+- Rebuild manually from a smaller baseline rather than continuing to refactor generated code.
+- Keep AI as teacher/reviewer/reference, not app architect.
+- Android-first; Desktop/iOS later.
+- Discovery is Milestone 2 and is now nearly complete/good enough.
+- Discovery should scan for a limited window instead of running forever to avoid unnecessary battery/network work.
+- Advertising can stay on while the app is open; scanning can be manual/timed.
+- Keep discovery errors developer/log-only for now; no global user-facing `Failed` state.
+- Use `DiscoveryStatus.Idle`, `Starting`, `Running`, `Stopping`.
+- Use `deviceUuid` for device identity.
+- Use `hostAddresses + port` for communication route.
+- Store host addresses as `List<String>` in common model rather than Android/JVM `InetAddress`.
+- For Android 14+ use `NsdServiceInfo.hostAddresses`; for older Android use deprecated `host` wrapped as a list.
+- If host address list is empty or port is invalid, do not map the service to `NearbyDevice`.
 
 ## How future Codex chats should use this file
 
@@ -202,8 +221,9 @@ As of 2026-06-22:
 - Keep the memory file updated after major changes.
 - Never invent project facts that are not in memory, files, or user instructions.
 - Use `Unknown` or `Needs confirmation` for uncertain details.
-- Respect the user's current request type. If they ask only for explanation, do not edit code.
+- Respect the user’s current request type. If they ask only for explanation, do not edit code.
 
 ## Change log
 
-- 2026-06-22: Created `_CODEX_CONTEXT_DO_NOT_DELETE/memory.md` from current chat context and repository inspection. Also noted that the pasted instruction's data-entry/Excel/PDF/father context is not supported by this Sync360 repository and should not be treated as true for this project without confirmation.
+- 2026-06-22: Created `_CODEX_CONTEXT_DO_NOT_DELETE/memory.md` from earlier chat context and repository inspection.
+- 2026-06-25: Updated memory from current chat and repository inspection. Replaced stale generated-code context with the current manual Android-first rebuild state, including Koin setup, Navigation 3 shell, Android NSD discovery, discovery status, host address mapping, user preferences, and next request/response milestone.
