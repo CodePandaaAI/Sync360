@@ -219,13 +219,28 @@ class AndroidNetworkServices(
         Log.d("AndroidNetworkServices", "startNetworkServices: Starting discovery and registration")
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
 
+        val rawManufacturer = Build.MANUFACTURER.trim()
+        val rawModel = Build.MODEL.trim()
+
+        // Capitalize the first letter of the manufacturer safely
+        val manufacturer = rawManufacturer.replaceFirstChar {
+            if (it.isLowerCase()) it.titlecase() else it.toString()
+        }
+
+        // Avoid names like "Google Google Pixel 6" if the model already contains the brand
+        val cleanDeviceName = if (rawModel.startsWith(rawManufacturer, ignoreCase = true)) {
+            rawModel
+        } else {
+            "$manufacturer $rawModel"
+        }
+
         val serviceInfo = NsdServiceInfo().apply {
             serviceType = "_sync360._tcp."
             serviceName = "${Build.MODEL} Sync360"
             port = httpServerPort
 
             setAttribute("deviceUuid", deviceUuid)
-            setAttribute("deviceName", Build.MODEL ?: "Android Device")
+            setAttribute("deviceName", cleanDeviceName)
             setAttribute("deviceType", "Android")
             setAttribute("protocolVersion", "1")
         }
