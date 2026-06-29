@@ -1,181 +1,276 @@
 <div align="center">
-  <img src="shared/src/commonMain/composeResources/drawable/app_icon.png" alt="Sync360 logo" width="120" />
+  <img src="screenshots/sync360-icon.png" width="96" alt="Sync360 app icon" />
 
   # Sync360
 
-  **Local device sharing, rebuilt from first principles.**
+  **Send files across your own devices without the cloud getting involved.**
 
-  Share files and text between nearby devices on the same network without uploading them to a cloud server.
+  Local-first device sharing, rebuilt from first principles with Kotlin Multiplatform.
+
+  [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+  [![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.11.1-4285F4)](https://www.jetbrains.com/lp/compose-multiplatform/)
+  [![Ktor](https://img.shields.io/badge/Ktor-3.5.1-087CFA)](https://ktor.io/)
+  [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
+
+  <!-- TODO: Add hero demo GIF here: screenshots/hero-demo.gif -->
+  <br />
+  <sub>Current milestone: Android devices can discover each other locally and exchange a simple Ktor request/response.</sub>
 </div>
 
 ---
 
-## What Sync360 Is
+## The idea
 
-Sync360 is a Kotlin Multiplatform and Compose Multiplatform app for nearby device-to-device sharing.
+Your devices are already next to each other. They are often on the same Wi-Fi. Sending a large file should not always mean uploading it to a chat app or cloud drive first.
 
-The goal is simple: open the app on two devices connected to the same local network, discover nearby Sync360 devices, choose a target, approve the request on the receiver, and send files or text directly over the local network.
-
-This repository is currently being rebuilt from scratch, manually and publicly, after an earlier AI-generated implementation became too large to confidently own. The current code is intentionally small, Android-first, and learning-focused. The priority is understanding every networking and state-management step before adding more product surface.
-
-## Current Status
-
-Sync360 is not a finished file-sharing app yet. It is in an early rebuild phase.
-
-Currently working:
-
-- Android app startup with Koin.
-- Compose Multiplatform UI shell.
-- Navigation 3 Send and Receive screens.
-- Android NSD service advertisement and discovery.
-- Stable per-install local device UUID.
-- Nearby device model with `hostAddresses` and dynamic `port`.
-- Ktor local HTTP server started inside the app.
-- OS-assigned dynamic server port advertised through NSD.
-- Ktor HTTP client calling a discovered device.
-- First local request/response route: `GET /sync360/ping`.
-- Receiver-side Accept/Decline proof through the Receive screen.
-
-Not built yet:
-
-- Real send-offer DTOs.
-- File picker and selected item list.
-- Text snippet sending.
-- File byte transfer.
-- Progress UI.
-- Storage/save handling.
-- Security/session validation.
-- Desktop support for the rebuilt flow.
-
-## Why This Project Exists
-
-Most file sharing workflows become awkward when files are large or when devices are already sitting on the same Wi-Fi network. Chat apps and cloud drives often upload data out to the internet only to download it back onto another nearby device.
-
-Sync360 is being built around a local-first idea:
+Sync360 is an early-stage local network sharing app. The long-term goal is simple:
 
 ```text
 same network -> discover nearby devices -> ask receiver -> send directly
 ```
 
-The app is also a learning project in public. It is being rebuilt one small slice at a time to deeply understand Android local networking, Ktor servers and clients, serialization, coroutines, state flow, dependency injection, lifecycle, and eventually file bytes and security.
+The project is being rebuilt manually and in public after an older AI-generated implementation became too large to confidently own. This version is intentionally smaller, Android-first, and focused on understanding every networking step before adding more product surface.
 
-## Current Flow
+## What Sync360 is
 
-The current prototype flow is:
+Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local peer-to-peer file and data sharing.
+
+It is being built around these principles:
+
+- Local-first sharing on the same network.
+- No cloud-first dependency for nearby devices.
+- Clear receiver approval before sending.
+- Kotlin-first architecture across shared code and platform implementations.
+- Small, understandable slices instead of generated architecture.
+
+## Current status
+
+Sync360 is not a finished file transfer app yet. It is in an early rebuild phase.
+
+### Working now
+
+- Android app startup with Koin.
+- Compose Multiplatform UI shell.
+- Navigation 3 Send and Receive screens.
+- Stable per-install local device UUID.
+- Android NSD advertisement and nearby device discovery.
+- Resolved nearby devices with `hostAddresses` and dynamic `port`.
+- Embedded Ktor server inside the app.
+- OS-assigned HTTP server port advertised through NSD.
+- Ktor client calling a discovered device.
+- First local route: `GET /sync360/ping`.
+- Experimental receiver-side Accept/Decline proof for incoming ping requests.
+
+### Experimental
+
+- Send screen request status UI.
+- Receiver request state flow and navigation behavior.
+- Naming and boundaries around network controllers.
+- The current ping route is being used to learn request/response coordination; it is not the final send-offer protocol.
+
+### Planned
+
+- Real send-offer request and response DTOs.
+- File picker and selected item list.
+- Direct text snippet sending.
+- File byte transfer.
+- Transfer progress and result UI.
+- Android storage/save handling.
+- Desktop support for the rebuilt flow.
+- Security/session validation after the simple flow works.
+
+## Demo and screenshots
+
+<!-- TODO: Add hero demo GIF here: screenshots/hero-demo.gif -->
+<!-- TODO: Add Android screenshot here: screenshots/android-send.png -->
+<!-- TODO: Add receiver approval screenshot here: screenshots/android-receive-request.png -->
+<!-- TODO: Add architecture preview here: screenshots/architecture-preview.png -->
+<!-- TODO: Add desktop screenshot later: screenshots/desktop-home.png -->
+
+Place visual assets in [`screenshots/`](screenshots/README.md). The folder includes recommended filenames and sizes.
+
+## How the current prototype works
 
 ```text
-Device A starts local Ktor server
+Device A starts a local Ktor server
 Device A advertises itself with Android NSD
 Device B discovers Device A
 Device B reads Device A hostAddresses + port
 Device B calls http://host:port/sync360/ping
-Device A shows incoming request on Receive screen
+Device A surfaces the request on Receive
 User accepts or declines
 Device A responds
 Device B receives Accepted or Declined
 ```
 
-This is the first control-plane milestone. It proves that discovery can lead to a real local HTTP request and a structured response.
+This is the first control-plane milestone. It proves that local discovery can lead to an actual HTTP request and a structured response between two Android devices.
 
-## Architecture Snapshot
+## Architecture
 
-The current code is deliberately small and direct.
+```mermaid
+flowchart TD
+    App[Sync360Root] --> Send[SendScreen + SendScreenViewModel]
+    App --> Receive[ReceiveScreen + ReceiveScreenViewModel]
 
-```text
-androidApp/
-  Android entry point, Application, MainActivity
+    Send --> NetworkController[NetworkServicesController]
+    Send --> Outgoing[OutgoingRequestsController]
+    Receive --> Incoming[IncomingServerRequestsController]
 
-shared/
-  commonMain/
-    Compose UI
-    ViewModels
-    Koin common module
-    shared domain models
-    Ktor HTTP client/server prototype
-    request coordination controllers
+    NetworkController --> Server[Sync360HttpServer]
+    NetworkController --> Discovery[NetworkServices]
+    Discovery --> AndroidNSD[AndroidNetworkServices]
 
-  androidMain/
-    Android Koin module
-    Android NSD implementation
-    Android local device identity store
+    Server --> Incoming
+    Outgoing --> Client[Sync360HttpClient]
+    Client --> RemoteDevice[Nearby device HTTP server]
+    AndroidNSD --> Nearby[NearbyDevice hostAddresses + port]
 ```
 
-Important current pieces:
+High-level module shape:
 
-- `Sync360Root` owns the shared Compose app shell and Navigation 3 display.
-- `SendScreenViewModel` exposes nearby devices and starts outgoing requests through a controller.
-- `ReceiveScreenViewModel` exposes incoming request state and sends Accept/Decline decisions.
-- `NetworkServicesController` starts the HTTP server, then starts discovery, then stops scanning after a short window.
-- `AndroidNetworkServices` owns Android NSD advertisement/discovery.
-- `Sync360HttpServer` owns the local Ktor server and `/sync360/ping` route.
-- `Sync360HttpClient` calls nearby devices using discovered host/port data.
-- `IncomingServerRequestsController` bridges incoming server requests to the Receive UI.
-- `OutgoingRequestsController` wraps outgoing client requests.
+- `androidApp/` - Android app entry point and manifest.
+- `desktopApp/` - JVM desktop app shell; present, but not active in the rebuilt flow yet.
+- `shared/commonMain/` - shared UI, ViewModels, domain models, Koin module, Ktor client/server prototype.
+- `shared/androidMain/` - Android NSD discovery and Android local identity implementation.
 
-The architecture is not final. The current goal is to keep responsibilities understandable while the networking fundamentals are being learned and proven.
+More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
-## Tech Stack
+## Tech stack
 
+- Kotlin 2.3.21
 - Kotlin Multiplatform
-- Compose Multiplatform
-- Android-first implementation
-- Koin for dependency injection
-- Ktor Client and Server with CIO
-- kotlinx.serialization for JSON
-- Android NSD / mDNS discovery
+- Compose Multiplatform 1.11.1
+- Android application module
+- JVM desktop module
+- Koin 4.2.2
+- Ktor 3.5.1 client/server with CIO
+- kotlinx.serialization JSON
 - Coroutines and StateFlow
+- Android NSD / mDNS discovery
 - Navigation 3
+- Gradle 9.4.1 wrapper
 
-## Roadmap
+## Getting started
 
-Short-term rebuild milestones:
+### Prerequisites
 
-1. Android discovery and dynamic server port advertisement.
-2. Simple local HTTP request/response between two Android devices.
-3. Real send offer request with receiver Accept/Decline.
-4. Direct text snippet send after approval.
-5. One-file transfer over local network.
-6. Multiple files and text in one outgoing bundle.
-7. Progress, result, and failure states.
-8. Desktop support.
-9. Security as a separate learning phase.
+- JDK 17
+- Android Studio or IntelliJ IDEA with Kotlin support
+- Android SDK installed
+- At least one Android device or emulator for app launch
+- Two physical Android devices on the same local network for real discovery testing
 
-Security is intentionally not first. The project will add it after the simple local flow is understood and working.
+### Clone
 
-## Running The Project
+```bash
+git clone <your-repo-url>
+cd Sync360
+```
 
-Android debug build:
+Replace `<your-repo-url>` after the repository is public.
+
+### Open in IDE
+
+Open the repository root in Android Studio or IntelliJ IDEA. Let Gradle sync finish.
+
+### Build Android
+
+Windows:
 
 ```powershell
 ./gradlew.bat :androidApp:assembleDebug
 ```
 
-Desktop target exists, but the current rebuild is Android-first and desktop behavior is not yet part of the active milestone.
+macOS/Linux:
 
-## Build In Public
+```bash
+./gradlew :androidApp:assembleDebug
+```
 
-This project is being rebuilt openly as both a product and a learning record.
+### Desktop
 
-The philosophy:
+The desktop module exists, but the current rebuilt networking flow is Android-first. You can inspect/run the shell with:
 
-- Make one small networking slice work.
-- Understand every line.
-- Keep names direct.
-- Add structure only when it removes real confusion.
-- Avoid generated architecture that cannot be explained.
+```bash
+./gradlew :desktopApp:run
+```
+
+Desktop discovery and transfer behavior should be treated as future work unless the current code says otherwise.
+
+## Roadmap
+
+### MVP direction
+
+- Android local discovery.
+- Dynamic local HTTP server port advertisement.
+- Simple request/response between two Android devices.
+- Real send offer with receiver Accept/Decline.
+- Direct text send.
+- One-file transfer.
+
+### Near-term
+
+- File selection UI.
+- Selected item list.
+- Progress states.
+- Better error states.
+- Receiver result UI.
+- Cleaner lifecycle around server/discovery start and stop.
+- Better host address selection, including IPv4 preference and IPv6 formatting.
+
+### Later
+
+- Multiple files and mixed text/file bundles.
+- Desktop support.
+- Security/session validation.
+- Transfer integrity checks.
+- Optional transfer history.
+- Clipboard-oriented flows, if they fit the product direction.
+- iOS investigation.
+
+See [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Contributing
 
-The repository is being prepared for open source. Contributions, ideas, and debugging notes are welcome once the public workflow is ready.
+Sync360 is early. That makes feedback useful.
 
-For now, the best contributions are likely to be:
+Good contributions right now:
 
 - Android local-network testing notes.
-- Ktor client/server improvements.
+- Ktor client/server suggestions.
+- NSD reliability improvements.
 - Clear naming and architecture feedback.
-- Small, focused bug fixes.
+- Small bug fixes.
 - Documentation improvements.
+
+Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Large architecture changes should be discussed first.
+
+## Community and feedback
+
+If you try the project and something breaks, open an issue with:
+
+- device model
+- Android version
+- network type
+- what you expected
+- what happened
+- logs if available
+
+Architecture discussions are welcome, especially around local networking, KMP boundaries, Ktor, Android NSD, and future file transfer design.
+
+## Security
+
+This project will eventually handle local network file transfer. Please do not report security-sensitive issues publicly if they expose a vulnerability. See [SECURITY.md](SECURITY.md).
 
 ## License
 
-A license has not been added yet. One should be selected before relying on this repository as an open-source dependency.
+Apache License 2.0. See [LICENSE](LICENSE).
+
+## Maintainer
+
+Created by **Romit Sharma**.
+
+- GitHub: TODO: add GitHub profile link
+- LinkedIn: TODO: add LinkedIn profile link
+
+If this project sounds interesting, star it, follow the rebuild, or open a discussion when the repository goes public.
