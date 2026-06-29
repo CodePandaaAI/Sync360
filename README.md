@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="screenshots/sync360-icon.png" width="96" alt="Sync360 app icon" />
+  <img src="screenshots/sync360-icon.png" width="128" alt="Sync360 app icon" />
 
   # Sync360
 
@@ -12,7 +12,7 @@
   [![Ktor](https://img.shields.io/badge/Ktor-3.5.1-087CFA)](https://ktor.io/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-  <img src="screenshots/hero-demo.gif" alt="Sync360 Android-to-Android local request demo" width="720" />
+  <img src="screenshots/hero-demo.gif" alt="Sync360 Android-to-Android local request demo" width="1080" />
   <sub>Current milestone: Android devices can discover each other locally and exchange a simple Ktor request/response.</sub>
 </div>
 
