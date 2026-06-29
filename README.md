@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="screenshots/sync360-icon.png" width="96" alt="Sync360 app icon" />
+  <img src="shared/src/commonMain/composeResources/drawable/app_icon.png" width="128" alt="Sync360 app icon" />
 
   # Sync360
 
