@@ -1,6 +1,5 @@
 package com.liftley.sync360.data.remote
 
-import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import kotlinx.coroutines.CompletableDeferred

@@ -1,10 +1,10 @@
 package com.liftley.sync360.data.remote.client
 
-import com.liftley.sync360.data.remote.client.clientRequest.MessagePayload
-import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
-import com.liftley.sync360.data.remote.server.serverResponse.BaseResponse
-import com.liftley.sync360.data.remote.server.serverResponse.OfferException
-import com.liftley.sync360.data.remote.server.serverResponse.OfferResponse
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextOfferRequest
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextTransferRequest
+import com.liftley.sync360.data.remote.server.serverTextResponse.OfferException
+import com.liftley.sync360.data.remote.server.serverTextResponse.TextOfferResponse
+import com.liftley.sync360.data.remote.server.serverTextResponse.TextTransferResponse
 import com.liftley.sync360.domain.model.NearbyDevice
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -26,49 +26,52 @@ class Sync360HttpClient {
         }
     }
 
-    private suspend fun offerRequest(
+    private suspend fun textOfferRequest(
         nearbyDevice: NearbyDevice,
-        offerRequest: OfferRequest
-    ): Result<OfferResponse> {
+        textOfferRequest: TextOfferRequest
+    ): Result<TextOfferResponse> {
         val host = nearbyDevice.hostAddresses.first()
         val port = nearbyDevice.port
 
         return try {
-            val url = "http://$host:$port/sync360/offer"
-            when (val offerResponse = httpClient.post(url) {
+            val url = "http://$host:$port/sync360/text/offer"
+
+            val textOfferResponse = httpClient.post(url) {
                 contentType(ContentType.Application.Json)
-                setBody(offerRequest)
+                setBody(textOfferRequest)
 
                 timeout {
                     requestTimeoutMillis = 60_000 // 60 seconds
                     connectTimeoutMillis = 5_000   // 5 seconds to physically connect
                     socketTimeoutMillis = 60_000  // 60 seconds socket read inactivity
                 }
-            }.body<OfferResponse>()) {
-                OfferResponse.OfferAccepted -> {
-                    Result.success(offerResponse)
+            }.body<TextOfferResponse>()
+
+            when (textOfferResponse) {
+                TextOfferResponse.Accepted -> {
+                    Result.success(TextOfferResponse.Accepted)
                 }
 
-                OfferResponse.OfferDeclined -> {
-                    Result.failure(OfferException(offerResponse))
+                TextOfferResponse.Declined -> {
+                    Result.failure(OfferException("User Declined Request"))
                 }
             }
         } catch (e: Exception) {
             if (e is ConnectTimeoutException || e is SocketTimeoutException) {
                 // Treat the lack of response as an automatic business decline
-                Result.failure(OfferException(OfferResponse.OfferDeclined))
+                Result.failure(OfferException(e.message ?: ""))
             } else {
                 Result.failure(e)
             }
         }
     }
 
-    suspend fun trySendPayloadToPeer(
+    suspend fun textTransferRequest(
         nearbyDevice: NearbyDevice,
-        offerRequest: OfferRequest,
-        messagePayload: MessagePayload
-    ): Result<BaseResponse> {
-        val result = offerRequest(nearbyDevice, offerRequest)
+        textOfferRequest: TextOfferRequest,
+        textTransferRequest: TextTransferRequest
+    ): Result<TextTransferResponse> {
+        val result = textOfferRequest(nearbyDevice, textOfferRequest)
 
         result.fold(
             onSuccess = {
@@ -76,14 +79,14 @@ class Sync360HttpClient {
                 val port = nearbyDevice.port
 
                 return try {
-                    val url = "http://$host:$port/sync360/files"
+                    val url = "http://$host:$port/sync360/text/transfer"
 
-                    val response = httpClient.post(url) {
+                    val textTransferResponse = httpClient.post(url) {
                         contentType(ContentType.Application.Json)
-                        setBody(messagePayload)
-                    }.body<BaseResponse>()
+                        setBody(textTransferRequest)
+                    }.body<TextTransferResponse>()
 
-                    Result.success(response)
+                    Result.success(textTransferResponse)
                 } catch (e: Exception) {
                     Result.failure(e)
                 }

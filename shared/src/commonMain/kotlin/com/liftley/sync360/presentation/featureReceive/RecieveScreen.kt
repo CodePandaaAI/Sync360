@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -31,77 +32,199 @@ import org.koin.compose.koinInject
 fun ReceiveScreen() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.clientServerState.collectAsStateWithLifecycle()
-    Surface(modifier = Modifier.fillMaxSize()) {
-        Sync360Surface {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.surfaceContainer
+        ) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(16.dp).verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.Center,
+                modifier = Modifier
+                    .fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 when (val state = receiveScreenState) {
                     is ClientServerState.Idle -> {
-                        Icon(imageVector = Emoji_Nature, null, modifier = Modifier.size(48.dp))
-                        Text(
-                            "Nothing To Receive Right Now!",
-                            style = MaterialTheme.typography.titleLarge
-                        )
+                        IdleReceiveState()
                     }
 
-                    is ClientServerState.Busy -> {
-                        Text(
-                            "${state.offerRequest.deviceName} wants to send you: ${state.offerRequest.filesCount} File",
-                            style = MaterialTheme.typography.titleMedium
+                    is ClientServerState.Busy.TextOffer -> {
+                        TextOfferState(
+                            state = state,
+                            onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
+                            onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
                         )
-                        Text(
-                            "Device ip and port:${state.offerRequest.deviceIp}:${state.offerRequest.devicePort}",
-                            style = MaterialTheme.typography.titleMedium
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Button(onClick = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) }) {
-                                Text("Accept")
-                            }
-
-                            Button(onClick = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }) {
-                                Text("Decline")
-                            }
-                        }
                     }
 
                     is ClientServerState.Received -> {
-                        Text(
-                            "Received Text:",
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Text(
-                            state.data.content,
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceEvenly
-                        ) {
-                            Button(
-                                onClick = {
-                                    receiveScreenViewModel.copyReceivedText(state.data.content)
-                                    receiveScreenViewModel.clearState()
-                                }
-                            ) {
-                                Text("Copy Text")
+                        ReceivedTextState(
+                            text = state.data,
+                            onCopyText = {
+                                receiveScreenViewModel.copyReceivedText(state.data)
+                                receiveScreenViewModel.clearState()
+                            },
+                            onClear = {
+                                receiveScreenViewModel.clearState()
                             }
-                            Button(
-                                onClick = {
-                                    receiveScreenViewModel.clearState()
-                                }
-                            ) {
-                                Text("Clear All")
-                            }
-                        }
+                        )
                     }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleReceiveState() {
+    Sync360Surface {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(
+                imageVector = Emoji_Nature,
+                contentDescription = null,
+                modifier = Modifier.size(48.dp)
+            )
+            Text(
+                "Nothing to receive right now",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                "Keep Sync360 open on nearby devices",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun TextOfferState(
+    state: ClientServerState.Busy.TextOffer,
+    onAccept: () -> Unit,
+    onDecline: () -> Unit
+) {
+    Sync360Surface {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Incoming text",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Text(
+                "${state.senderDeviceName} wants to send text",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Text(
+                "${state.characterCount} characters",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Preview",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(
+                        state.preview.ifBlank { "No preview available" },
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onDecline,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Decline")
+                }
+
+                Button(
+                    onClick = onAccept,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Accept")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReceivedTextState(
+    text: String,
+    onCopyText: () -> Unit,
+    onClear: () -> Unit
+) {
+    Sync360Surface {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text(
+                "Received text",
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                Text(
+                    text,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    style = MaterialTheme.typography.bodyLarge
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                OutlinedButton(
+                    onClick = onClear,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Clear")
+                }
+
+                Button(
+                    onClick = onCopyText,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Copy text")
                 }
             }
         }

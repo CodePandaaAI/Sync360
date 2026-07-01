@@ -27,15 +27,18 @@ val appModule = module {
     single<Sync360HttpClient> { Sync360HttpClient() }
     single<Sync360HttpServer> {
         Sync360HttpServer(
-            deviceUuid = get<LocalDeviceIdentityStore>().getOrCreateDeviceUuid(),
             get()
         )
     }
 
     single<IncomingServerRequestsController> { IncomingServerRequestsController() }
-    single<OutgoingRequestsController> { OutgoingRequestsController(get()) }
+    single<OutgoingRequestsController> {
+        OutgoingRequestsController(
+            get(),
+            get()
+        )
+    }
     single<NetworkServicesController> { NetworkServicesController(get(), get()) }
-
 }
 
 fun initKoin(platformModule: Module, appDeclaration: KoinAppDeclaration) {

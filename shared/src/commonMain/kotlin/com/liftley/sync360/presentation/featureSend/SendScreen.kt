@@ -16,6 +16,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SecondaryTabRow
+import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -33,8 +35,9 @@ import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceCard
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceEmptyCard
-import com.liftley.sync360.presentation.featureSend.model.SendItem
+import com.liftley.sync360.presentation.featureSend.components.TextItemCard
 import com.liftley.sync360.presentation.featureSend.model.SendScreenUiState
+import com.liftley.sync360.presentation.featureSend.model.SendTab
 import com.liftley.sync360.presentation.presentationComponents.Sync360Surface
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
 import kotlinx.coroutines.launch
@@ -45,12 +48,14 @@ fun SendScreen() {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
     val nearbyDevices by sendScreenViewModel.nearbyDevices.collectAsStateWithLifecycle()
     val discoveryStatus by sendScreenViewModel.discoveryServiceStatus.collectAsStateWithLifecycle()
-    val sendingItemsList by sendScreenViewModel.sendingItemsList.collectAsStateWithLifecycle()
 
     val sendScreenUiState by sendScreenViewModel.sendScreenUiState.collectAsStateWithLifecycle()
     val coroutineScope = rememberCoroutineScope()
 
-    var clipbaordText by remember { mutableStateOf("") }
+    var clipboardTextFieldText by remember { mutableStateOf("") }
+    var clipboardText by remember { mutableStateOf("") }
+
+    var selectedTab by remember { mutableStateOf(SendTab.Text) }
 
     Column(
         modifier = Modifier
@@ -122,70 +127,34 @@ fun SendScreen() {
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        "Selected Items",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                    if (sendingItemsList.isNotEmpty()) {
-                        IconButton(
-                            onClick = { sendScreenViewModel.clearAllSendItemList() },
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                            modifier = Modifier.height(48.dp)
-                        ) {
-                            Icon(imageVector = Close, null)
-                        }
-                    }
-                }
-
-                if (sendingItemsList.isEmpty()) {
-                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            verticalArrangement = Arrangement.spacedBy(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Icon(imageVector = Emoji_Nature, null, modifier = Modifier.size(48.dp))
-                            Text("No Items Added")
-                        }
-                    }
-                } else {
-                    sendingItemsList.forEach { item ->
-                        SendItemCard(item) { sendScreenViewModel.removeSendItem(item) }
-                    }
-                }
-            }
-        }
-        Sync360Surface {
-
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OutlinedTextField(
-                    clipbaordText,
-                    onValueChange = { clipbaordText = it },
-                    label = { Text("Add Text to send") },
-                    maxLines = 4,
-                    shape = MaterialTheme.shapes.large,
-                    modifier = Modifier.weight(1f)
-                )
-                Button(
-                    onClick = {
-                        sendScreenViewModel.addSendItem(
-                            SendItem.Text(clipbaordText)
+                SecondaryTabRow(selectedTabIndex = selectedTab.ordinal) {
+                    SendTab.entries.forEach { tab ->
+                        Tab(
+                            selected = selectedTab == tab,
+                            onClick = { selectedTab = tab },
+                            text = { Text(tab.name) }
                         )
-                        clipbaordText = ""
                     }
-                ) {
-                    Text("Add")
+                }
+
+                when (selectedTab) {
+                    SendTab.Text -> {
+                        TextSendContent(
+                            clipboardText = clipboardText,
+                            clipboardTextFieldText = clipboardTextFieldText,
+                            onClipboardTextChange = { clipboardTextFieldText = it },
+                            onAddText = {
+                                clipboardText = clipboardTextFieldText
+                            },
+                            onClearText = {
+                                clipboardText = ""
+                            }
+                        )
+                    }
+
+                    SendTab.Files -> {
+                        FilesComingSoonContent()
+                    }
                 }
             }
         }
@@ -228,8 +197,13 @@ fun SendScreen() {
                     NearbyDeviceCard(
                         device = device,
                         onClick = {
-                            coroutineScope.launch {
-                                sendScreenViewModel.onDeviceClick(device)
+                            if (selectedTab == SendTab.Text) {
+                                coroutineScope.launch {
+                                    sendScreenViewModel.onDeviceClickForTextTransfer(
+                                        device,
+                                        clipboardText
+                                    )
+                                }
                             }
                         }
                     )
@@ -247,36 +221,92 @@ fun SendScreen() {
 }
 
 @Composable
-fun SendItemCard(item: SendItem, onClick: () -> Unit) {
-    when (item) {
-        is SendItem.Text -> {
-            Sync360Surface {
-                Column(
-                    verticalArrangement = Arrangement.Center,
-                    horizontalAlignment = Alignment.CenterHorizontally
+private fun TextSendContent(
+    clipboardText: String,
+    clipboardTextFieldText: String,
+    onClipboardTextChange: (String) -> Unit,
+    onAddText: () -> Unit,
+    onClearText: () -> Unit
+) {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Selected Text",
+                style = MaterialTheme.typography.titleLarge
+            )
+            if (clipboardText.isNotEmpty()) {
+                IconButton(
+                    onClick = onClearText,
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    modifier = Modifier.height(48.dp)
                 ) {
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(item.text, style = MaterialTheme.typography.titleMedium)
-                        IconButton(
-                            colors = IconButtonDefaults.iconButtonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceContainer
-                            ),
-                            onClick = {
-                                onClick()
-                            }
-                        ) {
-                            Icon(
-                                imageVector = Close,
-                                contentDescription = null
-                            )
-                        }
-                    }
+                    Icon(imageVector = Close, null)
                 }
             }
+        }
+
+        if (clipboardText.isEmpty()) {
+            Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(imageVector = Emoji_Nature, null, modifier = Modifier.size(48.dp))
+                    Text("No Text Added")
+                }
+            }
+        } else {
+            TextItemCard(clipboardText)
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            OutlinedTextField(
+                clipboardTextFieldText,
+                onValueChange = { onClipboardTextChange(it) },
+                label = { Text("Add Text to send") },
+                maxLines = 4,
+                shape = MaterialTheme.shapes.large,
+                modifier = Modifier.weight(1f)
+            )
+            Button(
+                onClick = onAddText
+            ) {
+                Text("Add")
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilesComingSoonContent() {
+    Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Icon(imageVector = Emoji_Nature, null, modifier = Modifier.size(48.dp))
+            Text(
+                "File sending is not ready yet",
+                style = MaterialTheme.typography.titleMedium
+            )
         }
     }
 }

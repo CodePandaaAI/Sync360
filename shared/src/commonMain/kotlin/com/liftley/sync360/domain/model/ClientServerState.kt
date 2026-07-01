@@ -1,13 +1,17 @@
 package com.liftley.sync360.domain.model
 
-import com.liftley.sync360.data.remote.client.clientRequest.MessagePayload
-import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
-
 sealed interface ClientServerState {
     data object Idle: ClientServerState
-    data class Busy(val offerRequest: OfferRequest): ClientServerState
+    sealed interface Busy : ClientServerState {
+        data class TextOffer(
+            val senderDeviceName: String,
+            val senderDeviceId: String,
+            val preview: String,
+            val characterCount: Int
+        ) : Busy
+    }
 
-    data class Received(val data: MessagePayload): ClientServerState
+    data class Received(val data: String): ClientServerState
 }
 
 enum class UserDecision {

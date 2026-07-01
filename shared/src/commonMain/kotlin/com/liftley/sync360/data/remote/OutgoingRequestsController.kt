@@ -1,22 +1,37 @@
 package com.liftley.sync360.data.remote
 
 import com.liftley.sync360.data.remote.client.Sync360HttpClient
-import com.liftley.sync360.data.remote.client.clientRequest.MessagePayload
-import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
-import com.liftley.sync360.data.remote.server.serverResponse.BaseResponse
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextOfferRequest
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextTransferRequest
+import com.liftley.sync360.data.remote.server.serverTextResponse.TextTransferResponse
+import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.presentation.featureSend.model.SendItem
 
-class OutgoingRequestsController(private val httpClient: Sync360HttpClient) {
+class OutgoingRequestsController(
+    private val httpClient: Sync360HttpClient,
+    private val localDeviceInfoProvider: LocalDeviceInfoProvider
+) {
 
-    suspend fun offerRequestToPeer(device: NearbyDevice, data: SendItem.Text): Result<BaseResponse> {
-        val offerRequest = OfferRequest(
-            deviceName = device.deviceName,
-            deviceIp = device.hostAddresses.first(),
-            devicePort = device.port,
-            deviceId = device.id,
-            filesCount = 1
+    suspend fun offerRequestToPeer(
+        device: NearbyDevice,
+        text: String
+    ): Result<TextTransferResponse> {
+        val localDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
+        val textOfferRequest = TextOfferRequest(
+            senderDeviceId = localDeviceInfo.deviceId,
+            senderDeviceName = localDeviceInfo.deviceName,
+            preview = text.take(10),
+            characterCount = text.count()
         )
-        return httpClient.trySendPayloadToPeer(device, offerRequest, MessagePayload(data.text))
+
+        val textTransferRequest = TextTransferRequest(
+            text = text
+        )
+
+        return httpClient.textTransferRequest(
+            device,
+            textOfferRequest = textOfferRequest,
+            textTransferRequest = textTransferRequest
+        )
     }
 }

@@ -1,10 +1,10 @@
 package com.liftley.sync360.data.remote.server
 
 import com.liftley.sync360.data.remote.IncomingServerRequestsController
-import com.liftley.sync360.data.remote.client.clientRequest.MessagePayload
-import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
-import com.liftley.sync360.data.remote.server.serverResponse.BaseResponse
-import com.liftley.sync360.data.remote.server.serverResponse.OfferResponse
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextOfferRequest
+import com.liftley.sync360.data.remote.client.clientTextRequest.TextTransferRequest
+import com.liftley.sync360.data.remote.server.serverTextResponse.TextOfferResponse
+import com.liftley.sync360.data.remote.server.serverTextResponse.TextTransferResponse
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -21,7 +21,6 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 class Sync360HttpServer(
-    private val deviceUuid: String,
     private val incomingServerRequestsController: IncomingServerRequestsController
 ) {
     private var server: EmbeddedServer<*, *>? = null
@@ -37,37 +36,49 @@ class Sync360HttpServer(
             }
 
             routing {
-                post("/sync360/offer") {
-                    val offerRequest = call.receive<OfferRequest>()
+                post("/sync360/text/offer") {
+                    val textOfferRequest = call.receive<TextOfferRequest>()
+
                     incomingServerRequestsController.changeServerState(
-                        ClientServerState.Busy(
-                            offerRequest
+                        ClientServerState.Busy.TextOffer(
+                            senderDeviceName = textOfferRequest.senderDeviceName,
+                            preview = textOfferRequest.preview,
+                            characterCount = textOfferRequest.characterCount,
+                            senderDeviceId = textOfferRequest.senderDeviceId
                         )
                     )
+
                     val userDecision = withTimeoutOrNull(55_000.milliseconds) {
                         incomingServerRequestsController.waitForUserDecision()
                     }
 
                     if (userDecision == UserDecision.ACCEPTED) {
-                        call.respond(OfferResponse.OfferAccepted)
+                        call.respond(TextOfferResponse.Accepted)
                     } else {
                         incomingServerRequestsController.changeServerState(ClientServerState.Idle)
-                        call.respond(OfferResponse.OfferDeclined)
+                        call.respond(TextOfferResponse.Declined)
                     }
                 }
 
-                post("/sync360/files") {
-                    val dataPayload = call.receive<MessagePayload>()
+                post("/sync360/text/transfer") {
+                    try {
+                        val textTransferRequest = call.receive<TextTransferRequest>()
 
-                    incomingServerRequestsController.changeServerState(ClientServerState.Received(dataPayload))
-
-                    call.respond<BaseResponse>(
-                        status = io.ktor.http.HttpStatusCode.OK,
-                        message = BaseResponse(
-                            success = true,
-                            message = "Payload received successfully"
+                        incomingServerRequestsController.changeServerState(
+                            ClientServerState.Received(
+                                textTransferRequest.text
+                            )
                         )
-                    )
+
+                        call.respond(TextTransferResponse(success = true))
+                    } catch (e: Exception) {
+                        call.respond(
+                            TextTransferResponse(
+                                success = false,
+                                message = e.message ?: "Something went wrong! Please try again"
+                            )
+                        )
+                    }
                 }
             }
         }.start(false)
