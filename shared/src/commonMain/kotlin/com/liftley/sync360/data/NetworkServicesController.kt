@@ -1,6 +1,6 @@
 package com.liftley.sync360.data
 
-import com.liftley.sync360.data.remote.Sync360HttpServer
+import com.liftley.sync360.data.remote.server.Sync360HttpServer
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.repository.NetworkServices
 import kotlinx.coroutines.delay

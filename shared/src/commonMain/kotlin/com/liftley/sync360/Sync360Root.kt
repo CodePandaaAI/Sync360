@@ -19,7 +19,7 @@ import androidx.navigation3.ui.NavDisplay
 import com.liftley.sync360.core.designsystem.Sync360Theme
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
-import com.liftley.sync360.domain.model.ServerState
+import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.presentation.featureNavigation.NavScreen
 import com.liftley.sync360.presentation.featureReceive.ReceiveScreen
 import com.liftley.sync360.presentation.featureSend.SendScreen
@@ -33,7 +33,7 @@ fun Sync360Root() {
     val navigationViewModel = koinInject<NavigationViewModel>()
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
 
-    val receiveScreenState by receiveScreenViewModel.serverState.collectAsStateWithLifecycle()
+    val receiveScreenState by receiveScreenViewModel.clientServerState.collectAsStateWithLifecycle()
     Sync360Theme {
         Scaffold(
             bottomBar = {
@@ -85,7 +85,7 @@ fun Sync360Root() {
             }
 
             LaunchedEffect(receiveScreenState) {
-                if (receiveScreenState is ServerState.Busy) {
+                if (receiveScreenState is ClientServerState.Busy) {
                     if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
                         navigationViewModel.addScreen(NavScreen.ReceiveScreen)
                     }

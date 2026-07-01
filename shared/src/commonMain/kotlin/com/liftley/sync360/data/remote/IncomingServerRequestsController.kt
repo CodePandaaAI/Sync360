@@ -1,6 +1,7 @@
 package com.liftley.sync360.data.remote
 
-import com.liftley.sync360.domain.model.ServerState
+import com.liftley.sync360.data.remote.client.clientRequest.OfferRequest
+import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -9,13 +10,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 class IncomingServerRequestsController {
-    private val _serverState: MutableStateFlow<ServerState> = MutableStateFlow(ServerState.Idle)
-    val serverState: StateFlow<ServerState> = _serverState.asStateFlow()
+    private val _clientServerState: MutableStateFlow<ClientServerState> = MutableStateFlow(ClientServerState.Idle)
+    val clientServerState: StateFlow<ClientServerState> = _clientServerState.asStateFlow()
 
     var userDecision: CompletableDeferred<UserDecision>? = null
 
-    fun changeServerState(state: ServerState) {
-        _serverState.update { state }
+    fun changeServerState(state: ClientServerState) {
+        _clientServerState.value = state
     }
 
     suspend fun waitForUserDecision(): UserDecision {
@@ -24,7 +25,7 @@ class IncomingServerRequestsController {
 
         val finalDecision = deferred.await()
 
-        _serverState.update { ServerState.Idle }
+        _clientServerState.update { ClientServerState.Idle }
 
         return finalDecision
     }
@@ -33,5 +34,9 @@ class IncomingServerRequestsController {
         userDecision?.complete(decision)
 
         userDecision = null
+    }
+
+    fun clearState() {
+        _clientServerState.value = ClientServerState.Idle
     }
 }

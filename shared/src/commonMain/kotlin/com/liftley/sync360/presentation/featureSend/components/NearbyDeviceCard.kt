@@ -64,7 +64,7 @@ fun NearbyDeviceCard(
                 )
 
                 Text(
-                    "Ready to send on port: ${device.port}",
+                    "IP and Port :${device.hostAddresses.first()}:${device.port}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
