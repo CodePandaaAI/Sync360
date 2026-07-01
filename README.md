@@ -273,7 +273,7 @@ Apache License 2.0. See [LICENSE](LICENSE).
 
 Created by **Romit Sharma**.
 
-- GitHub: TODO: add GitHub profile link
-- LinkedIn: TODO: add LinkedIn profile link
+- GitHub: https://github.com/CodePandaaAI
+- LinkedIn: https://www.linkedin.com/in/romit-sharma-18b521329/
 
 If this project sounds interesting, star it, follow the rebuild, or open a discussion when the repository goes public.
