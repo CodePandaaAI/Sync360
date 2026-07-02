@@ -5,8 +5,9 @@ import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.data.remote.OutgoingRequestsController
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.presentation.featureSend.model.SendScreenUiState
-import kotlinx.coroutines.async
+import com.liftley.sync360.presentation.featureSend.model.SendScreenState
+import com.liftley.sync360.presentation.featureSend.model.SendTab
+import com.liftley.sync360.presentation.featureSend.model.TextSendState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,19 +18,31 @@ class SendScreenViewModel(
     private val networkServicesController: NetworkServicesController,
     private val outgoingRequestsController: OutgoingRequestsController,
 ) : ViewModel() {
+    private val _screenState: MutableStateFlow<SendScreenState> = MutableStateFlow(SendScreenState())
+    val screenState: StateFlow<SendScreenState> = _screenState.asStateFlow()
+
     init {
         viewModelScope.launch {
             networkServicesController.startNetworkServices()
         }
+
+        viewModelScope.launch {
+            networkServicesController.nearbyDevices.collect { devices ->
+                _screenState.update {
+                    it.copy(nearbyDevices = devices)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            networkServicesController.discoveryServiceStatus.collect { status ->
+                _screenState.update {
+                    it.copy(discoveryStatus = status)
+                }
+            }
+        }
     }
 
-    private var _sendScreenUiState: MutableStateFlow<SendScreenUiState> =
-        MutableStateFlow(SendScreenUiState.Idle)
-    val sendScreenUiState: StateFlow<SendScreenUiState> = _sendScreenUiState.asStateFlow()
-
-    val nearbyDevices = networkServicesController.nearbyDevices
-
-    val discoveryServiceStatus = networkServicesController.discoveryServiceStatus
 
     fun restartDiscoveryServices() {
         viewModelScope.launch {
@@ -37,31 +50,47 @@ class SendScreenViewModel(
         }
     }
 
-    fun resetState() {
-        _sendScreenUiState.update { SendScreenUiState.Idle }
+
+    suspend fun sendTextToDevice(device: NearbyDevice) {
+        val text = screenState.value.textInput
+
+        if (text.isBlank()) return
+
+        _screenState.update {
+            it.copy(textSendState = TextSendState.Sending(device.deviceName, text))
+        }
+
+        val result = outgoingRequestsController.offerRequestToPeer(device, text)
+
+        result.fold(
+            onSuccess = {
+                _screenState.update {
+                    it.copy(textSendState = TextSendState.Sent(device.deviceName, text))
+                }
+            },
+            onFailure = { error ->
+                _screenState.update {
+                    it.copy(textSendState = TextSendState.Failed(error.message ?: "Text not sent"))
+                }
+            }
+        )
     }
 
-    suspend fun onDeviceClickForTextTransfer(device: NearbyDevice, text: String) {
-        if (text.isNotEmpty()) {
-            viewModelScope.async {
-                _sendScreenUiState.value =
-                    SendScreenUiState.Sending(device.deviceName, text)
-                return@async outgoingRequestsController.offerRequestToPeer(
-                    device,
-                    text
-                )
+    fun onTextChanged(text: String) {
+        _screenState.update {
+            it.copy(textInput = text)
+        }
+    }
 
-            }.await().fold(
-                onSuccess = {
-                    _sendScreenUiState.value = SendScreenUiState.Sent(
-                        sentTo = device.deviceName,
-                        text
-                    )
-                },
-                onFailure = {
-                    _sendScreenUiState.value = SendScreenUiState.NotSent(it.message ?: "Not Sent")
-                }
-            )
+    fun onTabSelected(tab: SendTab) {
+        _screenState.update {
+            it.copy(selectedTab = tab)
+        }
+    }
+
+    fun resetTextSendState() {
+        _screenState.update {
+            it.copy(textSendState = TextSendState.Idle)
         }
     }
 }

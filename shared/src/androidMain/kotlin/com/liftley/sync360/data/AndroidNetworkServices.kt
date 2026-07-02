@@ -141,7 +141,8 @@ class AndroidNetworkServices(
                         executor,
                         serviceInfoCallbackListener
                     )
-                } else {
+                } else
+                {
                     val resolveListener = object : NsdManager.ResolveListener {
                         override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
                             Log.d(
@@ -151,18 +152,14 @@ class AndroidNetworkServices(
                         }
 
                         override fun onServiceResolved(resolvedDeviceInfo: NsdServiceInfo?) {
-                            Log.d(
-                                "AndroidNetworkServices",
-                                "onServiceResolved: $resolvedDeviceInfo"
-                            )
-                            _nearbyDevices.update { currentList ->
-                                val newDevice = resolvedDeviceInfo?.toNearbyDeviceAndroidImpl()
-                                    ?: return@update currentList
-                                val withoutOldDeviceId =
-                                    currentList.filterNot { device -> device.id == newDevice.id }
+                            Log.d("AndroidNetworkServices", "onServiceResolved: $resolvedDeviceInfo")
 
-                                val newList = withoutOldDeviceId + newDevice
-                                newList
+                            val newDevice = resolvedDeviceInfo?.toNearbyDeviceAndroidImpl() ?: return
+
+                            if (newDevice.id == deviceUuid) return
+
+                            _nearbyDevices.update { currentList ->
+                                currentList.filterNot { device -> device.id == newDevice.id } + newDevice
                             }
                         }
                     }
