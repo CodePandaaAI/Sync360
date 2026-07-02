@@ -29,13 +29,13 @@ import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceCard
 import com.liftley.sync360.presentation.featureSend.components.NearbyDeviceEmptyCard
 import com.liftley.sync360.presentation.featureSend.components.TextItemCard
 import com.liftley.sync360.presentation.featureSend.model.SendScreenState
 import com.liftley.sync360.presentation.featureSend.model.SendTab
 import com.liftley.sync360.presentation.featureSend.model.TextSendState
+import com.liftley.sync360.presentation.model.NearbyDeviceUiModel
 import com.liftley.sync360.presentation.presentationComponents.Sync360Surface
 import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
 import kotlinx.coroutines.launch
@@ -99,7 +99,7 @@ fun SendScreen() {
             onDeviceClick = { device ->
                 if (screenState.selectedTab == SendTab.Text) {
                     coroutineScope.launch {
-                        sendScreenViewModel.sendTextToDevice(device)
+                        sendScreenViewModel.sendTextToDevice(device.id)
                     }
                 }
             }
@@ -250,7 +250,7 @@ private fun FilesComingSoonContent() {
 private fun NearbyDevicesSection(
     screenState: SendScreenState,
     onReloadClick: () -> Unit,
-    onDeviceClick: (NearbyDevice) -> Unit
+    onDeviceClick: (NearbyDeviceUiModel) -> Unit
 ) {
     Sync360Surface {
         Column(

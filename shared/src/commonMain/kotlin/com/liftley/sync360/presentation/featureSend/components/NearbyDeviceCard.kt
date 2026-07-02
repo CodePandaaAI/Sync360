@@ -18,12 +18,12 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Android
-import com.liftley.sync360.domain.model.NearbyDevice
+import com.liftley.sync360.presentation.model.NearbyDeviceUiModel
 
 @Preview
 @Composable
 fun NearbyDeviceCard(
-    device: NearbyDevice = NearbyDevice(
+    device: NearbyDeviceUiModel = NearbyDeviceUiModel(
         id = "uuid-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
         deviceName = "Living Room TV",
         deviceType = "Smart TV",

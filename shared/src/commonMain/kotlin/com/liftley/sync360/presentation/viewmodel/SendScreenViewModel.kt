@@ -8,6 +8,7 @@ import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.presentation.featureSend.model.SendScreenState
 import com.liftley.sync360.presentation.featureSend.model.SendTab
 import com.liftley.sync360.presentation.featureSend.model.TextSendState
+import com.liftley.sync360.presentation.model.toNearbyDeviceUiModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,8 +19,11 @@ class SendScreenViewModel(
     private val networkServicesController: NetworkServicesController,
     private val outgoingRequestsController: OutgoingRequestsController,
 ) : ViewModel() {
-    private val _screenState: MutableStateFlow<SendScreenState> = MutableStateFlow(SendScreenState())
+    private val _screenState: MutableStateFlow<SendScreenState> =
+        MutableStateFlow(SendScreenState())
     val screenState: StateFlow<SendScreenState> = _screenState.asStateFlow()
+
+    private var latestNearbyDevices: List<NearbyDevice> = emptyList()
 
     init {
         viewModelScope.launch {
@@ -28,8 +32,14 @@ class SendScreenViewModel(
 
         viewModelScope.launch {
             networkServicesController.nearbyDevices.collect { devices ->
+                latestNearbyDevices = devices
+
                 _screenState.update {
-                    it.copy(nearbyDevices = devices)
+                    it.copy(
+                        nearbyDevices = devices.map { device ->
+                            device.toNearbyDeviceUiModel()
+                        }
+                    )
                 }
             }
         }
@@ -51,7 +61,9 @@ class SendScreenViewModel(
     }
 
 
-    suspend fun sendTextToDevice(device: NearbyDevice) {
+    suspend fun sendTextToDevice(deviceId: String) {
+        val device = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
+
         val text = screenState.value.textInput
 
         if (text.isBlank()) return
