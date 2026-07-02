@@ -1,15 +1,13 @@
 package com.liftley.sync360.core.di
 
 import com.liftley.sync360.data.NetworkServicesController
+import com.liftley.sync360.data.network.http.client.Sync360HttpClient
+import com.liftley.sync360.data.network.http.server.Sync360HttpServer
 import com.liftley.sync360.data.remote.IncomingServerRequestsController
 import com.liftley.sync360.data.remote.OutgoingRequestsController
-import com.liftley.sync360.data.remote.client.Sync360HttpClient
-import com.liftley.sync360.data.remote.server.Sync360HttpServer
-import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
-import com.liftley.sync360.domain.repository.ClipboardProvider
-import com.liftley.sync360.presentation.viewmodel.NavigationViewModel
-import com.liftley.sync360.presentation.viewmodel.ReceiveScreenViewModel
-import com.liftley.sync360.presentation.viewmodel.SendScreenViewModel
+import com.liftley.sync360.presentation.navigation.NavigationViewModel
+import com.liftley.sync360.presentation.receive.ReceiveScreenViewModel
+import com.liftley.sync360.presentation.send.SendScreenViewModel
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.KoinAppDeclaration
