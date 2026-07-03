@@ -4,7 +4,7 @@ import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
-import com.liftley.sync360.data.remote.IncomingServerRequestsController
+import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json

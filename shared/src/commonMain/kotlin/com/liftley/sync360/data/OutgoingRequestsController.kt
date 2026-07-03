@@ -1,4 +1,4 @@
-package com.liftley.sync360.data.remote
+package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest

@@ -4,7 +4,6 @@ import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
-import com.liftley.sync360.data.remote.server.serverTextResponse.OfferException
 import com.liftley.sync360.domain.model.NearbyDevice
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -53,13 +52,13 @@ class Sync360HttpClient {
                 }
 
                 TextOfferResponse.Declined -> {
-                    Result.failure(OfferException("User Declined Request"))
+                    Result.failure(TextOfferException("User Declined Request"))
                 }
             }
         } catch (e: Exception) {
             when (e) {
                 is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
-                    Result.failure(OfferException(e.message ?: "Device did not respond in time"))
+                    Result.failure(TextOfferException(e.message ?: "Device did not respond in time"))
                 }
 
                 else -> Result.failure(e)

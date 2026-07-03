@@ -1,4 +1,4 @@
-package com.liftley.sync360.data.remote
+package com.liftley.sync360.data
 
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision

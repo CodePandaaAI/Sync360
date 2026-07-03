@@ -3,7 +3,7 @@ package com.liftley.sync360.presentation.send
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.NetworkServicesController
-import com.liftley.sync360.data.remote.OutgoingRequestsController
+import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
