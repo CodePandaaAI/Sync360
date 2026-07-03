@@ -2,7 +2,7 @@ package com.liftley.sync360.presentation.receive
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.liftley.sync360.data.remote.IncomingServerRequestsController
+import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.domain.repository.ClipboardProvider

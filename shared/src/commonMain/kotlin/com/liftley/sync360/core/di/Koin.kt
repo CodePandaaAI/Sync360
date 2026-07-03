@@ -3,8 +3,8 @@ package com.liftley.sync360.core.di
 import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
 import com.liftley.sync360.data.network.http.server.Sync360HttpServer
-import com.liftley.sync360.data.remote.IncomingServerRequestsController
-import com.liftley.sync360.data.remote.OutgoingRequestsController
+import com.liftley.sync360.data.IncomingServerRequestsController
+import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
 import com.liftley.sync360.presentation.receive.ReceiveScreenViewModel
 import com.liftley.sync360.presentation.send.SendScreenViewModel

@@ -4,7 +4,7 @@ import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
-import com.liftley.sync360.data.remote.IncomingServerRequestsController
+import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -37,6 +37,12 @@ class Sync360HttpServer(
 
             routing {
                 post("/sync360/text/offer") {
+                    val currentState = incomingServerRequestsController.clientServerState.value
+
+                    if (currentState != ClientServerState.Idle) {
+                        call.respond(TextOfferResponse.Declined)
+                        return@post
+                    }
                     val textOfferRequest = call.receive<TextOfferRequest>()
 
                     incomingServerRequestsController.changeServerState(
@@ -52,11 +58,19 @@ class Sync360HttpServer(
                         incomingServerRequestsController.waitForUserDecision()
                     }
 
-                    if (userDecision == UserDecision.ACCEPTED) {
-                        call.respond(TextOfferResponse.Accepted)
-                    } else {
-                        incomingServerRequestsController.changeServerState(ClientServerState.Idle)
-                        call.respond(TextOfferResponse.Declined)
+                    when (userDecision) {
+                        UserDecision.ACCEPTED -> {
+                            call.respond(TextOfferResponse.Accepted)
+                        }
+                        UserDecision.DECLINED -> {
+                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
+                            call.respond(TextOfferResponse.Declined)
+                        }
+
+                        else -> {
+                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
+                            call.respond(TextOfferResponse.Declined)
+                        }
                     }
                 }
 

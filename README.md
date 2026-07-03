@@ -1,26 +1,26 @@
-<div align="center">
+﻿<div align="center">
   <img src="screenshots/sync360-icon.png" width="128" alt="Sync360 app icon" />
 
   # Sync360
 
-  **Send files across your own devices without the cloud getting involved.**
+  **Nearby device sharing without sending everything through the cloud first.**
 
-  Local-first device sharing, rebuilt from first principles with Kotlin Multiplatform.
+  Local-first Android device sharing, rebuilt from first principles with Kotlin Multiplatform.
 
   [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
   [![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.11.1-4285F4)](https://www.jetbrains.com/lp/compose-multiplatform/)
   [![Ktor](https://img.shields.io/badge/Ktor-3.5.1-087CFA)](https://ktor.io/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-  <img src="screenshots/hero-demo.gif" alt="Sync360 Android-to-Android local request demo" width="1080" />
-  <sub>Current milestone: Android devices can discover each other locally and exchange a simple Ktor request/response.</sub>
+  <img src="screenshots/hero-demo.gif" alt="Sync360 Android text transfer demo" width="1080" />
+  <sub>Current milestone: Android devices can discover each other locally, send a text offer, accept or decline it, transfer text, and copy the received text.</sub>
 </div>
 
 ---
 
 ## The idea
 
-Your devices are already next to each other. They are often on the same Wi-Fi. Sending a large file should not always mean uploading it to a chat app or cloud drive first.
+Your devices are already next to each other. They are often on the same Wi-Fi. Sending something between them should not always mean opening a chat app, uploading it to a cloud drive, or sending it to yourself first.
 
 Sync360 is an early-stage local network sharing app. The long-term goal is simple:
 
@@ -28,11 +28,11 @@ Sync360 is an early-stage local network sharing app. The long-term goal is simpl
 same network -> discover nearby devices -> ask receiver -> send directly
 ```
 
-The project is being rebuilt manually and in public after an older AI-generated implementation became too large to confidently own. This version is intentionally smaller, Android-first, and focused on understanding every networking step before adding more product surface.
+The project is being rebuilt manually and in public after an older AI-generated implementation became too large to confidently own. This version is intentionally smaller, Android-first, and focused on understanding each networking step before adding more product surface.
 
 ## What Sync360 is
 
-Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local peer-to-peer file and data sharing.
+Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local nearby-device sharing.
 
 It is being built around these principles:
 
@@ -44,7 +44,7 @@ It is being built around these principles:
 
 ## Current status
 
-Sync360 is not a finished file transfer app yet. It is in an early rebuild phase.
+Sync360 is not a finished file transfer app yet. It is in an early Android-first rebuild phase.
 
 ### Working now
 
@@ -56,53 +56,47 @@ Sync360 is not a finished file transfer app yet. It is in an early rebuild phase
 - Resolved nearby devices with `hostAddresses` and dynamic `port`.
 - Embedded Ktor server inside the app.
 - OS-assigned HTTP server port advertised through NSD.
-- Ktor client calling a discovered device.
-- First local route: `GET /sync360/ping`.
-- Experimental receiver-side Accept/Decline proof for incoming ping requests.
+- Ktor client/server request-response over the local network.
+- Text offer route: `POST /sync360/text/offer`.
+- Text transfer route: `POST /sync360/text/transfer`.
+- Receiver-side Accept/Decline flow for incoming text offers.
+- Text is transferred only after receiver approval.
+- Receive screen can show received text and copy it.
+- Send and Receive screens use ViewModel-owned screen state.
 
-### Experimental
+### Not implemented yet
 
-- Send screen request status UI.
-- Receiver request state flow and navigation behavior.
-- Naming and boundaries around network controllers.
-- The current ping route is being used to learn request/response coordination; it is not the final send-offer protocol.
-
-### Planned
-
-- Real send-offer request and response DTOs.
-- File picker and selected item list.
-- Direct text snippet sending.
-- File byte transfer.
-- Transfer progress and result UI.
-- Android storage/save handling.
-- Desktop support for the rebuilt flow.
-- Security/session validation after the simple flow works.
+- File picker.
+- File transfer.
+- Transfer progress.
+- Android save-to-downloads/storage flow.
+- Security/encryption/session validation.
+- Desktop support for the rebuilt networking flow.
+- iOS implementation.
+- Production-ready error model.
 
 ## Demo and screenshots
 
-<!-- TODO: Add hero demo GIF here: screenshots/hero-demo.gif -->
-<!-- TODO: Add Android screenshot here: screenshots/android-send.png -->
-<!-- TODO: Add receiver approval screenshot here: screenshots/android-receive-request.png -->
-<!-- TODO: Add architecture preview here: screenshots/architecture-preview.png -->
-<!-- TODO: Add desktop screenshot later: screenshots/desktop-home.png -->
+The main demo GIF above shows the current Android text-transfer milestone.
 
 Place visual assets in [`screenshots/`](screenshots/README.md). The folder includes recommended filenames and sizes.
 
-## How the current prototype works
+## How the current Android flow works
 
 ```text
 Device A starts a local Ktor server
 Device A advertises itself with Android NSD
 Device B discovers Device A
 Device B reads Device A hostAddresses + port
-Device B calls http://host:port/sync360/ping
-Device A surfaces the request on Receive
-User accepts or declines
-Device A responds
-Device B receives Accepted or Declined
+Sender writes text
+Sender sends a text offer to the receiver
+Receiver accepts or declines
+If accepted, sender transfers the text
+Receiver shows the received text
+Receiver can copy the text
 ```
 
-This is the first control-plane milestone. It proves that local discovery can lead to an actual HTTP request and a structured response between two Android devices.
+This is the first real send flow. It proves that local discovery can lead to receiver approval and an actual payload transfer between two Android devices on the same network.
 
 ## Architecture
 
@@ -129,8 +123,8 @@ High-level module shape:
 
 - `androidApp/` - Android app entry point and manifest.
 - `desktopApp/` - JVM desktop app shell; present, but not active in the rebuilt flow yet.
-- `shared/commonMain/` - shared UI, ViewModels, domain models, Koin module, Ktor client/server prototype.
-- `shared/androidMain/` - Android NSD discovery and Android local identity implementation.
+- `shared/commonMain/` - shared UI, ViewModels, domain models, Koin module, Ktor client/server, request controllers, and DTOs.
+- `shared/androidMain/` - Android NSD discovery, local identity, local device info, and clipboard implementation.
 
 More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 
@@ -159,18 +153,16 @@ More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - Android SDK Build Tools 36.0.0 or newer
 - Gradle is provided by the wrapper (`9.4.1`)
 - At least one Android device or emulator for app launch
-- Two physical Android devices on the same local network for real discovery testing
+- Two physical Android devices on the same local network for real discovery and transfer testing
 
 The project currently uses Android Gradle Plugin 9.2.1. Use a recent Android Studio version that supports AGP 9.2.x.
 
 ### Clone
 
 ```bash
-git clone <your-repo-url>
+git clone https://github.com/CodePandaaAI/Sync360.git
 cd Sync360
 ```
-
-Replace `<your-repo-url>` after the repository is public.
 
 ### Open in IDE
 
@@ -202,22 +194,23 @@ Desktop discovery and transfer behavior should be treated as future work unless 
 
 ## Roadmap
 
-### MVP direction
+### Current Android milestone
 
 - Android local discovery.
 - Dynamic local HTTP server port advertisement.
-- Simple request/response between two Android devices.
-- Real send offer with receiver Accept/Decline.
-- Direct text send.
-- One-file transfer.
+- Text offer with receiver Accept/Decline.
+- Direct text transfer after approval.
+- Received text display and copy action.
 
 ### Near-term
 
 - File selection UI.
-- Selected item list.
+- Selected file model.
+- File offer request/response.
+- File byte transfer.
 - Progress states.
+- Android save-to-downloads/storage handling.
 - Better error states.
-- Receiver result UI.
 - Cleaner lifecycle around server/discovery start and stop.
 - Better host address selection, including IPv4 preference and IPv6 formatting.
 
@@ -276,4 +269,4 @@ Created by **Romit Sharma**.
 - GitHub: https://github.com/CodePandaaAI
 - LinkedIn: https://www.linkedin.com/in/romit-sharma-18b521329/
 
-If this project sounds interesting, star it, follow the rebuild, or open a discussion when the repository goes public.
+If this project sounds interesting, star it, follow the rebuild, or open a discussion.
