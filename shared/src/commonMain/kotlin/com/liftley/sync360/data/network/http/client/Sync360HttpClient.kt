@@ -11,8 +11,9 @@ import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
 import io.ktor.client.network.sockets.ConnectTimeoutException
 import io.ktor.client.network.sockets.SocketTimeoutException
+import io.ktor.client.plugins.HttpRequestTimeoutException
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.plugins.timeout
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
@@ -23,6 +24,11 @@ class Sync360HttpClient {
     private val httpClient: HttpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json()
+        }
+        install(HttpTimeout) {
+            requestTimeoutMillis = 60_000
+            connectTimeoutMillis = 5_000
+            socketTimeoutMillis = 60_000
         }
     }
 
@@ -39,12 +45,6 @@ class Sync360HttpClient {
             val textOfferResponse = httpClient.post(url) {
                 contentType(ContentType.Application.Json)
                 setBody(textOfferRequest)
-
-                timeout {
-                    requestTimeoutMillis = 60_000 // 60 seconds
-                    connectTimeoutMillis = 5_000   // 5 seconds to physically connect
-                    socketTimeoutMillis = 60_000  // 60 seconds socket read inactivity
-                }
             }.body<TextOfferResponse>()
 
             when (textOfferResponse) {
@@ -57,11 +57,12 @@ class Sync360HttpClient {
                 }
             }
         } catch (e: Exception) {
-            if (e is ConnectTimeoutException || e is SocketTimeoutException) {
-                // Treat the lack of response as an automatic business decline
-                Result.failure(OfferException(e.message ?: ""))
-            } else {
-                Result.failure(e)
+            when (e) {
+                is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
+                    Result.failure(OfferException(e.message ?: "Device did not respond in time"))
+                }
+
+                else -> Result.failure(e)
             }
         }
     }
