@@ -87,6 +87,11 @@ fun SendScreen() {
                         sendScreenViewModel.sendTextToDevice(device.id)
                     }
                 }
+                if (screenState.selectedTab == SendTab.Files) {
+                    coroutineScope.launch {
+                        sendScreenViewModel.sendFilesToDevice(device.id)
+                    }
+                }
             }
         )
     }

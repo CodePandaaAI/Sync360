@@ -90,6 +90,12 @@ fun Sync360Root() {
                         navigationViewModel.addScreen(NavScreen.ReceiveScreen)
                     }
                 }
+
+                if (receiveScreenState is ReceiveScreenState.IncomingFileOffer) {
+                    if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
+                        navigationViewModel.addScreen(NavScreen.ReceiveScreen)
+                    }
+                }
             }
         }
     }

@@ -45,9 +45,17 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
     return when (this) {
         ClientServerState.Idle -> ReceiveScreenState.Idle
 
+        is ClientServerState.Busy.FileOffer -> {
+            ReceiveScreenState.IncomingFileOffer(
+                senderDeviceName = senderDeviceName,
+                files = files,
+                totalSizeBytes = totalSizeBytes
+            )
+        }
+
         is ClientServerState.Busy.TextOffer -> {
             ReceiveScreenState.IncomingTextOffer(
-                senderName = senderDeviceName,
+                senderDeviceName = senderDeviceName,
                 preview = preview,
                 characterCount = characterCount
             )

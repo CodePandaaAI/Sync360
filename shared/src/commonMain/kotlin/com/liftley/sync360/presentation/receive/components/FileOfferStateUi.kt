@@ -12,14 +12,13 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 
 @Composable
-fun TextOfferStateUi(
-    state: ReceiveScreenState.IncomingTextOffer,
+fun FileOfferStateUi(
+    state: ReceiveScreenState.IncomingFileOffer,
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
@@ -31,41 +30,20 @@ fun TextOfferStateUi(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                "Incoming text",
+                "Incoming Files",
                 style = MaterialTheme.typography.titleLarge
             )
 
             Text(
-                "${state.senderDeviceName} wants to send text",
+                "${state.senderDeviceName} wants to send files",
                 style = MaterialTheme.typography.titleMedium
             )
 
             Text(
-                "${state.characterCount} characters",
+                "Size: ${state.totalSizeBytes} Bytes",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-
-            Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "Preview",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Text(
-                        state.preview.ifBlank { "No preview available" },
-                        maxLines = 5,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.bodyLarge
-                    )
-                }
-            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),

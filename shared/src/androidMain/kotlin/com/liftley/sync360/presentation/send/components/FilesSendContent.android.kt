@@ -8,7 +8,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CornerSize
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -22,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.core.designsystem.icons.Close
+import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.send.SendScreenViewModel
 import org.koin.compose.koinInject
 
@@ -45,10 +49,6 @@ actual fun FilesSendContent() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            "Selected Files",
-            style = MaterialTheme.typography.titleLarge
-        )
         if (sendScreenState.value.files.isNotEmpty()) {
             IconButton(
                 onClick = { sendScreenViewModel.clearSelectedFiles() },
@@ -60,11 +60,48 @@ actual fun FilesSendContent() {
                 Icon(imageVector = Close, contentDescription = null)
             }
         }
+
+        Text(
+            "Selected Files",
+            style = MaterialTheme.typography.titleLarge
+        )
     }
 
     if (sendScreenState.value.files.isNotEmpty()) {
-        sendScreenState.value.files.forEach { file ->
-            Text(file.displayName)
+        val files = sendScreenState.value.files
+
+        Sync360Surface(
+            containerColor = MaterialTheme.colorScheme.surfaceContainer
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 250.dp)
+                    .padding(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f, fill = false),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(files) { file ->
+                        FileItemCard(file) {
+                            sendScreenViewModel.removeSelectedFileFromList(it)
+                        }
+                    }
+                }
+
+                if (files.size > 3) {
+                    Text(
+                        text = "${files.size} files selected - scroll to view",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.align(Alignment.CenterHorizontally)
+                    )
+                }
+            }
         }
     }
 
@@ -77,8 +114,8 @@ actual fun FilesSendContent() {
             shape = MaterialTheme.shapes.large.copy(
                 topStart = CornerSize(24.dp),
                 bottomStart = CornerSize(24.dp),
-                topEnd = CornerSize(8.dp),
-                bottomEnd = CornerSize(8.dp)
+                topEnd = CornerSize(4.dp),
+                bottomEnd = CornerSize(4.dp)
             ),
             onClick = { multipleMediaPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) },
             modifier = Modifier.weight(1f)
@@ -96,8 +133,8 @@ actual fun FilesSendContent() {
         Surface(
             color = MaterialTheme.colorScheme.surfaceContainer,
             shape = MaterialTheme.shapes.large.copy(
-                topStart = CornerSize(8.dp),
-                bottomStart = CornerSize(8.dp),
+                topStart = CornerSize(4.dp),
+                bottomStart = CornerSize(4.dp),
                 topEnd = CornerSize(24.dp),
                 bottomEnd = CornerSize(24.dp)
             ),

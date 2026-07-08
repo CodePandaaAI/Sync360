@@ -1,5 +1,7 @@
 package com.liftley.sync360.data.network.http.client
 
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
@@ -58,7 +60,11 @@ class Sync360HttpClient {
         } catch (e: Exception) {
             when (e) {
                 is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
-                    Result.failure(TextOfferException(e.message ?: "Device did not respond in time"))
+                    Result.failure(
+                        TextOfferException(
+                            e.message ?: "Device did not respond in time"
+                        )
+                    )
                 }
 
                 else -> Result.failure(e)
@@ -88,12 +94,99 @@ class Sync360HttpClient {
 
                     Result.success(textTransferResponse)
                 } catch (e: Exception) {
-                    Result.failure(e)
+                    when (e) {
+                        is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
+                            Result.failure(
+                                FileOfferException(
+                                    e.message ?: "Device did not respond in time"
+                                )
+                            )
+                        }
+
+                        else -> Result.failure(e)
+                    }
                 }
             },
             onFailure = {
                 return Result.failure(it)
             }
         )
+    }
+
+    suspend fun fileOfferRequest(
+        nearbyDevice: NearbyDevice,
+        fileOfferRequest: FileOfferRequest
+    ): Result<FileOfferResponse> {
+        val host = nearbyDevice.hostAddresses.first()
+        val port = nearbyDevice.port
+
+        return try {
+            val url = "http://$host:$port/sync360/file/offer"
+            val fileOfferResponse = httpClient.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(fileOfferRequest)
+            }.body<FileOfferResponse>()
+
+            when (fileOfferResponse) {
+                FileOfferResponse.Accepted -> {
+                    Result.success(FileOfferResponse.Accepted)
+                }
+
+                FileOfferResponse.Declined -> {
+                    Result.failure(FileOfferException("User Declined Request"))
+                }
+            }
+        } catch (e: Exception){
+            when (e) {
+                is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
+                    Result.failure(
+                        FileOfferException(
+                            e.message ?: "Device did not respond in time"
+                        )
+                    )
+                }
+
+                else -> Result.failure(e)
+            }
+        }
+    }
+
+    private suspend fun fileTransferRequest(
+        nearbyDevice: NearbyDevice,
+        fileOfferRequest: FileOfferRequest,
+        fileTransferRequest: FileOfferRequest,
+    ): Result<FileOfferResponse> {
+        val host = nearbyDevice.hostAddresses.first()
+        val port = nearbyDevice.port
+
+        return try {
+            val url = "http://$host:$port/sync360/file/transfer"
+            val fileOfferResponse = httpClient.post(url) {
+                contentType(ContentType.Application.Json)
+                setBody(fileOfferRequest)
+            }.body<FileOfferResponse>()
+
+            when (fileOfferResponse) {
+                FileOfferResponse.Accepted -> {
+                    Result.success(FileOfferResponse.Accepted)
+                }
+
+                FileOfferResponse.Declined -> {
+                    Result.failure(FileOfferException("User Declined Request"))
+                }
+            }
+        } catch (e: Exception){
+            when (e) {
+                is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
+                    Result.failure(
+                        FileOfferException(
+                            e.message ?: "Device did not respond in time"
+                        )
+                    )
+                }
+
+                else -> Result.failure(e)
+            }
+        }
     }
 }

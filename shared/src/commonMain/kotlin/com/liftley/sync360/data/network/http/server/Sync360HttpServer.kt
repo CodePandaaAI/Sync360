@@ -5,6 +5,8 @@ import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
 import com.liftley.sync360.data.IncomingServerRequestsController
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -92,6 +94,38 @@ class Sync360HttpServer(
                                 message = e.message ?: "Something went wrong! Please try again"
                             )
                         )
+                    }
+                }
+
+                post("/sync360/file/offer") {
+                    val currentState = incomingServerRequestsController.clientServerState.value
+
+                    if (currentState != ClientServerState.Idle) {
+                        call.respond(FileOfferResponse.Declined)
+                        return@post
+                    }
+
+                    val fileOfferRequest = call.receive<FileOfferRequest>()
+
+                    incomingServerRequestsController.changeServerState(
+                        ClientServerState.Busy.FileOffer(
+                            senderDeviceId = fileOfferRequest.senderDeviceId,
+                            senderDeviceName = fileOfferRequest.senderDeviceName,
+                            files = fileOfferRequest.files,
+                            totalSizeBytes = fileOfferRequest.totalSizeBytes
+                        )
+                    )
+
+                    val userDecision = withTimeoutOrNull(55_000.milliseconds) {
+                        incomingServerRequestsController.waitForUserDecision()
+                    }
+
+                    when (userDecision) {
+                        UserDecision.ACCEPTED -> call.respond(FileOfferResponse.Accepted)
+                        else -> {
+                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
+                            call.respond(FileOfferResponse.Declined)
+                        }
                     }
                 }
             }

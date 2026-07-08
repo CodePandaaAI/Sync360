@@ -15,6 +15,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.domain.model.UserDecision
+import com.liftley.sync360.presentation.receive.components.FileOfferStateUi
 import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedTextStateUi
 import com.liftley.sync360.presentation.receive.components.TextOfferStateUi
@@ -50,6 +51,14 @@ fun ReceiveScreen() {
 
                     is ReceiveScreenState.IncomingTextOffer -> {
                         TextOfferStateUi(
+                            state = state,
+                            onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
+                            onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
+                        )
+                    }
+
+                    is ReceiveScreenState.IncomingFileOffer -> {
+                        FileOfferStateUi(
                             state = state,
                             onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
                             onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
