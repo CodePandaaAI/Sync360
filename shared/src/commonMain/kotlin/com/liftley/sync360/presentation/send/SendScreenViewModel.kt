@@ -5,17 +5,21 @@ import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.domain.model.NearbyDevice
+import com.liftley.sync360.domain.repository.FilesManager
 import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
 import com.liftley.sync360.presentation.send.model.SendTab
 import com.liftley.sync360.presentation.send.model.TextSendState
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class SendScreenViewModel(
+    private val filesManager: FilesManager,
     private val networkServicesController: NetworkServicesController,
     private val outgoingRequestsController: OutgoingRequestsController,
 ) : ViewModel() {
@@ -103,6 +107,26 @@ class SendScreenViewModel(
     fun resetTextSendState() {
         _screenState.update {
             it.copy(textSendState = TextSendState.Idle)
+        }
+    }
+
+    fun handleFilesSelected(rawPlatformFiles: List<Any>) {
+        viewModelScope.launch {
+            // Move the file metadata resolution entirely off the Main/UI thread
+            val parsedFiles = withContext(Dispatchers.IO) {
+                filesManager.processPickedFiles(rawPlatformFiles)
+            }
+
+            // Update your UI state safely with the clean platform-independent data
+            _screenState.update { currentState ->
+                currentState.copy(files = _screenState.value.files + parsedFiles)
+            }
+        }
+    }
+
+    fun clearSelectedFiles() {
+        _screenState.update { currentState ->
+            currentState.copy(files = emptyList())
         }
     }
 }

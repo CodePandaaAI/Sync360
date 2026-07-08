@@ -18,7 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.components.FilesComingSoonContent
+import com.liftley.sync360.presentation.send.components.FilesSendContent
 import com.liftley.sync360.presentation.send.components.NearbyDevicesSection
 import com.liftley.sync360.presentation.send.components.TextSendContent
 import com.liftley.sync360.presentation.send.components.TextSendStatusCard
@@ -72,7 +72,7 @@ fun SendScreen() {
                     }
 
                     SendTab.Files -> {
-                        FilesComingSoonContent()
+                        FilesSendContent()
                     }
                 }
             }
