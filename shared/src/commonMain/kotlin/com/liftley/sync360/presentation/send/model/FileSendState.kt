@@ -13,11 +13,7 @@ sealed interface FileSendState {
         val fileCount: Int
     ) : FileSendState
 
-    data class OfferDeclined(
-        val deviceName: String
-    ) : FileSendState
-
-    data class Failed(
+    data class OperationFailed(
         val reason: String
     ) : FileSendState
 }

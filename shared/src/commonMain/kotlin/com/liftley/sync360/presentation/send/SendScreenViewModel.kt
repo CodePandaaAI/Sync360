@@ -75,7 +75,7 @@ class SendScreenViewModel(
         if (text.isBlank()) return
 
         _screenState.update {
-            it.copy(textSendState = TextSendState.Sending(device.deviceName, text))
+            it.copy(textSendState = TextSendState.SendingOffer(device.deviceName, text))
         }
 
         val result = outgoingRequestsController.sendTextOffer(device, text)
@@ -83,12 +83,12 @@ class SendScreenViewModel(
         result.fold(
             onSuccess = {
                 _screenState.update {
-                    it.copy(textSendState = TextSendState.Sent(device.deviceName, text))
+                    it.copy(textSendState = TextSendState.TextSent(device.deviceName, text))
                 }
             },
             onFailure = { error ->
                 _screenState.update {
-                    it.copy(textSendState = TextSendState.Failed(error.message ?: "Text not sent"))
+                    it.copy(textSendState = TextSendState.OperationFailed(error.message ?: "Text not sent"))
                 }
             }
         )
@@ -115,7 +115,7 @@ class SendScreenViewModel(
             },
             onFailure = { error ->
                 _screenState.update {
-                    it.copy(fileSendState = FileSendState.Failed(error.message ?: "File offer not sent"))
+                    it.copy(fileSendState = FileSendState.OperationFailed(error.message ?: "File not sent"))
                 }
             }
         )
@@ -136,6 +136,12 @@ class SendScreenViewModel(
     fun resetTextSendState() {
         _screenState.update {
             it.copy(textSendState = TextSendState.Idle)
+        }
+    }
+
+    fun resetFileSendState() {
+        _screenState.update {
+            it.copy(fileSendState = FileSendState.Idle)
         }
     }
 

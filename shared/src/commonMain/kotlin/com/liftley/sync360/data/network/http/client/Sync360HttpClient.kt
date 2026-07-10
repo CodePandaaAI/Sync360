@@ -37,11 +37,11 @@ class Sync360HttpClient {
         nearbyDevice: NearbyDevice,
         textOfferRequest: TextOfferRequest
     ): Result<TextOfferResponse> {
-        val host = nearbyDevice.hostAddresses.first()
-        val port = nearbyDevice.port
+        val deviceToSendOfferHost = nearbyDevice.hostAddresses.first()
+        val deviceToSendOfferPort = nearbyDevice.port
 
         return try {
-            val url = "http://$host:$port/sync360/text/offer"
+            val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/text/offer"
 
             val textOfferResponse = httpClient.post(url) {
                 contentType(ContentType.Application.Json)
@@ -73,19 +73,19 @@ class Sync360HttpClient {
     }
 
     suspend fun textTransferRequest(
-        nearbyDevice: NearbyDevice,
+        deviceToSendOfferInfo: NearbyDevice,
         textOfferRequest: TextOfferRequest,
         textTransferRequest: TextTransferRequest
     ): Result<TextTransferResponse> {
-        val result = textOfferRequest(nearbyDevice, textOfferRequest)
+        val result = textOfferRequest(deviceToSendOfferInfo, textOfferRequest)
 
         result.fold(
             onSuccess = {
-                val host = nearbyDevice.hostAddresses.first()
-                val port = nearbyDevice.port
+                val deviceToSendOfferHost = deviceToSendOfferInfo.hostAddresses.first()
+                val deviceToSendOfferPort = deviceToSendOfferInfo.port
 
                 return try {
-                    val url = "http://$host:$port/sync360/text/transfer"
+                    val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/text/transfer"
 
                     val textTransferResponse = httpClient.post(url) {
                         contentType(ContentType.Application.Json)
@@ -114,14 +114,14 @@ class Sync360HttpClient {
     }
 
     suspend fun fileOfferRequest(
-        nearbyDevice: NearbyDevice,
+        deviceToSendOfferInfo: NearbyDevice,
         fileOfferRequest: FileOfferRequest
     ): Result<FileOfferResponse> {
-        val host = nearbyDevice.hostAddresses.first()
-        val port = nearbyDevice.port
+        val deviceToSendOfferHost = deviceToSendOfferInfo.hostAddresses.first()
+        val deviceToSendOfferPort = deviceToSendOfferInfo.port
 
         return try {
-            val url = "http://$host:$port/sync360/file/offer"
+            val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/file/offer"
             val fileOfferResponse = httpClient.post(url) {
                 contentType(ContentType.Application.Json)
                 setBody(fileOfferRequest)

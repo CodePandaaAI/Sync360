@@ -15,11 +15,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.model.TextSendState
+import com.liftley.sync360.presentation.send.model.FileSendState
 
 @Composable
-fun TextSendStatusCard(
-    textSendState: TextSendState,
+fun FileSendStatusCard(
+    fileSendState: FileSendState,
     onClear: () -> Unit
 ) {
     Sync360Surface {
@@ -30,7 +30,7 @@ fun TextSendStatusCard(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (textSendState != TextSendState.Idle) {
+            if (fileSendState is FileSendState.OfferAccepted || fileSendState is FileSendState.OperationFailed) {
                 IconButton(
                     onClick = onClear,
                     colors = IconButtonDefaults.iconButtonColors(
@@ -45,31 +45,31 @@ fun TextSendStatusCard(
                 }
             }
 
-            when (textSendState) {
-                TextSendState.Idle -> {
+            when (fileSendState) {
+                FileSendState.Idle -> {
                     Text(
                         "Your sending nothing right now",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
 
-                is TextSendState.SendingOffer -> {
+                is FileSendState.SendingOffer -> {
                     Text(
-                        "Sending text to ${textSendState.deviceName}",
+                        "Sending file offer to ${fileSendState.deviceName}",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
 
-                is TextSendState.TextSent -> {
+                is FileSendState.OfferAccepted -> {
                     Text(
-                        "Text sent to ${textSendState.deviceName}",
+                        "Offer Accepted by ${fileSendState.deviceName}",
                         style = MaterialTheme.typography.titleMedium
                     )
                 }
 
-                is TextSendState.OperationFailed -> {
+                is FileSendState.OperationFailed -> {
                     Text(
-                        "Text not sent because ${textSendState.reason}",
+                        fileSendState.reason,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }

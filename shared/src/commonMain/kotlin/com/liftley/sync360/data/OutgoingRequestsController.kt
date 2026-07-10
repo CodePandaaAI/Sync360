@@ -17,14 +17,14 @@ class OutgoingRequestsController(
 ) {
 
     suspend fun sendTextOffer(
-        device: NearbyDevice,
+        deviceToSendOfferInfo: NearbyDevice,
         text: String
     ): Result<TextTransferResponse> {
-        val localDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
+        val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
 
         val textOfferRequest = TextOfferRequest(
-            senderDeviceId = localDeviceInfo.deviceId,
-            senderDeviceName = localDeviceInfo.deviceName,
+            senderDeviceId = myDeviceInfo.deviceId,
+            senderDeviceName = myDeviceInfo.deviceName,
             preview = text.take(180),
             characterCount = text.count()
         )
@@ -34,25 +34,25 @@ class OutgoingRequestsController(
         )
 
         return httpClient.textTransferRequest(
-            device,
+            deviceToSendOfferInfo,
             textOfferRequest = textOfferRequest,
             textTransferRequest = textTransferRequest
         )
     }
 
     suspend fun sendFileOffer(
-        device: NearbyDevice,
-        files: List<PickedFile>
+        deviceToSendOfferInfo: NearbyDevice,
+        selectedFilesToSend: List<PickedFile>
     ): Result<FileOfferResponse> {
-        val localDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
+        val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
 
-        val totalSizeBytes = if (files.all { it.sizeBytes != null }) {
-            files.sumOf { it.sizeBytes ?: 0L }
+        val totalSizeBytes = if (selectedFilesToSend.all { it.sizeBytes != null }) {
+            selectedFilesToSend.sumOf { it.sizeBytes ?: 0L }
         } else {
             null
         }
 
-        val fileOfferItems = files.map {
+        val selectedFilesAsFileOfferItem = selectedFilesToSend.map {
             FileOfferItem(
                 fileName = it.displayName,
                 fileSizeBytes = it.sizeBytes,
@@ -61,14 +61,14 @@ class OutgoingRequestsController(
         }
 
         val fileOfferRequest = FileOfferRequest(
-            senderDeviceId = localDeviceInfo.deviceId,
-            senderDeviceName = localDeviceInfo.deviceName,
-            files = fileOfferItems,
+            senderDeviceId = myDeviceInfo.deviceId,
+            senderDeviceName = myDeviceInfo.deviceName,
+            files = selectedFilesAsFileOfferItem,
             totalSizeBytes = totalSizeBytes,
         )
 
         return httpClient.fileOfferRequest(
-           device,
+           deviceToSendOfferInfo,
             fileOfferRequest
         )
     }

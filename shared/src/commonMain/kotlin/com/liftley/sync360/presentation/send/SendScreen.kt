@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.presentation.app.components.Sync360Surface
+import com.liftley.sync360.presentation.send.components.FileSendStatusCard
 import com.liftley.sync360.presentation.send.components.FilesSendContent
 import com.liftley.sync360.presentation.send.components.NearbyDevicesSection
 import com.liftley.sync360.presentation.send.components.TextSendContent
@@ -40,10 +41,17 @@ fun SendScreen() {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        TextSendStatusCard(
-            textSendState = screenState.textSendState,
-            onClear = sendScreenViewModel::resetTextSendState
-        )
+        if (screenState.selectedTab == SendTab.Text) {
+            TextSendStatusCard(
+                textSendState = screenState.textSendState,
+                onClear = sendScreenViewModel::resetTextSendState
+            )
+        } else {
+            FileSendStatusCard(
+                fileSendState = screenState.fileSendState,
+                onClear = sendScreenViewModel::resetFileSendState
+            )
+        }
 
         Sync360Surface {
             Column(
