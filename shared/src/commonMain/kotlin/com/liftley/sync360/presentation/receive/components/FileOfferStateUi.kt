@@ -35,7 +35,8 @@ fun FileOfferStateUi(
             )
 
             Text(
-                "${state.senderDeviceName} wants to send files",
+                "${state.senderDeviceName} wants to send " +
+                    "${state.fileCount} file(s)",
                 style = MaterialTheme.typography.titleMedium
             )
 

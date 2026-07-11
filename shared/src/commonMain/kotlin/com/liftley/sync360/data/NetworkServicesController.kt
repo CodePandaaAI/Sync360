@@ -1,6 +1,7 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.server.Sync360HttpServer
+import com.liftley.sync360.data.network.tcp.FileTransferReceiver
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.service.NetworkServices
 import kotlinx.coroutines.delay
@@ -8,7 +9,8 @@ import kotlin.time.Duration.Companion.milliseconds
 
 class NetworkServicesController(
     private val httpServer: Sync360HttpServer,
-    private val networkServices: NetworkServices
+    private val fileTransferReceiver: FileTransferReceiver,
+    private val networkServices: NetworkServices,
 ) {
 
     val nearbyDevices = networkServices.nearbyDevices
@@ -16,9 +18,12 @@ class NetworkServicesController(
     val discoveryServiceStatus = networkServices.discoveryServiceStatus
 
     suspend fun startNetworkServices() {
-        val port = httpServer.start()
+        fileTransferReceiver.start()
 
-        networkServices.startNetworkServices(port)
+        val port = httpServer.start()
+        val fileTransferPort = fileTransferReceiver.port
+
+        networkServices.startNetworkServices(port, fileTransferPort)
 
         delay(30000.milliseconds)
 
@@ -34,17 +39,34 @@ class NetworkServicesController(
                 stopDiscoveryServices()
             }
 
-            DiscoveryStatus.Stopping -> { return }
-            DiscoveryStatus.Starting -> { return }
-            DiscoveryStatus.Running -> { return }
+            DiscoveryStatus.Stopping -> {
+                return
+            }
+
+            DiscoveryStatus.Starting -> {
+                return
+            }
+
+            DiscoveryStatus.Running -> {
+                return
+            }
         }
     }
 
     fun stopDiscoveryServices() {
         when (discoveryServiceStatus.value) {
-            DiscoveryStatus.Idle -> { return }
-            DiscoveryStatus.Stopping -> { return }
-            DiscoveryStatus.Starting -> { return }
+            DiscoveryStatus.Idle -> {
+                return
+            }
+
+            DiscoveryStatus.Stopping -> {
+                return
+            }
+
+            DiscoveryStatus.Starting -> {
+                return
+            }
+
             DiscoveryStatus.Running -> {
                 networkServices.stopDiscoveryServices()
             }

@@ -7,6 +7,8 @@ import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
 import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
+import com.liftley.sync360.data.network.tcp.FileTransferReceiver
+import com.liftley.sync360.data.network.http.dto.file.toFileTransferOffer
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -23,7 +25,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 class Sync360HttpServer(
-    private val incomingServerRequestsController: IncomingServerRequestsController
+    private val incomingServerRequestsController: IncomingServerRequestsController,
+    private val fileTransferReceiver: FileTransferReceiver
 ) {
     private var server: EmbeddedServer<*, *>? = null
 
@@ -106,13 +109,11 @@ class Sync360HttpServer(
                     }
 
                     val fileOfferRequest = call.receive<FileOfferRequest>()
+                    val fileOffer = fileOfferRequest.toFileTransferOffer()
 
                     incomingServerRequestsController.changeServerState(
                         ClientServerState.Busy.FileOffer(
-                            senderDeviceId = fileOfferRequest.senderDeviceId,
-                            senderDeviceName = fileOfferRequest.senderDeviceName,
-                            files = fileOfferRequest.files,
-                            totalSizeBytes = fileOfferRequest.totalSizeBytes
+                            fileOffer = fileOffer
                         )
                     )
 
@@ -121,9 +122,32 @@ class Sync360HttpServer(
                     }
 
                     when (userDecision) {
-                        UserDecision.ACCEPTED -> call.respond(FileOfferResponse.Accepted)
+                        UserDecision.ACCEPTED -> {
+                            fileTransferReceiver.prepareForTransfer(
+                                fileOffer = fileOffer,
+                                onTransferFinished = {
+                                    incomingServerRequestsController.changeServerState(
+                                        ClientServerState.Idle
+                                    )
+                                }
+                            )
+
+                            incomingServerRequestsController.changeServerState(
+                                ClientServerState.Busy.ReceivingFiles(
+                                    senderDeviceName = fileOffer.senderDeviceName,
+                                    fileCount = fileOffer.files.size
+                                )
+                            )
+
+                            call.respond(FileOfferResponse.Accepted)
+                        }
                         else -> {
-                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
+                            fileTransferReceiver.clearExpectedTransfer()
+
+                            incomingServerRequestsController.changeServerState(
+                                ClientServerState.Idle
+                            )
+
                             call.respond(FileOfferResponse.Declined)
                         }
                     }

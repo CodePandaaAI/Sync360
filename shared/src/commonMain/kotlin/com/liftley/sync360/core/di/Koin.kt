@@ -25,7 +25,7 @@ val appModule = module {
     single<Sync360HttpClient> { Sync360HttpClient() }
     single<Sync360HttpServer> {
         Sync360HttpServer(
-            get()
+            get(), get()
         )
     }
 
@@ -33,10 +33,11 @@ val appModule = module {
     single<OutgoingRequestsController> {
         OutgoingRequestsController(
             get(),
+            get(),
             get()
         )
     }
-    single<NetworkServicesController> { NetworkServicesController(get(), get()) }
+    single<NetworkServicesController> { NetworkServicesController(get(), get(), get()) }
 }
 
 fun initKoin(platformModule: Module, appDeclaration: KoinAppDeclaration) {

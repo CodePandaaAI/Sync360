@@ -1,21 +1,21 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
-import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
-import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
+import com.liftley.sync360.data.network.tcp.FileTransferSender
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.presentation.send.model.PickedFile
+import com.liftley.sync360.domain.model.FileTransferOffer
+import com.liftley.sync360.domain.model.SelectedFile
+import com.liftley.sync360.domain.model.OfferedFile
 
 class OutgoingRequestsController(
     private val httpClient: Sync360HttpClient,
-    private val localDeviceInfoProvider: LocalDeviceInfoProvider
+    private val localDeviceInfoProvider: LocalDeviceInfoProvider,
+    private val fileTransferSender: FileTransferSender
 ) {
-
     suspend fun sendTextOffer(
         deviceToSendOfferInfo: NearbyDevice,
         text: String
@@ -35,41 +35,72 @@ class OutgoingRequestsController(
 
         return httpClient.textTransferRequest(
             deviceToSendOfferInfo,
-            textOfferRequest = textOfferRequest,
-            textTransferRequest = textTransferRequest
+            textOfferRequest,
+            textTransferRequest
         )
     }
 
-    suspend fun sendFileOffer(
-        deviceToSendOfferInfo: NearbyDevice,
-        selectedFilesToSend: List<PickedFile>
-    ): Result<FileOfferResponse> {
-        val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
-
-        val totalSizeBytes = if (selectedFilesToSend.all { it.sizeBytes != null }) {
-            selectedFilesToSend.sumOf { it.sizeBytes ?: 0L }
-        } else {
-            null
-        }
-
-        val selectedFilesAsFileOfferItem = selectedFilesToSend.map {
-            FileOfferItem(
-                fileName = it.displayName,
-                fileSizeBytes = it.sizeBytes,
-                mimeType = it.mimeType
+    suspend fun sendFiles(
+        device: NearbyDevice,
+        selectedFiles: List<SelectedFile>,
+        onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
+    ): Result<Unit> {
+        if (selectedFiles.isEmpty()) {
+            return Result.failure(
+                IllegalArgumentException("No files were selected")
             )
         }
 
-        val fileOfferRequest = FileOfferRequest(
+        val fileWithUnknownSize = selectedFiles.firstOrNull {
+            it.sizeBytes == null
+        }
+
+        if (fileWithUnknownSize != null) {
+            return Result.failure(
+                IllegalArgumentException(
+                    "File size is unknown: ${fileWithUnknownSize.displayName}"
+                )
+            )
+        }
+
+        val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
+
+        val offeredFiles = selectedFiles.mapIndexed { index, file ->
+            OfferedFile(
+                index = index,
+                fileName = file.displayName,
+                fileSizeBytes = requireNotNull(file.sizeBytes),
+                mimeType = file.mimeType
+            )
+        }
+
+        val totalSizeBytes = selectedFiles.sumOf {
+            requireNotNull(it.sizeBytes)
+        }
+
+        val fileOffer = FileTransferOffer(
             senderDeviceId = myDeviceInfo.deviceId,
             senderDeviceName = myDeviceInfo.deviceName,
-            files = selectedFilesAsFileOfferItem,
-            totalSizeBytes = totalSizeBytes,
+            files = offeredFiles,
+            totalSizeBytes = totalSizeBytes
         )
 
-        return httpClient.fileOfferRequest(
-           deviceToSendOfferInfo,
-            fileOfferRequest
+        val offerResult = httpClient.sendFileOffer(
+            device = device,
+            fileOffer = fileOffer
+        )
+
+        if (offerResult.isFailure) {
+            return Result.failure(
+                offerResult.exceptionOrNull()
+                    ?: Exception("File offer failed")
+            )
+        }
+
+        return fileTransferSender.sendFiles(
+            device = device,
+            files = selectedFiles,
+            onFileStarted = onFileStarted
         )
     }
 }

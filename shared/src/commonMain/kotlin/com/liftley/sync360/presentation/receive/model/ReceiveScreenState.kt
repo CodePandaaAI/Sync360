@@ -1,7 +1,5 @@
 package com.liftley.sync360.presentation.receive.model
 
-import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
-
 sealed interface ReceiveScreenState {
     data object Idle : ReceiveScreenState
 
@@ -13,9 +11,14 @@ sealed interface ReceiveScreenState {
 
     data class IncomingFileOffer(
         val senderDeviceName: String,
-        val files: List<FileOfferItem>,
-        val totalSizeBytes: Long?
+        val fileCount: Int,
+        val totalSizeBytes: Long
     ): ReceiveScreenState
+
+    data class ReceivingFiles(
+        val senderDeviceName: String,
+        val fileCount: Int
+    ) : ReceiveScreenState
 
     data class ReceivedText(
         val text: String

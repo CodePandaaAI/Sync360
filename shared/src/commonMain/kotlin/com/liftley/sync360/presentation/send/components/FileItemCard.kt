@@ -16,10 +16,10 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.model.PickedFile
+import com.liftley.sync360.domain.model.SelectedFile
 
 @Composable
-fun FileItemCard(file: PickedFile, onRemoveClick: (PickedFile) -> Unit) {
+fun FileItemCard(file: SelectedFile, onRemoveClick: (SelectedFile) -> Unit) {
     Sync360Surface(MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),

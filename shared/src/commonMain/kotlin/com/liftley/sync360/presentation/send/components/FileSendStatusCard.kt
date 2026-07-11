@@ -30,7 +30,7 @@ fun FileSendStatusCard(
             verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (fileSendState is FileSendState.OfferAccepted || fileSendState is FileSendState.OperationFailed) {
+            if (fileSendState is FileSendState.FilesSent || fileSendState is FileSendState.OperationFailed) {
                 IconButton(
                     onClick = onClear,
                     colors = IconButtonDefaults.iconButtonColors(
@@ -60,9 +60,18 @@ fun FileSendStatusCard(
                     )
                 }
 
-                is FileSendState.OfferAccepted -> {
+                is FileSendState.SendingFile -> {
                     Text(
-                        "Offer Accepted by ${fileSendState.deviceName}",
+                        "Sending file ${fileSendState.fileNumber} of " +
+                            "${fileSendState.totalFiles}: ${fileSendState.fileName}",
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                }
+
+                is FileSendState.FilesSent -> {
+                    Text(
+                        "${fileSendState.fileCount} file(s) sent to " +
+                                fileSendState.deviceName,
                         style = MaterialTheme.typography.titleMedium
                     )
                 }

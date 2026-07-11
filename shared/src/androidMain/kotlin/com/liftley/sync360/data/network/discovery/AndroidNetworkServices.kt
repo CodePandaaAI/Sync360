@@ -204,7 +204,7 @@ class AndroidNetworkServices(
         }
     }
 
-    override suspend fun startNetworkServices(httpServerPort: Int) {
+    override suspend fun startNetworkServices(httpServerPort: Int, fileTransferPort: Int) {
         if (discoveryServiceStatus.value != DiscoveryStatus.Idle) {
             Log.d(
                 "AndroidNetworkServices",
@@ -240,6 +240,11 @@ class AndroidNetworkServices(
             setAttribute("deviceName", cleanDeviceName)
             setAttribute("deviceType", "Android")
             setAttribute("protocolVersion", "1")
+
+            setAttribute(
+                "fileTransferPort",
+                fileTransferPort.toString()
+            )
         }
 
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)

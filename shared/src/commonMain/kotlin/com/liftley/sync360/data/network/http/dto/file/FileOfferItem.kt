@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 
 @Serializable
 data class FileOfferItem(
+    val index: Int,
     val fileName: String,
     val fileSizeBytes: Long?,
     val mimeType: String?

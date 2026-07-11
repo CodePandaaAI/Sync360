@@ -1,7 +1,5 @@
 package com.liftley.sync360.domain.model
 
-import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
-
 sealed interface ClientServerState {
     data object Idle: ClientServerState
     sealed interface Busy : ClientServerState {
@@ -13,11 +11,13 @@ sealed interface ClientServerState {
         ) : Busy
 
         data class FileOffer(
-            val senderDeviceId: String,
+            val fileOffer: FileTransferOffer
+        ) : Busy
+
+        data class ReceivingFiles(
             val senderDeviceName: String,
-            val files: List<FileOfferItem>,
-            val totalSizeBytes: Long?
-        ): Busy
+            val fileCount: Int
+        ) : Busy
     }
 
     data class Received(val data: String): ClientServerState

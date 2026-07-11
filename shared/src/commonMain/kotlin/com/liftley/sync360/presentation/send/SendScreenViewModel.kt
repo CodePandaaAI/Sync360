@@ -4,10 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.data.OutgoingRequestsController
+import com.liftley.sync360.data.file.SelectedFileReader
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.domain.repository.FilesManager
+import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.presentation.send.model.FileSendState
-import com.liftley.sync360.presentation.send.model.PickedFile
 import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
 import com.liftley.sync360.presentation.send.model.SendTab
@@ -21,7 +21,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class SendScreenViewModel(
-    private val filesManager: FilesManager,
+    private val selectedFileReader: SelectedFileReader,
     private val networkServicesController: NetworkServicesController,
     private val outgoingRequestsController: OutgoingRequestsController,
 ) : ViewModel() {
@@ -105,12 +105,27 @@ class SendScreenViewModel(
             it.copy(fileSendState = FileSendState.SendingOffer(device.deviceName, files.size))
         }
 
-        val result = outgoingRequestsController.sendFileOffer(device, files)
+        val result = outgoingRequestsController.sendFiles(
+            device = device,
+            selectedFiles = files,
+            onFileStarted = { fileIndex, file ->
+                _screenState.update {
+                    it.copy(
+                        fileSendState = FileSendState.SendingFile(
+                            deviceName = device.deviceName,
+                            fileName = file.displayName,
+                            fileNumber = fileIndex + 1,
+                            totalFiles = files.size
+                        )
+                    )
+                }
+            }
+        )
 
         result.fold(
             onSuccess = {
                 _screenState.update {
-                    it.copy(fileSendState = FileSendState.OfferAccepted(device.deviceName, files.size))
+                    it.copy(fileSendState = FileSendState.FilesSent(device.deviceName, files.size))
                 }
             },
             onFailure = { error ->
@@ -147,14 +162,12 @@ class SendScreenViewModel(
 
     fun handleFilesSelected(rawPlatformFiles: List<Any>) {
         viewModelScope.launch {
-            // Move the file metadata resolution entirely off the Main/UI thread
             val parsedFiles = withContext(Dispatchers.IO) {
-                filesManager.processPickedFiles(rawPlatformFiles)
+                selectedFileReader.readSelectedFiles(rawPlatformFiles)
             }
 
-            // Update your UI state safely with the clean platform-independent data
             _screenState.update { currentState ->
-                currentState.copy(files = _screenState.value.files + parsedFiles)
+                currentState.copy(files = currentState.files + parsedFiles)
             }
         }
     }
@@ -165,7 +178,7 @@ class SendScreenViewModel(
         }
     }
 
-    fun removeSelectedFileFromList(file: PickedFile){
+    fun removeSelectedFileFromList(file: SelectedFile){
         _screenState.update { currentState ->
             currentState.copy(files = currentState.files - file)
         }

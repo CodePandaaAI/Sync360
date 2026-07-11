@@ -1,6 +1,6 @@
-package com.liftley.sync360.presentation.send.model
+package com.liftley.sync360.domain.model
 
-data class PickedFile(
+data class SelectedFile(
     val uri: String,
     val displayName: String,
     val sizeBytes: Long?,
