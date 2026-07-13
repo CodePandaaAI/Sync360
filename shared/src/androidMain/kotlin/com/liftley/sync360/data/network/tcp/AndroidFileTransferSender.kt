@@ -6,16 +6,27 @@ import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.net.InetSocketAddress
 import java.net.Socket
+import java.util.concurrent.atomic.AtomicReference
 
 class AndroidFileTransferSender(
     private val context: Context
 ) : FileTransferSender {
+    private val activeSocket = AtomicReference<Socket?>(null)
+
+    override fun cancelCurrentTransfer() {
+        runCatching {
+            activeSocket.getAndSet(null)?.close()
+        }
+    }
 
     override suspend fun sendFiles(
         device: NearbyDevice,
@@ -37,15 +48,18 @@ class AndroidFileTransferSender(
         } catch (exception: CancellationException) {
             throw exception
         } catch (exception: Exception) {
+            currentCoroutineContext().ensureActive()
             Result.failure(exception)
         }
     }
 
-    private fun sendOneFile(
+    private suspend fun sendOneFile(
         device: NearbyDevice,
         fileIndex: Int,
         file: SelectedFile
     ) {
+        currentCoroutineContext().ensureActive()
+
         val fileSize = file.sizeBytes
             ?: error("File size is unknown: ${file.displayName}")
 
@@ -54,52 +68,67 @@ class AndroidFileTransferSender(
         ) ?: error("Could not open file: ${file.displayName}")
 
         fileInput.use { input ->
-            Socket(
-                device.hostAddresses.first(),
-                device.fileTransferPort
-            ).use { socket ->
-                socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+            currentCoroutineContext().ensureActive()
 
-                val socketOutput = DataOutputStream(
-                    BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE_BYTES)
-                )
+            Socket().use { socket ->
+                activeSocket.set(socket)
 
-                val socketInput = DataInputStream(
-                    BufferedInputStream(socket.getInputStream(), BUFFER_SIZE_BYTES)
-                )
+                try {
+                    currentCoroutineContext().ensureActive()
+                    socket.connect(
+                        InetSocketAddress(
+                            device.hostAddresses.first(),
+                            device.fileTransferPort
+                        ),
+                        CONNECT_TIMEOUT_MILLIS
+                    )
+                    socket.soTimeout = SOCKET_TIMEOUT_MILLIS
 
-                socketOutput.writeInt(fileIndex)
-                socketOutput.writeLong(fileSize)
-
-                val buffer = ByteArray(BUFFER_SIZE_BYTES)
-                var bytesRemaining = fileSize
-
-                while (bytesRemaining > 0) {
-                    val bytesRequested = minOf(
-                        buffer.size.toLong(),
-                        bytesRemaining
-                    ).toInt()
-
-                    val bytesRead = input.read(
-                        buffer,
-                        0,
-                        bytesRequested
+                    val socketOutput = DataOutputStream(
+                        BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE_BYTES)
                     )
 
-                    if (bytesRead == -1) {
-                        error("${file.displayName} ended before its reported size")
+                    val socketInput = DataInputStream(
+                        BufferedInputStream(socket.getInputStream(), BUFFER_SIZE_BYTES)
+                    )
+
+                    socketOutput.writeInt(fileIndex)
+                    socketOutput.writeLong(fileSize)
+
+                    val buffer = ByteArray(BUFFER_SIZE_BYTES)
+                    var bytesRemaining = fileSize
+
+                    while (bytesRemaining > 0) {
+                        currentCoroutineContext().ensureActive()
+
+                        val bytesRequested = minOf(
+                            buffer.size.toLong(),
+                            bytesRemaining
+                        ).toInt()
+
+                        val bytesRead = input.read(
+                            buffer,
+                            0,
+                            bytesRequested
+                        )
+
+                        if (bytesRead == -1) {
+                            error("${file.displayName} ended before its reported size")
+                        }
+
+                        socketOutput.write(buffer, 0, bytesRead)
+                        bytesRemaining -= bytesRead
                     }
 
-                    socketOutput.write(buffer, 0, bytesRead)
-                    bytesRemaining -= bytesRead
-                }
+                    socketOutput.flush()
 
-                socketOutput.flush()
+                    val receiverSavedFile = socketInput.readBoolean()
 
-                val receiverSavedFile = socketInput.readBoolean()
-
-                if (!receiverSavedFile) {
-                    error("Receiver could not save ${file.displayName}")
+                    if (!receiverSavedFile) {
+                        error("Receiver could not save ${file.displayName}")
+                    }
+                } finally {
+                    activeSocket.compareAndSet(socket, null)
                 }
             }
         }
@@ -107,6 +136,7 @@ class AndroidFileTransferSender(
 
     private companion object {
         const val BUFFER_SIZE_BYTES = 64 * 1024
+        const val CONNECT_TIMEOUT_MILLIS = 5_000
         const val SOCKET_TIMEOUT_MILLIS = 60_000
     }
 }

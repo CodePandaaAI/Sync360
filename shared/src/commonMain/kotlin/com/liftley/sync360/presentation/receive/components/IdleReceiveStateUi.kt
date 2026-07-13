@@ -20,28 +20,35 @@ import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 fun IdleReceiveStateUi() {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .fillMaxWidth(),
+        verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-            LoadingIndicator(modifier = Modifier.size(160.dp))
-            Icon(
-                imageVector = Emoji_Nature,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onPrimary
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                LoadingIndicator(modifier = Modifier.size(160.dp))
+                Icon(
+                    imageVector = Emoji_Nature,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp),
+                    tint = MaterialTheme.colorScheme.onPrimary
+                )
+            }
+            Text(
+                "Nothing to receive right now",
+                style = MaterialTheme.typography.titleLarge
+            )
+            Text(
+                "Keep Sync360 open on nearby devices",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        Text(
-            "Nothing to receive right now",
-            style = MaterialTheme.typography.titleLarge
-        )
-        Text(
-            "Keep Sync360 open on nearby devices",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
     }
 }

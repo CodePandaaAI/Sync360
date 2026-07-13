@@ -9,4 +9,6 @@ interface FileTransferSender {
         files: List<SelectedFile>,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
     ): Result<Unit>
+
+    fun cancelCurrentTransfer()
 }

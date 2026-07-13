@@ -21,6 +21,7 @@ import io.ktor.client.request.setBody
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.CancellationException
 
 class Sync360HttpClient {
     private val httpClient: HttpClient = HttpClient(CIO) {
@@ -59,6 +60,8 @@ class Sync360HttpClient {
                 }
             }
         } catch (e: Exception) {
+            if (e is CancellationException) throw e
+
             when (e) {
                 is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
                     Result.failure(
@@ -95,6 +98,8 @@ class Sync360HttpClient {
 
                     Result.success(textTransferResponse)
                 } catch (e: Exception) {
+                    if (e is CancellationException) throw e
+
                     when (e) {
                         is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
                             Result.failure(
@@ -139,6 +144,8 @@ class Sync360HttpClient {
                 }
             }
         } catch (e: Exception){
+            if (e is CancellationException) throw e
+
             when (e) {
                 is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
                     Result.failure(

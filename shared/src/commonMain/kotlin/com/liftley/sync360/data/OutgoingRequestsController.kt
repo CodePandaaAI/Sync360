@@ -16,6 +16,10 @@ class OutgoingRequestsController(
     private val localDeviceInfoProvider: LocalDeviceInfoProvider,
     private val fileTransferSender: FileTransferSender
 ) {
+    fun cancelCurrentFileTransfer() {
+        fileTransferSender.cancelCurrentTransfer()
+    }
+
     suspend fun sendTextOffer(
         deviceToSendOfferInfo: NearbyDevice,
         text: String

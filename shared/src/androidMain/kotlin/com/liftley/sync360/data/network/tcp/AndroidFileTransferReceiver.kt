@@ -75,7 +75,9 @@ class AndroidFileTransferReceiver(
         nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
         this.onTransferFinished = onTransferFinished
-        startWaitingForSenderTimeout()
+        startWaitingForSenderTimeout(
+            timeoutMillis = WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS
+        )
     }
 
     @Synchronized
@@ -170,7 +172,9 @@ class AndroidFileTransferReceiver(
         if (nextExpectedFileIndex == totalFileCount) {
             finishTransfer(wasSuccessful = true)
         } else {
-            startWaitingForSenderTimeout()
+            startWaitingForSenderTimeout(
+                timeoutMillis = WAITING_FOR_NEXT_FILE_TIMEOUT_MILLIS
+            )
         }
     }
 
@@ -187,11 +191,11 @@ class AndroidFileTransferReceiver(
         completionCallback?.invoke(wasSuccessful)
     }
 
-    private fun startWaitingForSenderTimeout() {
+    private fun startWaitingForSenderTimeout(timeoutMillis: Long) {
         waitingForSenderTimeout?.cancel()
 
         waitingForSenderTimeout = receiverScope.launch {
-            delay(WAITING_FOR_SENDER_TIMEOUT_MILLIS.milliseconds)
+            delay(timeoutMillis.milliseconds)
             finishTransfer(wasSuccessful = false)
         }
     }
@@ -206,6 +210,7 @@ class AndroidFileTransferReceiver(
 
     private companion object {
         const val SOCKET_TIMEOUT_MILLIS = 60_000
-        const val WAITING_FOR_SENDER_TIMEOUT_MILLIS = 60_000L
+        const val WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS = 10_000L
+        const val WAITING_FOR_NEXT_FILE_TIMEOUT_MILLIS = 60_000L
     }
 }

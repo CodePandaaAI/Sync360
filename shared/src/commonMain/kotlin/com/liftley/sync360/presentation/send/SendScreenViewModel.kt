@@ -7,12 +7,14 @@ import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.data.file.SelectedFileReader
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
-import com.liftley.sync360.presentation.send.model.FileSendState
-import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
+import com.liftley.sync360.presentation.send.model.SendOperationState
 import com.liftley.sync360.presentation.send.model.SendTab
-import com.liftley.sync360.presentation.send.model.TextSendState
+import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -30,6 +32,7 @@ class SendScreenViewModel(
     val screenState: StateFlow<SendScreenState> = _screenState.asStateFlow()
 
     private var latestNearbyDevices: List<NearbyDevice> = emptyList()
+    private var activeSendJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -67,7 +70,11 @@ class SendScreenViewModel(
     }
 
 
-    suspend fun sendTextToDevice(deviceId: String) {
+    fun sendTextToDevice(deviceId: String) {
+        if (_screenState.value.sendOperationState != SendOperationState.Idle) {
+            return
+        }
+
         val device = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
 
         val text = screenState.value.textInput
@@ -75,26 +82,45 @@ class SendScreenViewModel(
         if (text.isBlank()) return
 
         _screenState.update {
-            it.copy(textSendState = TextSendState.SendingOffer(device.deviceName, text))
+            it.copy(
+                sendOperationState = SendOperationState.SendingTextOffer(
+                    deviceName = device.deviceName
+                )
+            )
         }
 
-        val result = outgoingRequestsController.sendTextOffer(device, text)
+        startSendJob {
+            val result = outgoingRequestsController.sendTextOffer(device, text)
+            currentCoroutineContext().ensureActive()
 
-        result.fold(
-            onSuccess = {
-                _screenState.update {
-                    it.copy(textSendState = TextSendState.TextSent(device.deviceName, text))
+            result.fold(
+                onSuccess = {
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.TextSent(
+                                deviceName = device.deviceName
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.OperationFailed(
+                                reason = error.message ?: "Text not sent"
+                            )
+                        )
+                    }
                 }
-            },
-            onFailure = { error ->
-                _screenState.update {
-                    it.copy(textSendState = TextSendState.OperationFailed(error.message ?: "Text not sent"))
-                }
-            }
-        )
+            )
+        }
     }
 
-    suspend fun sendFilesToDevice(deviceId: String) {
+    fun sendFilesToDevice(deviceId: String) {
+        if (_screenState.value.sendOperationState != SendOperationState.Idle) {
+            return
+        }
+
         val device = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
 
         val files = _screenState.value.files
@@ -102,38 +128,65 @@ class SendScreenViewModel(
         if (files.isEmpty()) return
 
         _screenState.update {
-            it.copy(fileSendState = FileSendState.SendingOffer(device.deviceName, files.size))
+            it.copy(
+                sendOperationState = SendOperationState.SendingFileOffer(
+                    deviceName = device.deviceName,
+                    fileCount = files.size
+                )
+            )
         }
 
-        val result = outgoingRequestsController.sendFiles(
-            device = device,
-            selectedFiles = files,
-            onFileStarted = { fileIndex, file ->
-                _screenState.update {
-                    it.copy(
-                        fileSendState = FileSendState.SendingFile(
-                            deviceName = device.deviceName,
-                            fileName = file.displayName,
-                            fileNumber = fileIndex + 1,
-                            totalFiles = files.size
+        startSendJob {
+            val result = outgoingRequestsController.sendFiles(
+                device = device,
+                selectedFiles = files,
+                onFileStarted = { fileIndex, file ->
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.SendingFile(
+                                deviceName = device.deviceName,
+                                fileName = file.displayName,
+                                fileNumber = fileIndex + 1,
+                                totalFiles = files.size
+                            )
                         )
-                    )
+                    }
                 }
-            }
-        )
+            )
+            currentCoroutineContext().ensureActive()
 
-        result.fold(
-            onSuccess = {
-                _screenState.update {
-                    it.copy(fileSendState = FileSendState.FilesSent(device.deviceName, files.size))
+            result.fold(
+                onSuccess = {
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.FilesSent(
+                                deviceName = device.deviceName,
+                                fileCount = files.size
+                            )
+                        )
+                    }
+                },
+                onFailure = { error ->
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.OperationFailed(
+                                reason = error.message ?: "Files not sent"
+                            )
+                        )
+                    }
                 }
-            },
-            onFailure = { error ->
-                _screenState.update {
-                    it.copy(fileSendState = FileSendState.OperationFailed(error.message ?: "File not sent"))
-                }
-            }
-        )
+            )
+        }
+    }
+
+    fun cancelSend() {
+        activeSendJob?.cancel()
+        activeSendJob = null
+        outgoingRequestsController.cancelCurrentFileTransfer()
+
+        _screenState.update {
+            it.copy(sendOperationState = SendOperationState.Cancelled)
+        }
     }
 
     fun onTextChanged(text: String) {
@@ -148,15 +201,9 @@ class SendScreenViewModel(
         }
     }
 
-    fun resetTextSendState() {
+    fun clearSendOperation() {
         _screenState.update {
-            it.copy(textSendState = TextSendState.Idle)
-        }
-    }
-
-    fun resetFileSendState() {
-        _screenState.update {
-            it.copy(fileSendState = FileSendState.Idle)
+            it.copy(sendOperationState = SendOperationState.Idle)
         }
     }
 
@@ -181,6 +228,19 @@ class SendScreenViewModel(
     fun removeSelectedFileFromList(file: SelectedFile){
         _screenState.update { currentState ->
             currentState.copy(files = currentState.files - file)
+        }
+    }
+
+    private fun startSendJob(block: suspend () -> Unit) {
+        val sendJob = viewModelScope.launch {
+            block()
+        }
+
+        activeSendJob = sendJob
+        sendJob.invokeOnCompletion {
+            if (activeSendJob === sendJob) {
+                activeSendJob = null
+            }
         }
     }
 }
