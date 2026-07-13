@@ -32,7 +32,8 @@ class AndroidFileTransferReceiver(
     private var expectedFileOffer: FileTransferOffer? = null
 
     private var nextExpectedFileIndex: Int = 0
-    private var onTransferFinished: (() -> Unit)? = null
+    private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
+    private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
     private var waitingForSenderTimeout: Job? = null
 
     override var port: Int = 0
@@ -67,10 +68,12 @@ class AndroidFileTransferReceiver(
     @Synchronized
     override fun prepareForTransfer(
         fileOffer: FileTransferOffer,
-        onTransferFinished: () -> Unit
+        onFileSaved: (completedFileCount: Int) -> Unit,
+        onTransferFinished: (wasSuccessful: Boolean) -> Unit
     ) {
         expectedFileOffer = fileOffer
         nextExpectedFileIndex = 0
+        this.onFileSaved = onFileSaved
         this.onTransferFinished = onTransferFinished
         startWaitingForSenderTimeout()
     }
@@ -80,6 +83,7 @@ class AndroidFileTransferReceiver(
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
         nextExpectedFileIndex = 0
+        onFileSaved = null
         onTransferFinished = null
     }
 
@@ -146,7 +150,7 @@ class AndroidFileTransferReceiver(
                     // The sender may already have closed the socket.
                 }
 
-                finishTransfer()
+                finishTransfer(wasSuccessful = false)
             }
         }
     }
@@ -161,24 +165,26 @@ class AndroidFileTransferReceiver(
         }
 
         nextExpectedFileIndex++
+        onFileSaved?.invoke(nextExpectedFileIndex)
 
         if (nextExpectedFileIndex == totalFileCount) {
-            finishTransfer()
+            finishTransfer(wasSuccessful = true)
         } else {
             startWaitingForSenderTimeout()
         }
     }
 
     @Synchronized
-    private fun finishTransfer() {
+    private fun finishTransfer(wasSuccessful: Boolean) {
         val completionCallback = onTransferFinished
 
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
         nextExpectedFileIndex = 0
+        onFileSaved = null
         onTransferFinished = null
 
-        completionCallback?.invoke()
+        completionCallback?.invoke(wasSuccessful)
     }
 
     private fun startWaitingForSenderTimeout() {
@@ -186,7 +192,7 @@ class AndroidFileTransferReceiver(
 
         waitingForSenderTimeout = receiverScope.launch {
             delay(WAITING_FOR_SENDER_TIMEOUT_MILLIS.milliseconds)
-            finishTransfer()
+            finishTransfer(wasSuccessful = false)
         }
     }
 

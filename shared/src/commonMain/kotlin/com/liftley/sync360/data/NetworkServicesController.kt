@@ -25,7 +25,7 @@ class NetworkServicesController(
 
         networkServices.startNetworkServices(port, fileTransferPort)
 
-        delay(30000.milliseconds)
+        delay(60000.milliseconds)
 
         stopDiscoveryServices()
     }
@@ -34,7 +34,7 @@ class NetworkServicesController(
         when (discoveryServiceStatus.value) {
             DiscoveryStatus.Idle -> {
                 networkServices.restartDiscoveryServices()
-                delay(30000.milliseconds)
+                delay(60000.milliseconds)
 
                 stopDiscoveryServices()
             }

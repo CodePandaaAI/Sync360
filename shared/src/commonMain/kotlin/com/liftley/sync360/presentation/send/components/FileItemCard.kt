@@ -20,7 +20,7 @@ import com.liftley.sync360.domain.model.SelectedFile
 
 @Composable
 fun FileItemCard(file: SelectedFile, onRemoveClick: (SelectedFile) -> Unit) {
-    Sync360Surface(MaterialTheme.colorScheme.surface) {
+    Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(8.dp),
             verticalAlignment = Alignment.CenterVertically,

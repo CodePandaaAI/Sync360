@@ -125,17 +125,34 @@ class Sync360HttpServer(
                         UserDecision.ACCEPTED -> {
                             fileTransferReceiver.prepareForTransfer(
                                 fileOffer = fileOffer,
-                                onTransferFinished = {
+                                onFileSaved = { completedFileCount ->
                                     incomingServerRequestsController.changeServerState(
-                                        ClientServerState.Idle
+                                        ClientServerState.Busy.ReceivingFiles(
+                                            senderDeviceName = fileOffer.senderDeviceName,
+                                            fileCount = fileOffer.files.size,
+                                            completedFileCount = completedFileCount
+                                        )
                                     )
+                                },
+                                onTransferFinished = { wasSuccessful ->
+                                    val finishedState = if (wasSuccessful) {
+                                        ClientServerState.ReceivedFiles(
+                                            senderDeviceName = fileOffer.senderDeviceName,
+                                            fileCount = fileOffer.files.size
+                                        )
+                                    } else {
+                                        ClientServerState.Idle
+                                    }
+
+                                    incomingServerRequestsController.changeServerState(finishedState)
                                 }
                             )
 
                             incomingServerRequestsController.changeServerState(
                                 ClientServerState.Busy.ReceivingFiles(
                                     senderDeviceName = fileOffer.senderDeviceName,
-                                    fileCount = fileOffer.files.size
+                                    fileCount = fileOffer.files.size,
+                                    completedFileCount = 0
                                 )
                             )
 

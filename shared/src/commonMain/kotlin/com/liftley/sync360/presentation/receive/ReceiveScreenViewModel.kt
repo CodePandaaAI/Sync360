@@ -6,6 +6,7 @@ import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.domain.repository.ClipboardProvider
+import com.liftley.sync360.domain.repository.DownloadsFolderOpener
 import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -14,7 +15,8 @@ import kotlinx.coroutines.launch
 
 class ReceiveScreenViewModel(
     private val incomingServerRequestsController: IncomingServerRequestsController,
-    private val clipboardProvider: ClipboardProvider
+    private val clipboardProvider: ClipboardProvider,
+    private val downloadsFolderOpener: DownloadsFolderOpener
 ) : ViewModel() {
 
     private val _screenState = MutableStateFlow<ReceiveScreenState>(ReceiveScreenState.Idle)
@@ -39,6 +41,10 @@ class ReceiveScreenViewModel(
     fun clearState() {
         incomingServerRequestsController.clearState()
     }
+
+    fun openDownloads() {
+        downloadsFolderOpener.openDownloads()
+    }
 }
 
 private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
@@ -56,7 +62,8 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
         is ClientServerState.Busy.ReceivingFiles -> {
             ReceiveScreenState.ReceivingFiles(
                 senderDeviceName = senderDeviceName,
-                fileCount = fileCount
+                fileCount = fileCount,
+                completedFileCount = completedFileCount
             )
         }
 
@@ -71,6 +78,13 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
         is ClientServerState.Received -> {
             ReceiveScreenState.ReceivedText(
                 text = data
+            )
+        }
+
+        is ClientServerState.ReceivedFiles -> {
+            ReceiveScreenState.ReceivedFiles(
+                senderDeviceName = senderDeviceName,
+                fileCount = fileCount
             )
         }
     }

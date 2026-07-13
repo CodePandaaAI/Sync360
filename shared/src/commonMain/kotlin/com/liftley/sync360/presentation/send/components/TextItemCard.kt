@@ -15,7 +15,7 @@ import com.liftley.sync360.presentation.app.components.Sync360Surface
 @Composable
 fun TextItemCard(item: String) {
 
-    Sync360Surface(MaterialTheme.colorScheme.surfaceContainer) {
+    Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.Center,

@@ -16,11 +16,17 @@ sealed interface ClientServerState {
 
         data class ReceivingFiles(
             val senderDeviceName: String,
-            val fileCount: Int
+            val fileCount: Int,
+            val completedFileCount: Int
         ) : Busy
     }
 
     data class Received(val data: String): ClientServerState
+
+    data class ReceivedFiles(
+        val senderDeviceName: String,
+        val fileCount: Int
+    ) : ClientServerState
 }
 
 enum class UserDecision {

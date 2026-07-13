@@ -17,10 +17,16 @@ sealed interface ReceiveScreenState {
 
     data class ReceivingFiles(
         val senderDeviceName: String,
-        val fileCount: Int
+        val fileCount: Int,
+        val completedFileCount: Int
     ) : ReceiveScreenState
 
     data class ReceivedText(
         val text: String
+    ) : ReceiveScreenState
+
+    data class ReceivedFiles(
+        val senderDeviceName: String,
+        val fileCount: Int
     ) : ReceiveScreenState
 }

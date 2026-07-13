@@ -9,7 +9,8 @@ interface FileTransferReceiver {
 
     fun prepareForTransfer(
         fileOffer: FileTransferOffer,
-        onTransferFinished: () -> Unit
+        onFileSaved: (completedFileCount: Int) -> Unit,
+        onTransferFinished: (wasSuccessful: Boolean) -> Unit
     )
 
     fun clearExpectedTransfer()
