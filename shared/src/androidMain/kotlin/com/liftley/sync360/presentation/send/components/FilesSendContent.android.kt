@@ -49,6 +49,10 @@ actual fun FilesSendContent() {
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Text(
+            "Selected Files",
+            style = MaterialTheme.typography.titleLarge
+        )
         if (sendScreenState.value.files.isNotEmpty()) {
             IconButton(
                 onClick = { sendScreenViewModel.clearSelectedFiles() },
@@ -60,11 +64,6 @@ actual fun FilesSendContent() {
                 Icon(imageVector = Close, contentDescription = null)
             }
         }
-
-        Text(
-            "Selected Files",
-            style = MaterialTheme.typography.titleLarge
-        )
     }
 
     if (sendScreenState.value.files.isNotEmpty()) {

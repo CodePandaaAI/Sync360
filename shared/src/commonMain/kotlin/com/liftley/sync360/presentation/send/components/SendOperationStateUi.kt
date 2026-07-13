@@ -176,7 +176,10 @@ private fun SendResultUi(
     wasSuccessful: Boolean,
     onDone: () -> Unit
 ) {
-    Box(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Box(modifier = Modifier
+        .fillMaxSize()
+        .padding(16.dp)
+    ) {
         Sync360Surface(
             modifier = Modifier
                 .align(Alignment.Center)
@@ -184,7 +187,7 @@ private fun SendResultUi(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {

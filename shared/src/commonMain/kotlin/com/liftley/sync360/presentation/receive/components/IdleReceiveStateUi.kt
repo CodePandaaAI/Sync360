@@ -3,6 +3,7 @@ package com.liftley.sync360.presentation.receive.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -18,20 +19,22 @@ import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 
 @Composable
 fun IdleReceiveStateUi() {
-    Column(
+    Box(
         modifier = Modifier
-            .fillMaxWidth(),
-        verticalArrangement = Arrangement.Center,
-        horizontalAlignment = Alignment.CenterHorizontally
+            .fillMaxSize(),
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(24.dp),
+                .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
                 LoadingIndicator(modifier = Modifier.size(160.dp))
                 Icon(
                     imageVector = Emoji_Nature,

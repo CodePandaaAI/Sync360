@@ -32,6 +32,10 @@ fun TextSendContent(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Text(
+            "Selected Text",
+            style = MaterialTheme.typography.titleLarge
+        )
         if (textInput.isNotEmpty()) {
             IconButton(
                 onClick = onClearText,
@@ -43,10 +47,6 @@ fun TextSendContent(
                 Icon(imageVector = Close, contentDescription = null)
             }
         }
-        Text(
-            "Selected Text",
-            style = MaterialTheme.typography.titleLarge
-        )
     }
 
     if (textInput.isBlank()) {
@@ -66,8 +66,6 @@ fun TextSendContent(
                 Text("No text added")
             }
         }
-    } else {
-        TextItemCard(textInput)
     }
 
     OutlinedTextField(

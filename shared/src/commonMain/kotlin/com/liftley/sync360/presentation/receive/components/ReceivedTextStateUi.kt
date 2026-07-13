@@ -1,21 +1,28 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.core.designsystem.icons.Close
+import com.liftley.sync360.core.designsystem.icons.Copy
 import com.liftley.sync360.presentation.app.components.Sync360Surface
 
 @Composable
@@ -24,19 +31,33 @@ fun ReceivedTextStateUi(
     onCopyText: () -> Unit,
     onClear: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
-            .fillMaxWidth()
+            .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        contentAlignment = Alignment.Center
     ) {
-        Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
+        Sync360Surface(modifier = Modifier.align(Alignment.Center)) {
             Column(
                 modifier = Modifier.padding(16.dp)
                     .fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                IconButton(
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.End)
+                        .height(48.dp),
+                    onClick = onCopyText
+                ) {
+                    Icon(
+                        imageVector = Copy,
+                        contentDescription = null
+                    )
+                }
                 Text(
                     text,
                     maxLines = 5,
@@ -45,28 +66,40 @@ fun ReceivedTextStateUi(
                         .fillMaxWidth(),
                     style = MaterialTheme.typography.titleMedium
                 )
-                Button(
-                    onClick = onClear,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer
-                    ),
-                    modifier = Modifier
-                ) {
-                    Icon(
-                        imageVector = Close,
-                        tint = MaterialTheme.colorScheme.onErrorContainer,
-                        contentDescription = "Close Without Copying"
-                    )
-                    Text("Close Without Copying", color = MaterialTheme.colorScheme.onErrorContainer)
-                }
             }
         }
-
-        Button(
-            onClick = onCopyText,
-            modifier = Modifier.fillMaxWidth().height(48.dp)
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text("Copy text and Close")
+            Button(
+                onClick = onCopyText,
+                modifier = Modifier.height(48.dp).fillMaxWidth()
+            ) {
+                Icon(
+                    imageVector = Copy,
+                    contentDescription = null
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    "Copy",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
+
+            TextButton(
+                onClick = onClear,
+                modifier = Modifier.height(48.dp).fillMaxWidth()
+            ) {
+                Text(
+                    "Clear",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Normal,
+                    style = MaterialTheme.typography.titleMedium
+                )
+            }
         }
     }
 }

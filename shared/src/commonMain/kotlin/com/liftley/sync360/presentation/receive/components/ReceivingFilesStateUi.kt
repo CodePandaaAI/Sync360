@@ -1,6 +1,7 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,19 +21,19 @@ import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 fun ReceivingFilesStateUi(
     state: ReceiveScreenState.ReceivingFiles
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.Center
+        contentAlignment = Alignment.Center
     ) {
         Sync360Surface {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(20.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 Text(
                     text = state.senderDeviceName,

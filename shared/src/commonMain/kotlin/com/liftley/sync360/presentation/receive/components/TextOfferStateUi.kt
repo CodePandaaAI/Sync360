@@ -1,14 +1,16 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -24,13 +26,12 @@ fun TextOfferStateUi(
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .padding(16.dp)
-            .fillMaxSize(),
-        verticalArrangement = Arrangement.SpaceBetween
+            .fillMaxSize()
     ) {
-        Sync360Surface {
+        Sync360Surface(modifier = Modifier.align(Alignment.Center)) {
             Column(
                 modifier = Modifier
                     .padding(16.dp)
@@ -53,7 +54,7 @@ fun TextOfferStateUi(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(24.dp),
+                            .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
@@ -73,21 +74,21 @@ fun TextOfferStateUi(
         }
         Column(
             modifier = Modifier
+                .align(Alignment.BottomStart)
                 .fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
-                onClick = onDecline,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Text("Decline")
-            }
-
             Button(
                 onClick = onAccept,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().height(48.dp)
             ) {
-                Text("Accept")
+                Text("Accept", style = MaterialTheme.typography.titleMedium)
+            }
+            TextButton(
+                onClick = onDecline,
+                modifier = Modifier.fillMaxWidth().height(48.dp)
+            ) {
+                Text("Decline", style = MaterialTheme.typography.titleMedium)
             }
         }
     }

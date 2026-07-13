@@ -1,13 +1,14 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -28,26 +29,28 @@ fun ReceivedFilesStateUi(
     onOpenDownloads: () -> Unit,
     onDone: () -> Unit
 ) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+        contentAlignment = Alignment.Center
     ) {
-        Sync360Surface {
+        Sync360Surface(modifier = Modifier.align(Alignment.Center)) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    imageVector = Download,
-                    contentDescription = null,
-                    modifier = Modifier.size(64.dp),
-                    tint = MaterialTheme.colorScheme.primary
-                )
+                Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                    Icon(
+                        imageVector = Download,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp).padding(8.dp),
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                }
 
                 Text(
                     text = receivedFilesMessage(state.fileCount),
@@ -69,10 +72,10 @@ fun ReceivedFilesStateUi(
         }
 
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            OutlinedButton(
+            Button(
                 onClick = onDone,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -81,7 +84,7 @@ fun ReceivedFilesStateUi(
                 Text("Done")
             }
 
-            Button(
+            OutlinedButton(
                 onClick = onOpenDownloads,
                 modifier = Modifier
                     .fillMaxWidth()

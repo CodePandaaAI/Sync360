@@ -26,6 +26,13 @@ fun FileItemCard(file: SelectedFile, onRemoveClick: (SelectedFile) -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
+            Text(
+                file.displayName.formatDisplayName(),
+                style = MaterialTheme.typography.titleMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
             IconButton(
                 onClick = { onRemoveClick(file) },
                 colors = IconButtonDefaults.iconButtonColors(
@@ -34,13 +41,6 @@ fun FileItemCard(file: SelectedFile, onRemoveClick: (SelectedFile) -> Unit) {
             ) {
                 Icon(imageVector = Close, contentDescription = null)
             }
-
-            Text(
-                file.displayName.formatDisplayName(),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
         }
     }
 }
