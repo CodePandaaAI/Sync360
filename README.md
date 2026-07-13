@@ -1,172 +1,174 @@
-﻿<div align="center">
+<div align="center">
   <img src="screenshots/sync360-icon.png" width="128" alt="Sync360 app icon" />
 
   # Sync360
 
-  **Nearby device sharing without sending everything through the cloud first.**
+  **When the device is nearby, the path should be nearby too.**
 
-  Local-first Android device sharing, rebuilt from first principles with Kotlin Multiplatform.
+  Direct text and file sharing between Android devices on the same local network.
 
   [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
   [![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.11.1-4285F4)](https://www.jetbrains.com/lp/compose-multiplatform/)
   [![Ktor](https://img.shields.io/badge/Ktor-3.5.1-087CFA)](https://ktor.io/)
+  [![Android](https://img.shields.io/badge/Android-13%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-  <img src="screenshots/hero-demo.gif" alt="Sync360 Android text transfer demo" width="1080" />
-  <sub>Current milestone: Android devices can discover each other locally, send a text offer, accept or decline it, transfer text, and copy the received text.</sub>
+  <img src="screenshots/hero-demo.gif" alt="Earlier Sync360 Android text transfer demo" width="1080" />
+  <sub>This GIF shows an earlier text-transfer build. The current Send/Receive UI has changed, and Android file transfer is now implemented. A refreshed demo is coming later.</sub>
 </div>
 
 ---
 
-## The idea
+## Nearby sharing should not need a cloud detour
 
-Your devices are already next to each other. They are often on the same Wi-Fi. Sending something between them should not always mean opening a chat app, uploading it to a cloud drive, or sending it to yourself first.
+We have all done it: send a file to ourselves, wait for it to upload, open another device, wait for it to download, and save it again—even when both devices are in the same room.
 
-Sync360 is an early-stage local network sharing app. The long-term goal is simple:
+Sync360 is for that nearby moment.
 
 ```text
-same network -> discover nearby devices -> ask receiver -> send directly
+open app -> find nearby device -> choose what to send -> receiver approves -> send directly
 ```
 
-The project is being rebuilt manually and in public after an older AI-generated implementation became too large to confidently own. This version is intentionally smaller, Android-first, and focused on understanding each networking step before adding more product surface.
+The current app discovers other Sync360 devices on the same local network and transfers content directly between them. The transfer path does not use an account, cloud storage, or a Sync360 backend. It depends on the local network and the two devices involved.
 
-## What Sync360 is
-
-Sync360 is a Kotlin Multiplatform / Compose Multiplatform app for local nearby-device sharing.
-
-It is being built around these principles:
-
-- Local-first sharing on the same network.
-- No cloud-first dependency for nearby devices.
-- Clear receiver approval before sending.
-- Kotlin-first architecture across shared code and platform implementations.
-- Small, understandable slices instead of generated architecture.
+Chat apps and cloud drives are great when the other person is far away. Sync360 is being built for the simpler case: the destination is already nearby.
 
 ## Current status
 
-Sync360 is not a finished file transfer app yet. It is in an early Android-first rebuild phase.
+Sync360 has a working Android-to-Android MVP for text and multiple-file transfer. It is still an active rebuild, not a production-ready release.
 
 ### Working now
 
-- Android app startup with Koin.
-- Compose Multiplatform UI shell.
-- Navigation 3 Send and Receive screens.
-- Stable per-install local device UUID.
-- Android NSD advertisement and nearby device discovery.
-- Resolved nearby devices with `hostAddresses` and dynamic `port`.
-- Embedded Ktor server inside the app.
-- OS-assigned HTTP server port advertised through NSD.
-- Ktor client/server request-response over the local network.
-- Text offer route: `POST /sync360/text/offer`.
-- Text transfer route: `POST /sync360/text/transfer`.
-- Receiver-side Accept/Decline flow for incoming text offers.
-- Text is transferred only after receiver approval.
-- Receive screen can show received text and copy it.
-- Send and Receive screens use ViewModel-owned screen state.
+- Discover nearby Android devices with Android NSD/mDNS.
+- Advertise dynamic HTTP and file-transfer ports on the local network.
+- Send a text offer and let the receiver accept or decline it.
+- Transfer accepted text and copy it from the Receive screen.
+- Select images, videos, documents, and multiple files.
+- Show file metadata to the receiver before any file bytes are sent.
+- Stream file bytes directly over raw TCP without loading an entire file into memory.
+- Save received files into public Android Downloads through `MediaStore`.
+- Delete the incomplete current file if its receive operation fails or is cancelled.
+- Send files sequentially with a save acknowledgement after each file.
+- Cancel a pending send or active file transfer on a best-effort basis.
+- Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
 
-### Not implemented yet
+### Still needs work
 
-- File picker.
-- File transfer.
-- Transfer progress.
-- Android save-to-downloads/storage flow.
-- Security/encryption/session validation.
-- Desktop support for the rebuilt networking flow.
-- iOS implementation.
-- Production-ready error model.
+- Authentication, encryption, transfer tokens, and session validation.
+- File integrity hashes/checksums.
+- Byte-level progress, percentage, speed, and time remaining.
+- Rich receiver-side failure details and per-file results.
+- More robust discovery, server, foreground/background, and cleanup lifecycles.
+- Better IP address selection and IPv6 handling.
+- Retry, pause/resume, and interrupted-transfer recovery.
+- Automated transfer coverage and broader device/router testing.
+- Rebuilt desktop and iOS discovery, transfer, and storage implementations.
 
-## Demo and screenshots
+The current progress UI counts completed files. That is understandable for small files, but a large file can look stuck while bytes are still moving. Byte-based progress is one of the next important UX improvements.
 
-The main demo GIF above shows the current Android text-transfer milestone.
+## How it works
 
-Place visual assets in [`screenshots/`](screenshots/README.md). The folder includes recommended filenames and sizes.
+Sync360 currently uses two small networking paths with different jobs:
 
-## How the current Android flow works
-
-```text
-Device A starts a local Ktor server
-Device A advertises itself with Android NSD
-Device B discovers Device A
-Device B reads Device A hostAddresses + port
-Sender writes text
-Sender sends a text offer to the receiver
-Receiver accepts or declines
-If accepted, sender transfers the text
-Receiver shows the received text
-Receiver can copy the text
-```
-
-This is the first real send flow. It proves that local discovery can lead to receiver approval and an actual payload transfer between two Android devices on the same network.
-
-## Architecture
+- **Ktor HTTP is the control plane.** It carries text/file offers, receiver decisions, file metadata, and text payloads.
+- **Raw TCP is the file data plane.** It streams the actual file bytes directly between Android devices.
 
 ```mermaid
-flowchart TD
-    App[Sync360Root] --> Send[SendScreen + SendScreenViewModel]
-    App --> Receive[ReceiveScreen + ReceiveScreenViewModel]
-
-    Send --> NetworkController[NetworkServicesController]
-    Send --> Outgoing[OutgoingRequestsController]
-    Receive --> Incoming[IncomingServerRequestsController]
-
-    NetworkController --> Server[Sync360HttpServer]
-    NetworkController --> Discovery[NetworkServices]
-    Discovery --> AndroidNSD[AndroidNetworkServices]
-
-    Server --> Incoming
-    Outgoing --> Client[Sync360HttpClient]
-    Client --> RemoteDevice[Nearby device HTTP server]
-    AndroidNSD --> Nearby[NearbyDevice hostAddresses + port]
+flowchart LR
+    A["Sender Android device"] -->|"NSD discovery"| B["Receiver Android device"]
+    A -->|"Ktor: offer + decision + metadata"| B
+    A -->|"Raw TCP: streamed file bytes"| B
+    B -->|"MediaStore"| D["Android Downloads"]
 ```
 
-High-level module shape:
+Android NSD advertises `_sync360._tcp.` with a stable per-install device ID, device details, protocol version, an OS-assigned HTTP port, and a separate OS-assigned file-transfer port.
 
-- `androidApp/` - Android app entry point and manifest.
-- `desktopApp/` - JVM desktop app shell; present, but not active in the rebuilt flow yet.
-- `shared/commonMain/` - shared UI, ViewModels, domain models, Koin module, Ktor client/server, request controllers, and DTOs.
-- `shared/androidMain/` - Android NSD discovery, local identity, local device info, and clipboard implementation.
+### Text path
 
-More detail: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+```text
+SendScreen
+  -> SendScreenViewModel
+  -> OutgoingRequestsController
+  -> POST /sync360/text/offer
+  -> receiver Accept/Decline
+  -> POST /sync360/text/transfer
+  -> ReceiveScreen shows the text
+```
+
+The sender shares a preview and character count first. The full text is posted only after the receiver accepts.
+
+### File path
+
+```text
+Android file picker
+  -> AndroidSelectedFileReader reads name, size, MIME type, and Uri
+  -> POST /sync360/file/offer sends metadata
+  -> receiver Accept/Decline
+  -> AndroidFileTransferSender opens the Uri as an InputStream
+  -> raw TCP streams each file in 64 KiB chunks
+  -> AndroidDownloadsWriter writes to a pending MediaStore entry
+  -> receiver acknowledges that the file was saved
+```
+
+One TCP socket is opened per file. Each socket begins with the file index and promised byte count, followed by exactly that many bytes. The receiver checks the index and size against the accepted offer before saving the file.
+
+Files are sent sequentially. If a later file fails, files that were already completed stay in Downloads; only the incomplete current file is removed.
+
+## A small performance note
+
+In one manual Android-to-Android test over 5 GHz Wi-Fi, Sync360 transferred a roughly 575 MB file in about 24–26 seconds—around 22–24 MB/s.
+
+That is one real test, not a guaranteed speed or a formal benchmark. Transfer speed depends on both devices, their storage, Wi-Fi radios, router or hotspot, signal quality, and other network traffic. Reproducible benchmarks across more hardware and networks are still future work.
+
+## Architecture and project layout
+
+The code intentionally follows a direct path:
+
+```text
+Compose screen -> ViewModel -> controller/service -> network or Android implementation
+```
+
+- `androidApp/` — Android application host, manifest, launcher assets, and app entry point.
+- `shared/src/commonMain/` — shared Compose UI, ViewModels, screen/domain state, controllers, Ktor client/server, network contracts, and dependency injection.
+- `shared/src/androidMain/` — Android NSD, file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Android DI bindings.
+- `desktopApp/` — Compose Desktop shell; the rebuilt networking flow is not active there yet.
+- `iosApp/` — iOS shell; iOS targets are currently disabled in the shared Gradle configuration.
+
+The project is Kotlin Multiplatform because shared product logic and UI are still part of the long-term direction. The implementation order is deliberately Android first.
 
 ## Tech stack
 
-- Kotlin 2.3.21
-- Kotlin Multiplatform
-- Compose Multiplatform 1.11.1
-- Android application module
-- JVM desktop module
-- Koin 4.2.2
+- Kotlin 2.3.21 and Kotlin Multiplatform
+- Compose Multiplatform 1.11.1 with Material 3
+- Android min SDK 33, compile/target SDK 37
 - Ktor 3.5.1 client/server with CIO
+- Koin 4.2.2
+- Coroutines and `StateFlow`
 - kotlinx.serialization JSON
-- Coroutines and StateFlow
-- Android NSD / mDNS discovery
+- Android NSD/mDNS
+- Java `Socket` / `ServerSocket` for file bytes
+- Android `ContentResolver` and `MediaStore`
 - Navigation 3
 - Gradle 9.4.1 wrapper
 
 ## Getting started
 
-### Prerequisites
+### Requirements
 
 - JDK 17
-- Android Studio or IntelliJ IDEA with Kotlin support
-- Android SDK Platform 37 installed
-- Android SDK Build Tools 36.0.0 or newer
-- Gradle is provided by the wrapper (`9.4.1`)
-- At least one Android device or emulator for app launch
-- Two physical Android devices on the same local network for real discovery and transfer testing
+- A recent Android Studio version compatible with Android Gradle Plugin 9.2.x
+- Android SDK Platform 37
+- Two physical Android 13+ devices for real nearby-transfer testing
+- A Wi-Fi network or hotspot that allows devices to communicate with each other
 
-The project currently uses Android Gradle Plugin 9.2.1. Use a recent Android Studio version that supports AGP 9.2.x.
-
-### Clone
+### Clone and open
 
 ```bash
 git clone https://github.com/CodePandaaAI/Sync360.git
 cd Sync360
 ```
 
-### Open in IDE
-
-Open the repository root in Android Studio or IntelliJ IDEA. Let Gradle sync finish.
+Open the repository root in Android Studio and let Gradle sync finish.
 
 ### Build Android
 
@@ -182,91 +184,91 @@ macOS/Linux:
 ./gradlew :androidApp:assembleDebug
 ```
 
-### Desktop
+There is no stable public release yet. For now, Sync360 should be built from source and treated as development software.
 
-The desktop module exists, but the current rebuilt networking flow is Android-first. You can inspect/run the shell with:
+### Try the current flow
 
-```bash
-./gradlew :desktopApp:run
-```
+1. Install the same build on two Android devices.
+2. Connect both devices to the same Wi-Fi network or hotspot.
+3. Open Sync360 on both devices.
+4. On the Send screen, wait for the other device to appear.
+5. Choose Text or Files, select the nearby device, and send an offer.
+6. Accept the offer on the receiving device.
+7. Received files will be written to Android Downloads.
 
-Desktop discovery and transfer behavior should be treated as future work unless the current code says otherwise.
+Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
+
+## Security warning
+
+Sync360 is **not secure for untrusted networks yet**.
+
+The current Android MVP uses cleartext local HTTP and raw TCP. It does not authenticate the sender, encrypt content, bind file sockets to an approved session token, or verify file integrity with a cryptographic hash. Receiver approval exists in the UI, but it is not a complete security boundary.
+
+Use the current app only for development and testing on private networks you control. Please report security-sensitive findings according to [SECURITY.md](SECURITY.md), not in a public issue.
 
 ## Roadmap
 
-### Current Android milestone
+### Next: make the Android MVP trustworthy and informative
 
-- Android local discovery.
-- Dynamic local HTTP server port advertisement.
-- Text offer with receiver Accept/Decline.
-- Direct text transfer after approval.
-- Received text display and copy action.
+- Track bytes sent and received.
+- Show total percentage, current speed, and clearer active-transfer feedback.
+- Add integrity verification.
+- Improve cancellation and failure reporting.
+- Strengthen lifecycle behavior and local-network reliability.
+- Design session validation, authentication, and encryption deliberately.
 
-### Near-term
+### Later: bring the same simple flow to more devices
 
-- File selection UI.
-- Selected file model.
-- File offer request/response.
-- File byte transfer.
-- Progress states.
-- Android save-to-downloads/storage handling.
-- Better error states.
-- Cleaner lifecycle around server/discovery start and stop.
-- Better host address selection, including IPv4 preference and IPv6 formatting.
+- Desktop discovery, transfer, and storage.
+- iOS investigation and implementation.
+- Better cross-device UX and troubleshooting.
+- Retry or resume support where the added protocol complexity is justified.
 
-### Later
+Sync360 is not trying to become a chat app, cloud-sync product, or permanent device manager. The product direction stays focused:
 
-- Multiple files and mixed text/file bundles.
-- Desktop support.
-- Security/session validation.
-- Transfer integrity checks.
-- Optional transfer history.
-- Clipboard-oriented flows, if they fit the product direction.
-- iOS investigation.
+```text
+find nearby -> approve -> send directly
+```
 
-See [docs/ROADMAP.md](docs/ROADMAP.md).
+## Why the rebuild is intentionally small
+
+An older AI-generated sync implementation grew faster than it could be understood and maintained, so it was removed. The current version is being rebuilt manually, one complete path at a time.
+
+That history shapes the code today:
+
+- Prefer readable control flow over clever abstractions.
+- Keep platform work out of composables.
+- Keep HTTP DTOs at the network boundary.
+- Stream large files instead of buffering them whole.
+- Add architecture only when it clarifies a real responsibility.
+- Describe unfinished work honestly.
+
+This is a learning-driven project, but the goal is serious software that its maintainer can fully explain and own.
 
 ## Contributing
 
-Sync360 is early. That makes feedback useful.
+Focused feedback and contributions are welcome, especially around:
 
-Good contributions right now:
+- Android NSD behavior across devices and routers
+- local-network and socket reliability
+- transfer security and threat modelling
+- small UI/UX improvements
+- focused tests for pure Kotlin logic
+- clear documentation fixes
 
-- Android local-network testing notes.
-- Ktor client/server suggestions.
-- NSD reliability improvements.
-- Clear naming and architecture feedback.
-- Small bug fixes.
-- Documentation improvements.
+For large architecture or protocol changes, start with an issue so the user flow and tradeoffs can be discussed before implementation.
 
-Please read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Large architecture changes should be discussed first.
-
-## Community and feedback
-
-If you try the project and something breaks, open an issue with:
-
-- device model
-- Android version
-- network type
-- what you expected
-- what happened
-- logs if available
-
-Architecture discussions are welcome, especially around local networking, KMP boundaries, Ktor, Android NSD, and future file transfer design.
-
-## Security
-
-This project will eventually handle local network file transfer. Please do not report security-sensitive issues publicly if they expose a vulnerability. See [SECURITY.md](SECURITY.md).
+When reporting a networking bug, include the device models, Android versions, network setup, exact steps, expected result, actual result, and useful logs.
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Sync360 is available under the [Apache License 2.0](LICENSE).
 
 ## Maintainer
 
 Created by **Romit Sharma**.
 
-- GitHub: https://github.com/CodePandaaAI
-- LinkedIn: https://www.linkedin.com/in/romit-sharma-18b521329/
+- [GitHub](https://github.com/CodePandaaAI)
+- [LinkedIn](https://www.linkedin.com/in/romit-sharma-18b521329/)
 
-If this project sounds interesting, star it, follow the rebuild, or open a discussion.
+If the idea clicks with you, star the repository, try the Android MVP, or share what broke. Real feedback is more useful than hype.
