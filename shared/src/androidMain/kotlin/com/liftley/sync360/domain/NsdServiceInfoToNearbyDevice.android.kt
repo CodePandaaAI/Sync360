@@ -10,8 +10,8 @@ fun NsdServiceInfo.toNearbyDeviceAndroidImpl(): NearbyDevice? {
     val deviceUuid = this.attributes["deviceUuid"]?.toString(Charsets.UTF_8) ?: return null
     val deviceName = this.attributes["deviceName"]?.toString(Charsets.UTF_8) ?: return null
     val deviceType = this.attributes["deviceType"]?.toString(Charsets.UTF_8) ?: return null
-    val protocolVersion =
-        this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
+    val protocolVersion = this.attributes["protocolVersion"]?.toString(Charsets.UTF_8) ?: return null
+    val fileTransferPort = attributes["fileTransferPort"]?.toString(Charsets.UTF_8)?.toIntOrNull() ?: return null
 
     val hostAddresses = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
         this.hostAddresses.map { address ->
@@ -25,6 +25,8 @@ fun NsdServiceInfo.toNearbyDeviceAndroidImpl(): NearbyDevice? {
 
     if (this.port <= 0) return null
 
+    if (fileTransferPort <= 0) return null
+
     return NearbyDevice(
         id = deviceUuid,
         deviceName = deviceName,
@@ -32,6 +34,7 @@ fun NsdServiceInfo.toNearbyDeviceAndroidImpl(): NearbyDevice? {
         protocolVersion = protocolVersion,
         hostAddresses = hostAddresses,
         port = this.port,
+        fileTransferPort = fileTransferPort,
         serviceName = this.serviceName,
         serviceType = this.serviceType,
     )

@@ -9,9 +9,24 @@ sealed interface ClientServerState {
             val preview: String,
             val characterCount: Int
         ) : Busy
+
+        data class FileOffer(
+            val fileOffer: FileTransferOffer
+        ) : Busy
+
+        data class ReceivingFiles(
+            val senderDeviceName: String,
+            val fileCount: Int,
+            val completedFileCount: Int
+        ) : Busy
     }
 
     data class Received(val data: String): ClientServerState
+
+    data class ReceivedFiles(
+        val senderDeviceName: String,
+        val fileCount: Int
+    ) : ClientServerState
 }
 
 enum class UserDecision {

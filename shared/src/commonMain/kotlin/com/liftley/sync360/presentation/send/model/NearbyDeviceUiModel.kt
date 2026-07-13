@@ -7,6 +7,7 @@ data class NearbyDeviceUiModel(
     val protocolVersion: String,
     val hostAddresses: List<String>,
     val port: Int,
+    val fileTransferPort: Int,
     val serviceName: String,
     val serviceType: String
 )

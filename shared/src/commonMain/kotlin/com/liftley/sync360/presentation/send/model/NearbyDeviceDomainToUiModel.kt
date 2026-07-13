@@ -10,6 +10,7 @@ fun NearbyDevice.toNearbyDeviceUiModel(): NearbyDeviceUiModel {
         protocolVersion = this.protocolVersion,
         hostAddresses = this.hostAddresses,
         port = this.port,
+        fileTransferPort = this.fileTransferPort,
         serviceName = this.serviceName,
         serviceType = this.serviceType
     )

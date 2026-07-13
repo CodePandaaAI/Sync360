@@ -27,55 +27,53 @@ fun TextSendContent(
     onTextChange: (String) -> Unit,
     onClearText: () -> Unit
 ) {
-    Column(
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "Selected Text",
-                style = MaterialTheme.typography.titleLarge
-            )
-            if (textInput.isNotEmpty()) {
-                IconButton(
-                    onClick = onClearText,
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    ),
-                    modifier = Modifier.height(48.dp)
-                ) {
-                    Icon(imageVector = Close, contentDescription = null)
-                }
-            }
-        }
-
-        if (textInput.isBlank()) {
-            Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(imageVector = Emoji_Nature, contentDescription = null, modifier = Modifier.size(48.dp))
-                    Text("No text added")
-                }
-            }
-        } else {
-            TextItemCard(textInput)
-        }
-
-        OutlinedTextField(
-            value = textInput,
-            onValueChange = onTextChange,
-            label = { Text("Add text to send") },
-            maxLines = 4,
-            shape = MaterialTheme.shapes.large,
-            modifier = Modifier.fillMaxWidth()
+        Text(
+            "Selected Text",
+            style = MaterialTheme.typography.titleLarge
         )
+        if (textInput.isNotEmpty()) {
+            IconButton(
+                onClick = onClearText,
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(imageVector = Close, contentDescription = null)
+            }
+        }
     }
+
+    if (textInput.isBlank()) {
+        Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    imageVector = Emoji_Nature,
+                    contentDescription = null,
+                    modifier = Modifier.size(48.dp)
+                )
+                Text("No text added")
+            }
+        }
+    }
+
+    OutlinedTextField(
+        value = textInput,
+        onValueChange = onTextChange,
+        label = { Text("Add text to send") },
+        maxLines = 4,
+        shape = MaterialTheme.shapes.large,
+        modifier = Modifier.fillMaxWidth()
+    )
 }

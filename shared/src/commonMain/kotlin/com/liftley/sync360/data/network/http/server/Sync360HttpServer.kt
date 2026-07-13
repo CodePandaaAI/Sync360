@@ -5,6 +5,10 @@ import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
 import com.liftley.sync360.data.IncomingServerRequestsController
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
+import com.liftley.sync360.data.network.tcp.FileTransferReceiver
+import com.liftley.sync360.data.network.http.dto.file.toFileTransferOffer
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -21,7 +25,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.time.Duration.Companion.milliseconds
 
 class Sync360HttpServer(
-    private val incomingServerRequestsController: IncomingServerRequestsController
+    private val incomingServerRequestsController: IncomingServerRequestsController,
+    private val fileTransferReceiver: FileTransferReceiver
 ) {
     private var server: EmbeddedServer<*, *>? = null
 
@@ -92,6 +97,76 @@ class Sync360HttpServer(
                                 message = e.message ?: "Something went wrong! Please try again"
                             )
                         )
+                    }
+                }
+
+                post("/sync360/file/offer") {
+                    val currentState = incomingServerRequestsController.clientServerState.value
+
+                    if (currentState != ClientServerState.Idle) {
+                        call.respond(FileOfferResponse.Declined)
+                        return@post
+                    }
+
+                    val fileOfferRequest = call.receive<FileOfferRequest>()
+                    val fileOffer = fileOfferRequest.toFileTransferOffer()
+
+                    incomingServerRequestsController.changeServerState(
+                        ClientServerState.Busy.FileOffer(
+                            fileOffer = fileOffer
+                        )
+                    )
+
+                    val userDecision = withTimeoutOrNull(55_000.milliseconds) {
+                        incomingServerRequestsController.waitForUserDecision()
+                    }
+
+                    when (userDecision) {
+                        UserDecision.ACCEPTED -> {
+                            fileTransferReceiver.prepareForTransfer(
+                                fileOffer = fileOffer,
+                                onFileSaved = { completedFileCount ->
+                                    incomingServerRequestsController.changeServerState(
+                                        ClientServerState.Busy.ReceivingFiles(
+                                            senderDeviceName = fileOffer.senderDeviceName,
+                                            fileCount = fileOffer.files.size,
+                                            completedFileCount = completedFileCount
+                                        )
+                                    )
+                                },
+                                onTransferFinished = { wasSuccessful ->
+                                    val finishedState = if (wasSuccessful) {
+                                        ClientServerState.ReceivedFiles(
+                                            senderDeviceName = fileOffer.senderDeviceName,
+                                            fileCount = fileOffer.files.size
+                                        )
+                                    } else {
+                                        ClientServerState.Idle
+                                    }
+
+                                    incomingServerRequestsController.changeServerState(finishedState)
+                                }
+                            )
+
+                            incomingServerRequestsController.changeServerState(
+                                ClientServerState.Busy.ReceivingFiles(
+                                    senderDeviceName = fileOffer.senderDeviceName,
+                                    fileCount = fileOffer.files.size,
+                                    completedFileCount = 0
+                                )
+                            )
+
+                            call.respond(FileOfferResponse.Accepted)
+                        }
+                        else -> {
+                            fileTransferReceiver.clearExpectedTransfer()
+
+                            incomingServerRequestsController.changeServerState(
+                                ClientServerState.Idle
+                            )
+
+                            call.respond(FileOfferResponse.Declined)
+                        }
                     }
                 }
             }

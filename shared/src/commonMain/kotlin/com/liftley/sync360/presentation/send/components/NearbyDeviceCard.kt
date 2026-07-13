@@ -30,6 +30,7 @@ fun NearbyDeviceCard(
         protocolVersion = "v2.4.1",
         hostAddresses = listOf("192.168.1.45", "fe80::1ff:fe23:4567:890a"),
         port = 8080,
+        fileTransferPort = 0,
         serviceName = "Chromecast-Ultra-Stream",
         serviceType = "_googlecast._tcp.local."
     ),
