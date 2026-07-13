@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
-import com.liftley.sync360.core.designsystem.Sync360Theme
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
 import com.liftley.sync360.presentation.app.components.Sync360Surface
@@ -38,110 +37,110 @@ fun Sync360Root() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
 
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
-    Sync360Theme {
-        Scaffold(
-            bottomBar = {
-                NavigationBar {
-                    NavigationBarItem(
-                        onClick = { navigationViewModel.addScreen(NavScreen.ReceiveScreen) },
-                        selected = navigationViewModel.checkCurrentTop() == NavScreen.ReceiveScreen,
-                        label = { Text("Receive") },
-                        icon = {
-                            Icon(
-                                imageVector = Download,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                    NavigationBarItem(
-                        onClick = { navigationViewModel.removeAllExceptAddScreen() },
-                        selected = navigationViewModel.checkCurrentTop() == NavScreen.SendScreen,
-                        label = { Text("Send") },
-                        icon = {
-                            Icon(
-                                imageVector = Send,
-                                contentDescription = null
-                            )
-                        }
-                    )
-                }
-            },
-            topBar = {
-                if (
-                    navigationViewModel.checkCurrentTop() ==
-                    NavScreen.ReceiveScreen
-                ) {
-                    val topBarTitle = when (receiveScreenState) {
-                        ReceiveScreenState.Idle -> "Receive"
 
-                        is ReceiveScreenState.IncomingTextOffer ->
-                            "Incoming text"
-
-                        is ReceiveScreenState.IncomingFileOffer ->
-                            "Incoming files"
-
-                        is ReceiveScreenState.ReceivingFiles ->
-                            "Receiving files"
-
-                        is ReceiveScreenState.ReceivedText ->
-                            "Received text"
-
-                        is ReceiveScreenState.ReceivedFiles ->
-                            "Files received"
-                    }
-
-                    CenterAlignedTopAppBar(
-                        title = {
-                            Sync360Surface {
-                                Text(
-                                    text = topBarTitle,
-                                    style = MaterialTheme.typography.titleLarge,
-                                    modifier = Modifier.padding(16.dp)
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor =
-                                MaterialTheme.colorScheme.surfaceContainer
+    Scaffold(
+        bottomBar = {
+            NavigationBar {
+                NavigationBarItem(
+                    onClick = { navigationViewModel.addScreen(NavScreen.ReceiveScreen) },
+                    selected = navigationViewModel.checkCurrentTop() == NavScreen.ReceiveScreen,
+                    label = { Text("Receive") },
+                    icon = {
+                        Icon(
+                            imageVector = Download,
+                            contentDescription = null
                         )
-                    )
-                }
-            },
-            modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.surfaceContainer
-        ) { innerPadding ->
-            NavDisplay(
-                navigationViewModel.backstack,
-                modifier = Modifier.padding(innerPadding)
-            ) { screen ->
-                when (screen) {
-                    is NavScreen.SendScreen -> {
-                        NavEntry(screen) {
-                            SendScreen()
-                        }
                     }
+                )
+                NavigationBarItem(
+                    onClick = { navigationViewModel.removeAllExceptAddScreen() },
+                    selected = navigationViewModel.checkCurrentTop() == NavScreen.SendScreen,
+                    label = { Text("Send") },
+                    icon = {
+                        Icon(
+                            imageVector = Send,
+                            contentDescription = null
+                        )
+                    }
+                )
+            }
+        },
+        topBar = {
+            if (
+                navigationViewModel.checkCurrentTop() ==
+                NavScreen.ReceiveScreen
+            ) {
+                val topBarTitle = when (receiveScreenState) {
+                    ReceiveScreenState.Idle -> "Receive"
 
-                    is NavScreen.ReceiveScreen -> {
-                        NavEntry(screen) {
-                            ReceiveScreen()
+                    is ReceiveScreenState.IncomingTextOffer ->
+                        "Incoming text"
+
+                    is ReceiveScreenState.IncomingFileOffer ->
+                        "Incoming files"
+
+                    is ReceiveScreenState.ReceivingFiles ->
+                        "Receiving files"
+
+                    is ReceiveScreenState.ReceivedText ->
+                        "Received text"
+
+                    is ReceiveScreenState.ReceivedFiles ->
+                        "Files received"
+                }
+
+                CenterAlignedTopAppBar(
+                    title = {
+                        Sync360Surface {
+                            Text(
+                                text = topBarTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.padding(16.dp)
+                            )
                         }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor =
+                            MaterialTheme.colorScheme.surfaceContainer
+                    )
+                )
+            }
+        },
+        modifier = Modifier.fillMaxSize(),
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
+    ) { innerPadding ->
+        NavDisplay(
+            navigationViewModel.backstack,
+            modifier = Modifier.padding(innerPadding)
+        ) { screen ->
+            when (screen) {
+                is NavScreen.SendScreen -> {
+                    NavEntry(screen) {
+                        SendScreen()
+                    }
+                }
+
+                is NavScreen.ReceiveScreen -> {
+                    NavEntry(screen) {
+                        ReceiveScreen()
                     }
                 }
             }
+        }
 
-            LaunchedEffect(receiveScreenState) {
-                if (receiveScreenState is ReceiveScreenState.IncomingTextOffer) {
-                    if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
-                        navigationViewModel.addScreen(NavScreen.ReceiveScreen)
-                    }
+        LaunchedEffect(receiveScreenState) {
+            if (receiveScreenState is ReceiveScreenState.IncomingTextOffer) {
+                if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
+                    navigationViewModel.addScreen(NavScreen.ReceiveScreen)
                 }
+            }
 
-                if (receiveScreenState is ReceiveScreenState.IncomingFileOffer) {
-                    if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
-                        navigationViewModel.addScreen(NavScreen.ReceiveScreen)
-                    }
+            if (receiveScreenState is ReceiveScreenState.IncomingFileOffer) {
+                if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
+                    navigationViewModel.addScreen(NavScreen.ReceiveScreen)
                 }
             }
         }
     }
 }
+
