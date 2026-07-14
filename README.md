@@ -13,10 +13,7 @@
   [![Android](https://img.shields.io/badge/Android-13%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-  <video src="screenshots/hero-demo.mp4" controls preload="metadata" width="1080"></video>
-  <br />
-  <a href="screenshots/hero-demo.mp4"><strong>▶ Watch the current Android demo</strong></a>
-  <br />
+  <img src="screenshots/hero-demo.gif" alt="Sync360 Android text and file transfer demo" width="1080" />
   <sub>Nearby discovery, receiver approval, and the current Android text/file transfer experience.</sub>
 </div>
 
