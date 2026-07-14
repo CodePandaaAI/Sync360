@@ -36,7 +36,6 @@ fun SendOperationStateUi(
 
         is SendOperationState.SendingTextOffer -> {
             SendingOperationUi(
-                title = "Sending text",
                 message = "Waiting for ${state.deviceName} to accept",
                 onCancel = onCancel
             )
@@ -44,7 +43,6 @@ fun SendOperationStateUi(
 
         is SendOperationState.SendingFileOffer -> {
             SendingOperationUi(
-                title = "Sending file offer",
                 message = "Waiting for ${state.deviceName} to accept " +
                         fileCountMessage(state.fileCount),
                 onCancel = onCancel
@@ -56,7 +54,6 @@ fun SendOperationStateUi(
             val progress = completedFiles.toFloat() / state.totalFiles.toFloat()
 
             SendingOperationUi(
-                title = "Sending files",
                 message = "Sending to ${state.deviceName}",
                 detail = "${state.fileNumber} / ${state.totalFiles}: ${state.fileName}",
                 progress = progress,
@@ -66,7 +63,6 @@ fun SendOperationStateUi(
 
         is SendOperationState.TextSent -> {
             SendResultUi(
-                title = "Text sent",
                 message = "Sent successfully to ${state.deviceName}",
                 wasSuccessful = true,
                 onDone = onDone
@@ -75,7 +71,6 @@ fun SendOperationStateUi(
 
         is SendOperationState.FilesSent -> {
             SendResultUi(
-                title = "Files sent",
                 message = "${fileCountMessage(state.fileCount)} sent to ${state.deviceName}",
                 wasSuccessful = true,
                 onDone = onDone
@@ -84,7 +79,6 @@ fun SendOperationStateUi(
 
         SendOperationState.Cancelled -> {
             SendResultUi(
-                title = "Sending cancelled",
                 message = "The active send was stopped",
                 wasSuccessful = false,
                 onDone = onDone
@@ -93,7 +87,6 @@ fun SendOperationStateUi(
 
         is SendOperationState.OperationFailed -> {
             SendResultUi(
-                title = "Could not send",
                 message = state.reason,
                 wasSuccessful = false,
                 onDone = onDone
@@ -104,7 +97,6 @@ fun SendOperationStateUi(
 
 @Composable
 private fun SendingOperationUi(
-    title: String,
     message: String,
     detail: String? = null,
     progress: Float? = null,
@@ -123,11 +115,6 @@ private fun SendingOperationUi(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge
-                )
-
                 Text(
                     text = message,
                     style = MaterialTheme.typography.titleMedium,
@@ -171,7 +158,6 @@ private fun SendingOperationUi(
 
 @Composable
 private fun SendResultUi(
-    title: String,
     message: String,
     wasSuccessful: Boolean,
     onDone: () -> Unit
@@ -203,12 +189,6 @@ private fun SendResultUi(
                         }
                     )
                 }
-
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge
-                )
-
                 Text(
                     text = message,
                     style = MaterialTheme.typography.titleMedium,

@@ -27,14 +27,14 @@ fun NearbyDeviceEmptyCard(
     onReloadClick: () -> Unit = {}
 ) {
     val title = when (status) {
-        DiscoveryStatus.Idle -> "No Device Found"
+        DiscoveryStatus.Idle -> "Stopped Nearby Scanning"
         DiscoveryStatus.Starting -> "Starting Discovery"
         DiscoveryStatus.Running -> "Looking for Devices"
         DiscoveryStatus.Stopping -> "Stopping Discovery"
     }
 
     val subtitle = when (status) {
-        DiscoveryStatus.Idle -> "Tap reload to scan again"
+        DiscoveryStatus.Idle -> "Tap to rescan"
         DiscoveryStatus.Starting -> "Preparing nearby scan"
         DiscoveryStatus.Running -> "Keep both devices on the same Wi-Fi"
         DiscoveryStatus.Stopping -> "Cleaning up current scan"

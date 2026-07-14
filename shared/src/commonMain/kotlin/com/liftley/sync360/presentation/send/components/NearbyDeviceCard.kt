@@ -8,16 +8,21 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Android
+import com.liftley.sync360.core.designsystem.icons.Desktop
+import com.liftley.sync360.core.designsystem.icons.Tv
+import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.send.model.NearbyDeviceUiModel
 
 @Preview
@@ -26,7 +31,7 @@ fun NearbyDeviceCard(
     device: NearbyDeviceUiModel = NearbyDeviceUiModel(
         id = "uuid-9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d",
         deviceName = "Living Room TV",
-        deviceType = "Smart TV",
+        deviceType = "Tv",
         protocolVersion = "v2.4.1",
         hostAddresses = listOf("192.168.1.45", "fe80::1ff:fe23:4567:890a"),
         port = 8080,
@@ -51,10 +56,36 @@ fun NearbyDeviceCard(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = Android,
-                contentDescription = null
-            )
+            when (device.deviceType) {
+                "Android" -> {
+                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
+                        Icon(
+                            imageVector = Android,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(48.dp).padding(8.dp)
+                        )
+                    }
+                }
+                "Desktop" -> {
+                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
+                        Icon(
+                            imageVector = Desktop,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).padding(8.dp)
+                        )
+                    }
+                }
+                "Tv" -> {
+                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
+                        Icon(
+                            imageVector = Tv,
+                            contentDescription = null,
+                            modifier = Modifier.size(48.dp).padding(8.dp)
+                        )
+                    }
+                }
+            }
 
             Column(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -65,7 +96,7 @@ fun NearbyDeviceCard(
                 )
 
                 Text(
-                    "IP and Port :${device.hostAddresses.first()}:${device.port}",
+                    "IP and Port: ${device.hostAddresses.first()}:${device.port}",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

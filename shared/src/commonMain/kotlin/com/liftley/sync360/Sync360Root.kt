@@ -28,6 +28,8 @@ import com.liftley.sync360.presentation.receive.ReceiveScreen
 import com.liftley.sync360.presentation.receive.ReceiveScreenViewModel
 import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import com.liftley.sync360.presentation.send.SendScreen
+import com.liftley.sync360.presentation.send.SendScreenViewModel
+import com.liftley.sync360.presentation.send.model.SendOperationState
 import org.koin.compose.koinInject
 
 @Preview(showBackground = true)
@@ -35,8 +37,10 @@ import org.koin.compose.koinInject
 fun Sync360Root() {
     val navigationViewModel = koinInject<NavigationViewModel>()
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
+    val sendScreenViewModel = koinInject<SendScreenViewModel>()
 
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val sendScreenState by sendScreenViewModel.screenState.collectAsStateWithLifecycle()
 
     Scaffold(
         bottomBar = {
@@ -105,6 +109,57 @@ fun Sync360Root() {
                     )
                 )
             }
+
+            if (
+                navigationViewModel.checkCurrentTop() ==
+                NavScreen.SendScreen
+            ) {
+                val topBarTitle = when (sendScreenState.sendOperationState) {
+                    SendOperationState.Idle -> "Sync360"
+
+                    SendOperationState.Cancelled -> "Sending Cancelled"
+
+                    is SendOperationState.SendingTextOffer -> {
+                        "Sending Text Offer"
+                    }
+
+                    is SendOperationState.SendingFileOffer -> {
+                        "Sending File Offer"
+                    }
+
+                    is SendOperationState.SendingFile -> {
+                        "Sending Files"
+                    }
+
+                    is SendOperationState.TextSent -> {
+                        "Text Sent"
+                    }
+
+                    is SendOperationState.FilesSent -> {
+                        "Files Sent"
+                    }
+
+                    is SendOperationState.OperationFailed -> {
+                        "Could Not Send"
+                    }
+                }
+
+                CenterAlignedTopAppBar(
+                    title = {
+                        Sync360Surface {
+                            Text(
+                                text = topBarTitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor =
+                            MaterialTheme.colorScheme.surfaceContainer
+                    )
+                )
+            }
         },
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -130,17 +185,12 @@ fun Sync360Root() {
 
         LaunchedEffect(receiveScreenState) {
             if (receiveScreenState is ReceiveScreenState.IncomingTextOffer) {
-                if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
-                    navigationViewModel.addScreen(NavScreen.ReceiveScreen)
-                }
+                navigationViewModel.addScreen(NavScreen.ReceiveScreen)
             }
 
             if (receiveScreenState is ReceiveScreenState.IncomingFileOffer) {
-                if (navigationViewModel.checkCurrentTop() != NavScreen.ReceiveScreen) {
-                    navigationViewModel.addScreen(NavScreen.ReceiveScreen)
-                }
+                navigationViewModel.addScreen(NavScreen.ReceiveScreen)
             }
         }
     }
 }
-

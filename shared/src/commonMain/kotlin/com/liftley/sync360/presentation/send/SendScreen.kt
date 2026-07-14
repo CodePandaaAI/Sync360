@@ -63,7 +63,7 @@ fun SendScreen() {
                             SendTab.Text -> {
                                 TextSendContent(
                                     textInput = screenState.textInput,
-                                    onTextChange = sendScreenViewModel::onTextChanged,
+                                    onTextChange = { sendScreenViewModel.onTextChanged(it) },
                                     onClearText = { sendScreenViewModel.onTextChanged("") }
                                 )
                             }

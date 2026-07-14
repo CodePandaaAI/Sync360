@@ -11,9 +11,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -44,19 +43,23 @@ fun ReceivedTextStateUi(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                IconButton(
-                    colors = IconButtonDefaults.iconButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceContainer
-                    ),
-                    modifier = Modifier
-                        .align(Alignment.End)
-                        .height(48.dp),
-                    onClick = onCopyText
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterEnd
                 ) {
-                    Icon(
-                        imageVector = Copy,
-                        contentDescription = null
-                    )
+                    OutlinedButton(
+                        onClick = onCopyText,
+                    ) {
+                        Icon(
+                            imageVector = Copy,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            "Copy",
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
                 }
                 Text(
                     text,
