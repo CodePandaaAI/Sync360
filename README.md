@@ -13,8 +13,11 @@
   [![Android](https://img.shields.io/badge/Android-13%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
   [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
-  <img src="screenshots/hero-demo.gif" alt="Earlier Sync360 Android text transfer demo" width="1080" />
-  <sub>This GIF shows an earlier text-transfer build. The current Send/Receive UI has changed, and Android file transfer is now implemented. A refreshed demo is coming later.</sub>
+  <video src="screenshots/hero-demo.mp4" controls preload="metadata" width="1080"></video>
+  <br />
+  <a href="screenshots/hero-demo.mp4"><strong>▶ Watch the current Android demo</strong></a>
+  <br />
+  <sub>Nearby discovery, receiver approval, and the current Android text/file transfer experience.</sub>
 </div>
 
 ---
