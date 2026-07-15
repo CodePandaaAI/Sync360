@@ -11,7 +11,6 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
-import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.ServerSocket
@@ -55,7 +54,7 @@ class AndroidFileTransferReceiver(
             while (isActive) {
                 try {
                     val senderSocket = startedServerSocket.accept()
-                    receiveOneFile(senderSocket)
+                    receiveTransfer(senderSocket)
                 } catch (exception: Exception) {
                     if (isActive) {
                         exception.printStackTrace()
@@ -89,60 +88,61 @@ class AndroidFileTransferReceiver(
         onTransferFinished = null
     }
 
-    private fun receiveOneFile(senderSocket: Socket) {
+    private fun receiveTransfer(senderSocket: Socket) {
         waitingForSenderTimeout?.cancel()
 
         senderSocket.use { socket ->
             socket.soTimeout = SOCKET_TIMEOUT_MILLIS
 
             val socketInput = DataInputStream(
-                BufferedInputStream(socket.getInputStream(), 64 * 1024)
+                BufferedInputStream(
+                    socket.getInputStream(),
+                    FILE_BUFFER_SIZE_BYTES
+                )
             )
 
-            val socketOutput = DataOutputStream(
-                BufferedOutputStream(socket.getOutputStream(), 64 * 1024)
-            )
+            val socketOutput = DataOutputStream(socket.getOutputStream())
 
             try {
                 val fileOffer = expectedFileOffer
                     ?: error("No accepted file offer is waiting")
 
-                val receivedFileIndex = socketInput.readInt()
-                val receivedFileSize = socketInput.readLong()
+                fileOffer.files.forEach { expectedFile ->
+                    val receivedFileIndex = socketInput.readInt()
+                    val receivedFileSize = socketInput.readLong()
 
-                if (receivedFileIndex != nextExpectedFileIndex) {
-                    error(
-                        "Expected file index $nextExpectedFileIndex " +
-                            "but received $receivedFileIndex"
+                    if (receivedFileIndex != nextExpectedFileIndex) {
+                        error(
+                            "Expected file index $nextExpectedFileIndex " +
+                                "but received $receivedFileIndex"
+                        )
+                    }
+
+                    if (expectedFile.index != receivedFileIndex) {
+                        error("File index does not match the accepted offer")
+                    }
+
+                    val expectedFileSize = expectedFile.fileSizeBytes
+
+                    if (receivedFileSize != expectedFileSize) {
+                        error("File size does not match the accepted offer")
+                    }
+
+                    downloadsWriter.writeFile(
+                        fileName = expectedFile.fileName,
+                        mimeType = expectedFile.mimeType,
+                        fileSizeBytes = expectedFileSize,
+                        input = socketInput
                     )
+
+                    markCurrentFileComplete(
+                        completedFileIndex = receivedFileIndex
+                    )
+
+                    sendSaveResult(socketOutput, wasSaved = true)
                 }
 
-                val expectedFile = fileOffer.files.getOrNull(receivedFileIndex)
-                    ?: error("No offered file exists at index $receivedFileIndex")
-
-                if (expectedFile.index != receivedFileIndex) {
-                    error("File index does not match the accepted offer")
-                }
-
-                val expectedFileSize = expectedFile.fileSizeBytes
-
-                if (receivedFileSize != expectedFileSize) {
-                    error("File size does not match the accepted offer")
-                }
-
-                downloadsWriter.writeFile(
-                    fileName = expectedFile.fileName,
-                    mimeType = expectedFile.mimeType,
-                    fileSizeBytes = expectedFileSize,
-                    input = socketInput
-                )
-
-                markCurrentFileComplete(
-                    completedFileIndex = receivedFileIndex,
-                    totalFileCount = fileOffer.files.size
-                )
-
-                sendSaveResult(socketOutput, wasSaved = true)
+                finishTransfer(wasSuccessful = true)
             } catch (exception: Exception) {
                 exception.printStackTrace()
 
@@ -159,8 +159,7 @@ class AndroidFileTransferReceiver(
 
     @Synchronized
     private fun markCurrentFileComplete(
-        completedFileIndex: Int,
-        totalFileCount: Int
+        completedFileIndex: Int
     ) {
         if (completedFileIndex != nextExpectedFileIndex) {
             return
@@ -168,14 +167,6 @@ class AndroidFileTransferReceiver(
 
         nextExpectedFileIndex++
         onFileSaved?.invoke(nextExpectedFileIndex)
-
-        if (nextExpectedFileIndex == totalFileCount) {
-            finishTransfer(wasSuccessful = true)
-        } else {
-            startWaitingForSenderTimeout(
-                timeoutMillis = WAITING_FOR_NEXT_FILE_TIMEOUT_MILLIS
-            )
-        }
     }
 
     @Synchronized
@@ -209,8 +200,8 @@ class AndroidFileTransferReceiver(
     }
 
     private companion object {
+        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
         const val SOCKET_TIMEOUT_MILLIS = 60_000
         const val WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS = 10_000L
-        const val WAITING_FOR_NEXT_FILE_TIMEOUT_MILLIS = 60_000L
     }
 }

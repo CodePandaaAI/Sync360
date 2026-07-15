@@ -44,7 +44,7 @@ class AndroidDownloadsWriter(
                 ?: error("Could not open $safeFileName for writing")
 
             output.use {
-                val buffer = ByteArray(BUFFER_SIZE_BYTES)
+                val buffer = ByteArray(FILE_BUFFER_SIZE_BYTES)
                 var bytesRemaining = fileSizeBytes
 
                 while (bytesRemaining > 0) {
@@ -87,6 +87,6 @@ class AndroidDownloadsWriter(
     }
 
     private companion object {
-        const val BUFFER_SIZE_BYTES = 64 * 1024
+        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
     }
 }

@@ -9,7 +9,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
-import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
@@ -29,19 +28,54 @@ class AndroidFileTransferSender(
     }
 
     override suspend fun sendFiles(
-        device: NearbyDevice,
+        deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            files.forEachIndexed { fileIndex, file ->
-                onFileStarted(fileIndex, file)
+            if (files.isEmpty()) {
+                return@withContext Result.success(Unit)
+            }
 
-                sendOneFile(
-                    device = device,
-                    fileIndex = fileIndex,
-                    file = file
-                )
+            Socket().use { socket ->
+                activeSocket.set(socket)
+
+                try {
+                    currentCoroutineContext().ensureActive()
+                    socket.connect(
+                        InetSocketAddress(
+                            deviceToSendFiles.hostAddresses.first(),
+                            deviceToSendFiles.fileTransferPort
+                        ),
+                        CONNECT_TIMEOUT_MILLIS
+                    )
+                    socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+
+                    val socketOutput = DataOutputStream(
+                        BufferedOutputStream(
+                            socket.getOutputStream(),
+                            FILE_BUFFER_SIZE_BYTES
+                        )
+                    )
+
+                    val socketInput = DataInputStream(socket.getInputStream())
+                    val buffer = ByteArray(FILE_BUFFER_SIZE_BYTES)
+
+                    files.forEachIndexed { fileIndex, file ->
+                        currentCoroutineContext().ensureActive()
+                        onFileStarted(fileIndex, file)
+
+                        sendOneFile(
+                            fileIndex = fileIndex,
+                            file = file,
+                            socketOutput = socketOutput,
+                            socketInput = socketInput,
+                            buffer = buffer
+                        )
+                    }
+                } finally {
+                    activeSocket.compareAndSet(socket, null)
+                }
             }
 
             Result.success(Unit)
@@ -54,9 +88,11 @@ class AndroidFileTransferSender(
     }
 
     private suspend fun sendOneFile(
-        device: NearbyDevice,
         fileIndex: Int,
-        file: SelectedFile
+        file: SelectedFile,
+        socketOutput: DataOutputStream,
+        socketInput: DataInputStream,
+        buffer: ByteArray
     ) {
         currentCoroutineContext().ensureActive()
 
@@ -70,72 +106,45 @@ class AndroidFileTransferSender(
         fileInput.use { input ->
             currentCoroutineContext().ensureActive()
 
-            Socket().use { socket ->
-                activeSocket.set(socket)
+            socketOutput.writeInt(fileIndex)
+            socketOutput.writeLong(fileSize)
 
-                try {
-                    currentCoroutineContext().ensureActive()
-                    socket.connect(
-                        InetSocketAddress(
-                            device.hostAddresses.first(),
-                            device.fileTransferPort
-                        ),
-                        CONNECT_TIMEOUT_MILLIS
-                    )
-                    socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+            var bytesRemaining = fileSize
 
-                    val socketOutput = DataOutputStream(
-                        BufferedOutputStream(socket.getOutputStream(), BUFFER_SIZE_BYTES)
-                    )
+            while (bytesRemaining > 0) {
+                currentCoroutineContext().ensureActive()
 
-                    val socketInput = DataInputStream(
-                        BufferedInputStream(socket.getInputStream(), BUFFER_SIZE_BYTES)
-                    )
+                val bytesRequested = minOf(
+                    buffer.size.toLong(),
+                    bytesRemaining
+                ).toInt()
 
-                    socketOutput.writeInt(fileIndex)
-                    socketOutput.writeLong(fileSize)
+                val bytesRead = input.read(
+                    buffer,
+                    0,
+                    bytesRequested
+                )
 
-                    val buffer = ByteArray(BUFFER_SIZE_BYTES)
-                    var bytesRemaining = fileSize
-
-                    while (bytesRemaining > 0) {
-                        currentCoroutineContext().ensureActive()
-
-                        val bytesRequested = minOf(
-                            buffer.size.toLong(),
-                            bytesRemaining
-                        ).toInt()
-
-                        val bytesRead = input.read(
-                            buffer,
-                            0,
-                            bytesRequested
-                        )
-
-                        if (bytesRead == -1) {
-                            error("${file.displayName} ended before its reported size")
-                        }
-
-                        socketOutput.write(buffer, 0, bytesRead)
-                        bytesRemaining -= bytesRead
-                    }
-
-                    socketOutput.flush()
-
-                    val receiverSavedFile = socketInput.readBoolean()
-
-                    if (!receiverSavedFile) {
-                        error("Receiver could not save ${file.displayName}")
-                    }
-                } finally {
-                    activeSocket.compareAndSet(socket, null)
+                if (bytesRead == -1) {
+                    error("${file.displayName} ended before its reported size")
                 }
+
+                socketOutput.write(buffer, 0, bytesRead)
+                bytesRemaining -= bytesRead
+            }
+
+            socketOutput.flush()
+
+            val receiverSavedFile = socketInput.readBoolean()
+
+            if (!receiverSavedFile) {
+                error("Receiver could not save ${file.displayName}")
             }
         }
     }
 
     private companion object {
-        const val BUFFER_SIZE_BYTES = 64 * 1024
+        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
         const val CONNECT_TIMEOUT_MILLIS = 5_000
         const val SOCKET_TIMEOUT_MILLIS = 60_000
     }

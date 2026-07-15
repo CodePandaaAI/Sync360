@@ -5,7 +5,7 @@ import com.liftley.sync360.domain.model.SelectedFile
 
 interface FileTransferSender {
     suspend fun sendFiles(
-        device: NearbyDevice,
+        deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
     ): Result<Unit>

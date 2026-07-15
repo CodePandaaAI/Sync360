@@ -102,7 +102,7 @@ class OutgoingRequestsController(
         }
 
         return fileTransferSender.sendFiles(
-            device = deviceToSendFiles,
+            deviceToSendFiles = deviceToSendFiles,
             files = selectedFiles,
             onFileStarted = onFileStarted
         )
