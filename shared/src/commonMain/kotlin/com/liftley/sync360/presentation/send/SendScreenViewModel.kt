@@ -90,7 +90,7 @@ class SendScreenViewModel(
         }
 
         startSendJob {
-            val result = outgoingRequestsController.sendTextOffer(device, text)
+            val result = outgoingRequestsController.sendText(device, text)
             currentCoroutineContext().ensureActive()
 
             result.fold(
@@ -138,7 +138,7 @@ class SendScreenViewModel(
 
         startSendJob {
             val result = outgoingRequestsController.sendFiles(
-                device = device,
+                deviceToSendFiles = device,
                 selectedFiles = files,
                 onFileStarted = { fileIndex, file ->
                     _screenState.update {

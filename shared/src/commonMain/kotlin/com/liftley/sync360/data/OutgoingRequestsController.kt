@@ -20,7 +20,7 @@ class OutgoingRequestsController(
         fileTransferSender.cancelCurrentTransfer()
     }
 
-    suspend fun sendTextOffer(
+    suspend fun sendText(
         deviceToSendOfferInfo: NearbyDevice,
         text: String
     ): Result<TextTransferResponse> {
@@ -45,7 +45,7 @@ class OutgoingRequestsController(
     }
 
     suspend fun sendFiles(
-        device: NearbyDevice,
+        deviceToSendFiles: NearbyDevice,
         selectedFiles: List<SelectedFile>,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
     ): Result<Unit> {
@@ -90,7 +90,7 @@ class OutgoingRequestsController(
         )
 
         val offerResult = httpClient.sendFileOffer(
-            device = device,
+            device = deviceToSendFiles,
             fileOffer = fileOffer
         )
 
@@ -102,7 +102,7 @@ class OutgoingRequestsController(
         }
 
         return fileTransferSender.sendFiles(
-            device = device,
+            device = deviceToSendFiles,
             files = selectedFiles,
             onFileStarted = onFileStarted
         )
