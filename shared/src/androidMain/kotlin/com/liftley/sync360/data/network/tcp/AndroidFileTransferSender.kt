@@ -47,19 +47,19 @@ class AndroidFileTransferSender(
                             deviceToSendFiles.hostAddresses.first(),
                             deviceToSendFiles.fileTransferPort
                         ),
-                        CONNECT_TIMEOUT_MILLIS
+                        FileTransferConstants.CONNECT_TIMEOUT_MILLIS
                     )
-                    socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+                    socket.soTimeout = FileTransferConstants.SOCKET_TIMEOUT_MILLIS
 
                     val socketOutput = DataOutputStream(
                         BufferedOutputStream(
                             socket.getOutputStream(),
-                            FILE_BUFFER_SIZE_BYTES
+                            FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES
                         )
                     )
 
                     val socketInput = DataInputStream(socket.getInputStream())
-                    val buffer = ByteArray(FILE_BUFFER_SIZE_BYTES)
+                    val buffer = ByteArray(FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES)
 
                     files.forEachIndexed { fileIndex, file ->
                         currentCoroutineContext().ensureActive()
@@ -143,9 +143,4 @@ class AndroidFileTransferSender(
         }
     }
 
-    private companion object {
-        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
-        const val CONNECT_TIMEOUT_MILLIS = 5_000
-        const val SOCKET_TIMEOUT_MILLIS = 60_000
-    }
 }

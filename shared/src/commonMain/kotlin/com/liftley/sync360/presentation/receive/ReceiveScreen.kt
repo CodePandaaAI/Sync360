@@ -8,6 +8,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.domain.model.UserDecision
+import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.receive.components.FileOfferStateUi
 import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
@@ -21,9 +22,9 @@ import org.koin.compose.koinInject
 fun ReceiveScreen() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
-    Surface(
+    Sync360Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         when (val state = receiveScreenState) {
             ReceiveScreenState.Idle -> {

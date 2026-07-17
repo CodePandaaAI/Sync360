@@ -7,7 +7,8 @@ The README currently references these assets:
 | File | Purpose | Suggested size |
 | ---- | ------- | -------------- |
 | `sync360-icon.png` | App icon near README title | 512x512 PNG, transparent background if possible |
-| `hero-demo.gif` | Main README demo showing the current Android discovery, approval, text, and file-transfer experience | 1200x675 or 1280x720 |
+| `hero-demo.gif` | Main README demo showing the current Android discovery, approval, text, and file-transfer experience | 1080x1080 |
+| `desktop-to-android-demo.gif` | README demo showing the current Desktop-to-Android discovery, approval, and file-transfer experience | 1920x1080 (16:9) |
 | `android-send.png` | Android Send screen | 1080x2400 or cropped portrait |
 | `android-receive-request.png` | Receiver approval screen | 1080x2400 or cropped portrait |
 | `device-discovery.png` | Nearby device list close-up | 1080x1200 or readable crop |
@@ -27,7 +28,8 @@ The README currently references these assets:
 
 1. `sync360-icon.png`
 2. `hero-demo.gif`
-3. `android-send.png`
-4. `android-receive-request.png`
+3. `desktop-to-android-demo.gif`
+4. `android-send.png`
+5. `android-receive-request.png`
 
-Those four are enough for a strong first public README.
+These assets are enough for a strong first public README showing both Android-to-Android and Desktop-to-Android progress.

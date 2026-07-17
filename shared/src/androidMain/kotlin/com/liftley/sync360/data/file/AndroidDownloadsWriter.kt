@@ -2,21 +2,21 @@ package com.liftley.sync360.data.file
 
 import android.content.ContentValues
 import android.content.Context
-import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import com.liftley.sync360.data.network.tcp.FileTransferConstants
 import java.io.File
 import java.io.InputStream
 
 class AndroidDownloadsWriter(
     private val context: Context
-) {
-    fun writeFile(
+) : DownloadsWriter<InputStream> {
+    override fun writeFile(
         fileName: String,
         mimeType: String?,
         fileSizeBytes: Long,
         input: InputStream
-    ): Uri {
+    ) {
         val safeFileName = File(fileName).name
 
         val fileDetails = ContentValues().apply {
@@ -44,7 +44,7 @@ class AndroidDownloadsWriter(
                 ?: error("Could not open $safeFileName for writing")
 
             output.use {
-                val buffer = ByteArray(FILE_BUFFER_SIZE_BYTES)
+                val buffer = ByteArray(FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES)
                 var bytesRemaining = fileSizeBytes
 
                 while (bytesRemaining > 0) {
@@ -79,14 +79,10 @@ class AndroidDownloadsWriter(
                 null
             )
 
-            return destinationUri
         } catch (exception: Exception) {
             contentResolver.delete(destinationUri, null, null)
             throw exception
         }
     }
 
-    private companion object {
-        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
-    }
 }

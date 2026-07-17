@@ -6,6 +6,7 @@ import com.liftley.sync360.data.local.AndroidLocalDeviceInfoProvider
 import com.liftley.sync360.data.file.AndroidDownloadsWriter
 import com.liftley.sync360.data.file.AndroidDownloadsFolderOpener
 import com.liftley.sync360.data.file.AndroidSelectedFileReader
+import com.liftley.sync360.data.file.DownloadsWriter
 import com.liftley.sync360.data.file.SelectedFileReader
 import com.liftley.sync360.data.network.discovery.AndroidNetworkServices
 import com.liftley.sync360.data.network.tcp.AndroidFileTransferReceiver
@@ -19,6 +20,7 @@ import com.liftley.sync360.domain.repository.DownloadsFolderOpener
 import com.liftley.sync360.domain.service.NetworkServices
 import org.koin.android.ext.koin.androidContext
 import org.koin.dsl.module
+import java.io.InputStream
 
 
 val androidModule = module {
@@ -26,7 +28,7 @@ val androidModule = module {
     single<DownloadsFolderOpener> { AndroidDownloadsFolderOpener(androidContext()) }
     single<NetworkServices> { AndroidNetworkServices(context = androidContext(), get()) }
     single<SelectedFileReader> { AndroidSelectedFileReader(androidContext()) }
-    single { AndroidDownloadsWriter(androidContext()) }
+    single<DownloadsWriter<InputStream>> { AndroidDownloadsWriter(androidContext()) }
 
     single<FileTransferSender> {
         AndroidFileTransferSender(

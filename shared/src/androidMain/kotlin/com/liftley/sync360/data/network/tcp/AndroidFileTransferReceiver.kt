@@ -1,6 +1,6 @@
 package com.liftley.sync360.data.network.tcp
 
-import com.liftley.sync360.data.file.AndroidDownloadsWriter
+import com.liftley.sync360.data.file.DownloadsWriter
 import com.liftley.sync360.domain.model.FileTransferOffer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -13,12 +13,13 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.time.Duration.Companion.milliseconds
 
 class AndroidFileTransferReceiver(
-    private val downloadsWriter: AndroidDownloadsWriter
+    private val downloadsWriter: DownloadsWriter<InputStream>
 ) : FileTransferReceiver {
 
     private val receiverScope = CoroutineScope(
@@ -74,9 +75,7 @@ class AndroidFileTransferReceiver(
         nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
         this.onTransferFinished = onTransferFinished
-        startWaitingForSenderTimeout(
-            timeoutMillis = WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS
-        )
+        startWaitingForSenderTimeout()
     }
 
     @Synchronized
@@ -92,12 +91,12 @@ class AndroidFileTransferReceiver(
         waitingForSenderTimeout?.cancel()
 
         senderSocket.use { socket ->
-            socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+            socket.soTimeout = FileTransferConstants.SOCKET_TIMEOUT_MILLIS
 
             val socketInput = DataInputStream(
                 BufferedInputStream(
                     socket.getInputStream(),
-                    FILE_BUFFER_SIZE_BYTES
+                    FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES
                 )
             )
 
@@ -182,11 +181,13 @@ class AndroidFileTransferReceiver(
         completionCallback?.invoke(wasSuccessful)
     }
 
-    private fun startWaitingForSenderTimeout(timeoutMillis: Long) {
+    private fun startWaitingForSenderTimeout() {
         waitingForSenderTimeout?.cancel()
 
         waitingForSenderTimeout = receiverScope.launch {
-            delay(timeoutMillis.milliseconds)
+            delay(
+                FileTransferConstants.WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS.milliseconds
+            )
             finishTransfer(wasSuccessful = false)
         }
     }
@@ -197,11 +198,5 @@ class AndroidFileTransferReceiver(
     ) {
         output.writeBoolean(wasSaved)
         output.flush()
-    }
-
-    private companion object {
-        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
-        const val SOCKET_TIMEOUT_MILLIS = 60_000
-        const val WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS = 10_000L
     }
 }
