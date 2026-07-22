@@ -78,6 +78,7 @@ fun SendScreen() {
                 NearbyDevicesSection(
                     screenState = screenState,
                     onReloadClick = sendScreenViewModel::restartDiscoveryServices,
+                    onRepairClick = sendScreenViewModel::repairNetworkServices,
                     onDeviceClick = { device ->
                         if (screenState.selectedTab == SendTab.Text) {
                             sendScreenViewModel.sendTextToDevice(device.id)

@@ -1,27 +1,29 @@
 package com.liftley.sync360.domain.model
 
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+
 sealed interface ClientServerState {
-    data object Idle: ClientServerState
-    sealed interface Busy : ClientServerState {
-        data class TextOffer(
-            val senderDeviceName: String,
-            val senderDeviceId: String,
-            val preview: String,
-            val characterCount: Int
-        ) : Busy
+    data object Idle : ClientServerState
 
-        data class FileOffer(
-            val fileOffer: FileTransferOffer
-        ) : Busy
+    data class TextOffer(
+        val senderDeviceName: String,
+        val senderDeviceId: String,
+        val preview: String,
+        val characterCount: Int
+    ) : ClientServerState
 
-        data class ReceivingFiles(
-            val senderDeviceName: String,
-            val fileCount: Int,
-            val completedFileCount: Int
-        ) : Busy
-    }
+    data class FileOffer(
+        val fileOffer: FileOfferRequest
+    ) : ClientServerState
 
-    data class Received(val data: String): ClientServerState
+    data class ReceivingFiles(
+        val senderDeviceName: String,
+        val fileCount: Int,
+        val completedFileCount: Int,
+        val progress: FileTransferProgress
+    ) : ClientServerState
+
+    data class ReceivedText(val data: String) : ClientServerState
 
     data class ReceivedFiles(
         val senderDeviceName: String,
@@ -30,5 +32,5 @@ sealed interface ClientServerState {
 }
 
 enum class UserDecision {
-    IDLE, ACCEPTED, DECLINED
+    ACCEPTED, DECLINED
 }

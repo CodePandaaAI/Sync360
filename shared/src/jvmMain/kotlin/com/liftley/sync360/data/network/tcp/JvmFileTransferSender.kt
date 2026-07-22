@@ -2,6 +2,7 @@ package com.liftley.sync360.data.network.tcp
 
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
+import com.liftley.sync360.domain.model.FileTransferProgress
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
@@ -27,25 +28,19 @@ class JvmFileTransferSender : FileTransferSender {
     override suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
-        onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
+        onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
+        onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             if (files.isEmpty()) {
                 return@withContext Result.success(Unit)
             }
 
-            Socket().use { socket ->
+            connectToDevice(deviceToSendFiles).use { socket ->
                 activeSocket.set(socket)
 
                 try {
                     currentCoroutineContext().ensureActive()
-                    socket.connect(
-                        InetSocketAddress(
-                            deviceToSendFiles.hostAddresses.first(),
-                            deviceToSendFiles.fileTransferPort
-                        ),
-                        FileTransferConstants.CONNECT_TIMEOUT_MILLIS
-                    )
                     socket.soTimeout = FileTransferConstants.SOCKET_TIMEOUT_MILLIS
 
                     val socketOutput = DataOutputStream(
@@ -56,6 +51,10 @@ class JvmFileTransferSender : FileTransferSender {
                     )
                     val socketInput = DataInputStream(socket.getInputStream())
                     val buffer = ByteArray(FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES)
+                    val progressTracker = FileTransferProgressTracker(
+                        totalBytes = files.sumOf { file -> requireNotNull(file.sizeBytes) },
+                        onProgress = onProgress
+                    )
 
                     files.forEachIndexed { fileIndex, file ->
                         currentCoroutineContext().ensureActive()
@@ -66,7 +65,8 @@ class JvmFileTransferSender : FileTransferSender {
                             file = file,
                             socketOutput = socketOutput,
                             socketInput = socketInput,
-                            buffer = buffer
+                            buffer = buffer,
+                            progressTracker = progressTracker
                         )
                     }
                 } finally {
@@ -88,7 +88,8 @@ class JvmFileTransferSender : FileTransferSender {
         file: SelectedFile,
         socketOutput: DataOutputStream,
         socketInput: DataInputStream,
-        buffer: ByteArray
+        buffer: ByteArray,
+        progressTracker: FileTransferProgressTracker
     ) {
         currentCoroutineContext().ensureActive()
 
@@ -122,6 +123,7 @@ class JvmFileTransferSender : FileTransferSender {
 
                 socketOutput.write(buffer, 0, bytesRead)
                 bytesRemaining -= bytesRead
+                progressTracker.addBytes(bytesRead)
             }
 
             socketOutput.flush()
@@ -130,6 +132,30 @@ class JvmFileTransferSender : FileTransferSender {
                 error("Receiver could not save ${file.displayName}")
             }
         }
+    }
+
+    private suspend fun connectToDevice(device: NearbyDevice): Socket {
+        var lastFailure: Exception? = null
+
+        device.hostAddresses.distinct().forEach { hostAddress ->
+            currentCoroutineContext().ensureActive()
+            val socket = Socket()
+            activeSocket.set(socket)
+
+            try {
+                socket.connect(
+                    InetSocketAddress(hostAddress, device.fileTransferPort),
+                    FileTransferConstants.CONNECT_TIMEOUT_MILLIS
+                )
+                return socket
+            } catch (exception: Exception) {
+                activeSocket.compareAndSet(socket, null)
+                runCatching { socket.close() }
+                lastFailure = exception
+            }
+        }
+
+        throw lastFailure ?: error("No address is available for ${device.deviceName}")
     }
 
 }

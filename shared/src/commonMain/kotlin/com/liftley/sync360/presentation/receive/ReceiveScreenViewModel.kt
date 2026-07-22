@@ -3,6 +3,7 @@ package com.liftley.sync360.presentation.receive
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.IncomingServerRequestsController
+import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.domain.repository.ClipboardProvider
@@ -16,11 +17,13 @@ import kotlinx.coroutines.launch
 class ReceiveScreenViewModel(
     private val incomingServerRequestsController: IncomingServerRequestsController,
     private val clipboardProvider: ClipboardProvider,
-    private val downloadsFolderOpener: DownloadsFolderOpener
+    private val downloadsFolderOpener: DownloadsFolderOpener,
+    private val networkServicesController: NetworkServicesController
 ) : ViewModel() {
 
     private val _screenState = MutableStateFlow<ReceiveScreenState>(ReceiveScreenState.Idle)
     val screenState: StateFlow<ReceiveScreenState> = _screenState.asStateFlow()
+    val discoveryStatus = networkServicesController.discoveryServiceStatus
 
     init {
         viewModelScope.launch {
@@ -45,13 +48,19 @@ class ReceiveScreenViewModel(
     fun openDownloads() {
         downloadsFolderOpener.openDownloads()
     }
+
+    fun repairNetworkServices() {
+        viewModelScope.launch {
+            networkServicesController.repairNetworkServices()
+        }
+    }
 }
 
 private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
     return when (this) {
         ClientServerState.Idle -> ReceiveScreenState.Idle
 
-        is ClientServerState.Busy.FileOffer -> {
+        is ClientServerState.FileOffer -> {
             ReceiveScreenState.IncomingFileOffer(
                 senderDeviceName = fileOffer.senderDeviceName,
                 fileCount = fileOffer.files.size,
@@ -59,15 +68,16 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
             )
         }
 
-        is ClientServerState.Busy.ReceivingFiles -> {
+        is ClientServerState.ReceivingFiles -> {
             ReceiveScreenState.ReceivingFiles(
                 senderDeviceName = senderDeviceName,
                 fileCount = fileCount,
-                completedFileCount = completedFileCount
+                completedFileCount = completedFileCount,
+                progress = progress
             )
         }
 
-        is ClientServerState.Busy.TextOffer -> {
+        is ClientServerState.TextOffer -> {
             ReceiveScreenState.IncomingTextOffer(
                 senderDeviceName = senderDeviceName,
                 preview = preview,
@@ -75,7 +85,7 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
             )
         }
 
-        is ClientServerState.Received -> {
+        is ClientServerState.ReceivedText -> {
             ReceiveScreenState.ReceivedText(
                 text = data
             )

@@ -1,7 +1,8 @@
 package com.liftley.sync360.data.network.tcp
 
 import com.liftley.sync360.data.file.DownloadsWriter
-import com.liftley.sync360.domain.model.FileTransferOffer
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.domain.model.FileTransferProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -28,10 +29,11 @@ class JvmFileTransferReceiver(
     private var serverSocket: ServerSocket? = null
 
     @Volatile
-    private var expectedFileOffer: FileTransferOffer? = null
+    private var expectedFileOffer: FileOfferRequest? = null
 
     private var nextExpectedFileIndex: Int = 0
     private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
+    private var onProgress: ((FileTransferProgress) -> Unit)? = null
     private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
     private var waitingForSenderTimeout: Job? = null
 
@@ -61,13 +63,15 @@ class JvmFileTransferReceiver(
 
     @Synchronized
     override fun prepareForTransfer(
-        fileOffer: FileTransferOffer,
+        fileOffer: FileOfferRequest,
         onFileSaved: (completedFileCount: Int) -> Unit,
+        onProgress: (FileTransferProgress) -> Unit,
         onTransferFinished: (wasSuccessful: Boolean) -> Unit
     ) {
         expectedFileOffer = fileOffer
         nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
+        this.onProgress = onProgress
         this.onTransferFinished = onTransferFinished
         startWaitingForSenderTimeout()
     }
@@ -78,6 +82,7 @@ class JvmFileTransferReceiver(
         expectedFileOffer = null
         nextExpectedFileIndex = 0
         onFileSaved = null
+        onProgress = null
         onTransferFinished = null
     }
 
@@ -98,6 +103,10 @@ class JvmFileTransferReceiver(
             try {
                 val fileOffer = expectedFileOffer
                     ?: error("No accepted file offer is waiting")
+                val progressTracker = FileTransferProgressTracker(
+                    totalBytes = fileOffer.totalSizeBytes,
+                    onProgress = { progress -> onProgress?.invoke(progress) }
+                )
 
                 fileOffer.files.forEach { expectedFile ->
                     val receivedFileIndex = socketInput.readInt()
@@ -120,7 +129,8 @@ class JvmFileTransferReceiver(
                         fileName = expectedFile.fileName,
                         mimeType = expectedFile.mimeType,
                         fileSizeBytes = expectedFile.fileSizeBytes,
-                        input = socketInput
+                        input = socketInput,
+                        onBytesWritten = progressTracker::addBytes
                     )
 
                     markCurrentFileComplete(receivedFileIndex)
@@ -155,6 +165,7 @@ class JvmFileTransferReceiver(
         expectedFileOffer = null
         nextExpectedFileIndex = 0
         onFileSaved = null
+        onProgress = null
         onTransferFinished = null
 
         completionCallback?.invoke(wasSuccessful)

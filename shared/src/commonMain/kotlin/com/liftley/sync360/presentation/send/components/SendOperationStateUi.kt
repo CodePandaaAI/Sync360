@@ -22,7 +22,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.core.designsystem.icons.Send
+import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.presentation.app.components.Sync360Surface
+import com.liftley.sync360.presentation.app.components.FileTransferProgressUi
 import com.liftley.sync360.presentation.send.model.SendOperationState
 
 @Composable
@@ -50,13 +52,10 @@ fun SendOperationStateUi(
         }
 
         is SendOperationState.SendingFile -> {
-            val completedFiles = state.fileNumber - 1
-            val progress = completedFiles.toFloat() / state.totalFiles.toFloat()
-
             SendingOperationUi(
                 message = "Sending to ${state.deviceName}",
                 detail = "${state.fileNumber} / ${state.totalFiles}: ${state.fileName}",
-                progress = progress,
+                transferProgress = state.progress,
                 onCancel = onCancel
             )
         }
@@ -99,7 +98,7 @@ fun SendOperationStateUi(
 private fun SendingOperationUi(
     message: String,
     detail: String? = null,
-    progress: Float? = null,
+    transferProgress: FileTransferProgress? = null,
     onCancel: () -> Unit
 ) {
     Box(
@@ -122,13 +121,13 @@ private fun SendingOperationUi(
                     textAlign = TextAlign.Center
                 )
 
-                if (progress == null) {
+                if (transferProgress == null) {
                     LinearProgressIndicator(
                         modifier = Modifier.fillMaxWidth()
                     )
                 } else {
-                    LinearProgressIndicator(
-                        progress = { progress.coerceIn(0f, 1f) },
+                    FileTransferProgressUi(
+                        progress = transferProgress,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

@@ -2,7 +2,6 @@ package com.liftley.sync360.presentation.receive
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -22,13 +21,17 @@ import org.koin.compose.koinInject
 fun ReceiveScreen() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val discoveryStatus by receiveScreenViewModel.discoveryStatus.collectAsStateWithLifecycle()
     Sync360Surface(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         when (val state = receiveScreenState) {
             ReceiveScreenState.Idle -> {
-                IdleReceiveStateUi()
+                IdleReceiveStateUi(
+                    discoveryStatus = discoveryStatus,
+                    onRepairClick = receiveScreenViewModel::repairNetworkServices
+                )
             }
 
             is ReceiveScreenState.IncomingTextOffer -> {

@@ -16,9 +16,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
+import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.presentation.app.components.NetworkRepairAction
 
 @Composable
-fun IdleReceiveStateUi() {
+fun IdleReceiveStateUi(
+    discoveryStatus: DiscoveryStatus,
+    onRepairClick: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxSize(),
@@ -51,6 +56,13 @@ fun IdleReceiveStateUi() {
                 "Keep Sync360 open on nearby devices",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            NetworkRepairAction(
+                enabled = discoveryStatus == DiscoveryStatus.Idle ||
+                    discoveryStatus == DiscoveryStatus.Running,
+                onRepairClick = onRepairClick,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

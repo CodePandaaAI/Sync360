@@ -19,7 +19,7 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Multiple files sent sequentially over one accepted-batch connection.
 - Android file access through `ContentResolver` and Downloads writing through `MediaStore`.
 - Desktop native file selection, Java file streams, and safe Downloads writing through temporary `.part` files.
-- Best-effort cancellation and file-count progress.
+- Best-effort cancellation and batch-wide byte percentage.
 
 Android-to-Android text and multiple-file flows have manual validation. The Desktop/JVM implementation is present, and Desktop-to-Android transfer has initial manual validation. The app is still development software, not a production-ready release.
 
@@ -62,7 +62,6 @@ Current shared transfer constants use a 512 KiB payload buffer, 5-second connect
 
 ## Current priorities
 
-- Byte-level progress, percentage, speed, and ETA.
 - Better receiver-side errors and per-file results.
 - Android registration repair after network/address changes.
 - Foreground/background lifecycle support.

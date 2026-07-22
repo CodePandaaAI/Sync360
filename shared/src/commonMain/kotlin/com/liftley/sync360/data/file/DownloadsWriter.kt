@@ -5,6 +5,7 @@ interface DownloadsWriter<Input> {
         fileName: String,
         mimeType: String?,
         fileSizeBytes: Long,
-        input: Input
+        input: Input,
+        onBytesWritten: (byteCount: Int) -> Unit
     )
 }

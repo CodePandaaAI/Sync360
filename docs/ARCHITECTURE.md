@@ -129,7 +129,7 @@ Previously completed files remain when a later file in the same batch fails.
 ## Current limitations
 
 - No authentication, encryption, session token, or cryptographic integrity check.
-- No byte percentage, speed, ETA, retry, pause/resume, or interrupted-transfer recovery.
+- No retry, pause/resume, or interrupted-transfer recovery.
 - Foreground/background and network-change lifecycle handling are not complete.
 - Receiver failures do not yet provide rich error details.
 - Host selection still uses the first resolved address.

@@ -57,6 +57,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Delete the incomplete current file if its receive operation fails or is cancelled.
 - Send files sequentially with a save acknowledgement after each file.
 - Cancel a pending send or active file transfer on a best-effort basis.
+- Show batch-wide byte percentage while files are being sent and received.
 - Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
 - Run the shared Send/Receive UI on Desktop, with an adaptive 50/50 two-pane layout in wider windows.
 - Discover and advertise Desktop devices through JmDNS using the same DNS-SD service as Android.
@@ -68,7 +69,6 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 
 - Authentication, encryption, transfer tokens, and session validation.
 - File integrity hashes/checksums.
-- Byte-level progress, percentage, speed, and time remaining.
 - Rich receiver-side failure details and per-file results.
 - More robust discovery, server, foreground/background, and cleanup lifecycles.
 - Better IP address selection and IPv6 handling.
@@ -78,7 +78,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Desktop packaging and release testing.
 - iOS discovery, transfer, and storage implementations.
 
-The current progress UI counts completed files. That is understandable for small files, but a large file can look stuck while bytes are still moving. Byte-based progress is one of the next important UX improvements.
+The current progress UI tracks the exact bytes transferred across the accepted batch and displays the resulting percentage.
 
 ## How it works
 
@@ -242,8 +242,7 @@ Use the current app only for development and testing on private networks you con
 
 ### Next: make the current MVP trustworthy and informative
 
-- Track bytes sent and received.
-- Show total percentage, current speed, and clearer active-transfer feedback.
+- Improve active-transfer feedback around the current byte percentage.
 - Add integrity verification.
 - Improve cancellation and failure reporting.
 - Strengthen lifecycle behavior and local-network reliability.

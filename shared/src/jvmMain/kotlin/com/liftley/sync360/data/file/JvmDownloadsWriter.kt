@@ -13,7 +13,8 @@ class JvmDownloadsWriter : DownloadsWriter<InputStream> {
         fileName: String,
         mimeType: String?,
         fileSizeBytes: Long,
-        input: InputStream
+        input: InputStream,
+        onBytesWritten: (byteCount: Int) -> Unit
     ) {
         val downloadsDirectory = Path.of(
             System.getProperty("user.home"),
@@ -48,6 +49,7 @@ class JvmDownloadsWriter : DownloadsWriter<InputStream> {
 
                         output.write(buffer, 0, bytesRead)
                         bytesRemaining -= bytesRead
+                        onBytesWritten(bytesRead)
                     }
 
                     output.flush()

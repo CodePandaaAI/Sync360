@@ -8,7 +8,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.withContext
 import java.net.Inet4Address
 import java.net.InetAddress
@@ -30,34 +29,10 @@ class JvmNetworkServices(
     override val discoveryServiceStatus: StateFlow<DiscoveryStatus> =
         _discoveryServiceStatus.asStateFlow()
 
-    private var jmDns: JmDNS? = null
-    private var registeredService: ServiceInfo? = null
-    private var isListenerRegistered = false
-    private val serviceIdsByKey = ConcurrentHashMap<String, String>()
-
-    private val serviceListener = object : ServiceListener {
-        override fun serviceAdded(event: ServiceEvent) {
-            jmDns?.requestServiceInfo(event.type, event.name, true)
-        }
-
-        override fun serviceRemoved(event: ServiceEvent) {
-            val removedDeviceId = serviceIdsByKey.remove(event.serviceKey()) ?: return
-            _nearbyDevices.update { devices ->
-                devices.filterNot { device -> device.id == removedDeviceId }
-            }
-        }
-
-        override fun serviceResolved(event: ServiceEvent) {
-            val nearbyDevice = event.info.toNearbyDevice() ?: return
-            val localDeviceId = localDeviceInfoProvider.getLocalDeviceInfo().deviceId
-            if (nearbyDevice.id == localDeviceId) return
-
-            serviceIdsByKey[event.serviceKey()] = nearbyDevice.id
-            _nearbyDevices.update { devices ->
-                devices.filterNot { device -> device.id == nearbyDevice.id } + nearbyDevice
-            }
-        }
-    }
+    private val jmDnsByAddress = mutableMapOf<InetAddress, JmDNS>()
+    private val listenerByAddress = mutableMapOf<InetAddress, ServiceListener>()
+    private val resolvedDevicesByServiceKey = ConcurrentHashMap<String, NearbyDevice>()
+    private var listenersAreRunning = false
 
     override suspend fun startNetworkServices(
         httpServerPort: Int,
@@ -69,48 +44,43 @@ class JvmNetworkServices(
 
         try {
             withContext(Dispatchers.IO) {
-                val activeJmDns = jmDns ?: JmDNS.create(selectLanAddress()).also {
-                    jmDns = it
+                if (jmDnsByAddress.isEmpty()) {
+                    startOnLanInterfaces(httpServerPort, fileTransferPort)
+                } else {
+                    addDiscoveryListeners()
                 }
-
-                if (registeredService == null) {
-                    val localDevice = localDeviceInfoProvider.getLocalDeviceInfo()
-                    val service = ServiceInfo.create(
-                        SERVICE_TYPE,
-                        "${localDevice.deviceName} Sync360",
-                        httpServerPort,
-                        0,
-                        0,
-                        mapOf(
-                            "deviceUuid" to localDevice.deviceId,
-                            "deviceName" to localDevice.deviceName,
-                            "deviceType" to localDevice.deviceType,
-                            "protocolVersion" to localDevice.protocolVersion,
-                            "fileTransferPort" to fileTransferPort.toString()
-                        )
-                    )
-                    activeJmDns.registerService(service)
-                    registeredService = service
-                }
-
-                addDiscoveryListener(activeJmDns)
             }
-
             _discoveryServiceStatus.value = DiscoveryStatus.Running
         } catch (exception: Exception) {
+            closeAllInstances()
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
             throw exception
         }
     }
 
+    override suspend fun repairNetworkServices(
+        httpServerPort: Int,
+        fileTransferPort: Int
+    ) {
+        _discoveryServiceStatus.value = DiscoveryStatus.Stopping
+
+        withContext(Dispatchers.IO) {
+            closeAllInstances()
+        }
+
+        _discoveryServiceStatus.value = DiscoveryStatus.Idle
+
+        startNetworkServices(httpServerPort, fileTransferPort)
+    }
+
     override fun restartDiscoveryServices() {
         if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-        val activeJmDns = jmDns ?: return
+        if (jmDnsByAddress.isEmpty()) return
 
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
         _nearbyDevices.value = emptyList()
-        serviceIdsByKey.clear()
-        addDiscoveryListener(activeJmDns)
+        resolvedDevicesByServiceKey.clear()
+        addDiscoveryListeners()
         _discoveryServiceStatus.value = DiscoveryStatus.Running
     }
 
@@ -118,16 +88,146 @@ class JvmNetworkServices(
         if (discoveryServiceStatus.value != DiscoveryStatus.Running) return
 
         _discoveryServiceStatus.value = DiscoveryStatus.Stopping
-        jmDns?.removeServiceListener(SERVICE_TYPE, serviceListener)
-        isListenerRegistered = false
+
+        synchronized(this) {
+            listenerByAddress.forEach { (address, listener) ->
+                jmDnsByAddress[address]?.removeServiceListener(SERVICE_TYPE, listener)
+            }
+            listenersAreRunning = false
+        }
+
         _discoveryServiceStatus.value = DiscoveryStatus.Idle
     }
 
+    private fun startOnLanInterfaces(
+        httpServerPort: Int,
+        fileTransferPort: Int
+    ) {
+        val addresses = findLanAddresses()
+        var lastFailure: Throwable? = null
+
+        addresses.forEach { address ->
+            var jmDns: JmDNS? = null
+            try {
+                val startedJmDns = JmDNS.create(address)
+                jmDns = startedJmDns
+                val listener = createServiceListener(startedJmDns, address)
+                val service = createService(
+                    httpServerPort = httpServerPort,
+                    fileTransferPort = fileTransferPort
+                )
+
+                startedJmDns.registerService(service)
+                startedJmDns.addServiceListener(SERVICE_TYPE, listener)
+
+                synchronized(this) {
+                    jmDnsByAddress[address] = startedJmDns
+                    listenerByAddress[address] = listener
+                }
+            } catch (exception: Exception) {
+                runCatching { jmDns?.close() }
+                lastFailure = exception
+            }
+        }
+
+        synchronized(this) {
+            listenersAreRunning = jmDnsByAddress.isNotEmpty()
+        }
+
+        if (jmDnsByAddress.isEmpty()) {
+            throw IllegalStateException(
+                "Could not start nearby-device discovery on any active IPv4 LAN interface",
+                lastFailure
+            )
+        }
+    }
+
+    private fun createService(
+        httpServerPort: Int,
+        fileTransferPort: Int
+    ): ServiceInfo {
+        val localDevice = localDeviceInfoProvider.getLocalDeviceInfo()
+
+        return ServiceInfo.create(
+            SERVICE_TYPE,
+            "${localDevice.deviceName} Sync360",
+            httpServerPort,
+            0,
+            0,
+            mapOf(
+                "deviceUuid" to localDevice.deviceId,
+                "deviceName" to localDevice.deviceName,
+                "deviceType" to localDevice.deviceType,
+                "protocolVersion" to localDevice.protocolVersion,
+                "fileTransferPort" to fileTransferPort.toString()
+            )
+        )
+    }
+
+    private fun createServiceListener(
+        jmDns: JmDNS,
+        interfaceAddress: InetAddress
+    ) = object : ServiceListener {
+        override fun serviceAdded(event: ServiceEvent) {
+            jmDns.requestServiceInfo(event.type, event.name, true)
+        }
+
+        override fun serviceRemoved(event: ServiceEvent) {
+            resolvedDevicesByServiceKey.remove(event.serviceKey(interfaceAddress))
+            publishMergedDevices()
+        }
+
+        override fun serviceResolved(event: ServiceEvent) {
+            val nearbyDevice = event.info.toNearbyDevice() ?: return
+            val localDeviceId = localDeviceInfoProvider.getLocalDeviceInfo().deviceId
+            if (nearbyDevice.id == localDeviceId) return
+
+            resolvedDevicesByServiceKey[event.serviceKey(interfaceAddress)] = nearbyDevice
+            publishMergedDevices()
+        }
+    }
+
     @Synchronized
-    private fun addDiscoveryListener(activeJmDns: JmDNS) {
-        if (isListenerRegistered) return
-        activeJmDns.addServiceListener(SERVICE_TYPE, serviceListener)
-        isListenerRegistered = true
+    private fun addDiscoveryListeners() {
+        if (listenersAreRunning) return
+
+        listenerByAddress.forEach { (address, listener) ->
+            jmDnsByAddress[address]?.addServiceListener(SERVICE_TYPE, listener)
+        }
+        listenersAreRunning = true
+    }
+
+    @Synchronized
+    private fun closeAllInstances() {
+        val instances = jmDnsByAddress.values.toList()
+
+        jmDnsByAddress.clear()
+        listenerByAddress.clear()
+        resolvedDevicesByServiceKey.clear()
+        _nearbyDevices.value = emptyList()
+        listenersAreRunning = false
+
+        instances.forEach { jmDns ->
+            runCatching { jmDns.close() }
+        }
+    }
+
+    @Synchronized
+    private fun publishMergedDevices() {
+        val mergedDevices = resolvedDevicesByServiceKey.values
+            .groupBy { device -> device.id }
+            .values
+            .map { matchingDevices ->
+                val firstDevice = matchingDevices.first()
+                firstDevice.copy(
+                    hostAddresses = matchingDevices
+                        .flatMap { device -> device.hostAddresses }
+                        .distinct()
+                )
+            }
+            .sortedBy { device -> device.deviceName.lowercase() }
+
+        _nearbyDevices.value = mergedDevices
     }
 
     private fun ServiceInfo.toNearbyDevice(): NearbyDevice? {
@@ -159,9 +259,11 @@ class JvmNetworkServices(
         )
     }
 
-    private fun ServiceEvent.serviceKey(): String = "$type|$name"
+    private fun ServiceEvent.serviceKey(interfaceAddress: InetAddress): String {
+        return "${interfaceAddress.hostAddress}|$type|$name"
+    }
 
-    private fun selectLanAddress(): InetAddress {
+    private fun findLanAddresses(): List<InetAddress> {
         val interfaces = Collections.list(NetworkInterface.getNetworkInterfaces())
 
         return interfaces.asSequence()
@@ -169,17 +271,22 @@ class JvmNetworkServices(
                 runCatching {
                     networkInterface.isUp &&
                         !networkInterface.isLoopback &&
-                        !networkInterface.isVirtual
+                        !networkInterface.isVirtual &&
+                        networkInterface.supportsMulticast()
                 }.getOrDefault(false)
             }
             .flatMap { networkInterface ->
                 Collections.list(networkInterface.inetAddresses).asSequence()
             }
             .filterIsInstance<Inet4Address>()
-            .firstOrNull { address ->
+            .filter { address ->
                 address.isSiteLocalAddress && !address.isLoopbackAddress
             }
-            ?: error("No active IPv4 LAN interface is available for nearby-device discovery")
+            .distinctBy { address -> address.hostAddress }
+            .toList()
+            .ifEmpty {
+                error("No active multicast-capable IPv4 LAN interface is available")
+            }
     }
 
     private companion object {

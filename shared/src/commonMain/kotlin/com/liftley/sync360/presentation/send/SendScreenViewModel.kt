@@ -7,6 +7,7 @@ import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.data.file.SelectedFileReader
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
+import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.presentation.send.model.SendScreenState
 import com.liftley.sync360.presentation.send.model.SendOperationState
 import com.liftley.sync360.presentation.send.model.SendTab
@@ -69,6 +70,12 @@ class SendScreenViewModel(
         }
     }
 
+    fun repairNetworkServices() {
+        viewModelScope.launch {
+            networkServicesController.repairNetworkServices()
+        }
+    }
+
 
     fun sendTextToDevice(deviceId: String) {
         if (_screenState.value.sendOperationState != SendOperationState.Idle) {
@@ -121,16 +128,21 @@ class SendScreenViewModel(
             return
         }
 
-        val device = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
+        val deviceToSendFiles = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
 
         val files = _screenState.value.files
 
         if (files.isEmpty()) return
 
+        val totalSizeBytes = files.sumOf { file -> file.sizeBytes ?: 0L }
+        var currentFileIndex = 0
+        var currentFileName = files.first().displayName
+        var latestProgress = FileTransferProgress.waiting(totalSizeBytes)
+
         _screenState.update {
             it.copy(
                 sendOperationState = SendOperationState.SendingFileOffer(
-                    deviceName = device.deviceName,
+                    deviceName = deviceToSendFiles.deviceName,
                     fileCount = files.size
                 )
             )
@@ -138,16 +150,33 @@ class SendScreenViewModel(
 
         startSendJob {
             val result = outgoingRequestsController.sendFiles(
-                deviceToSendFiles = device,
+                deviceToSendFiles = deviceToSendFiles,
                 selectedFiles = files,
                 onFileStarted = { fileIndex, file ->
+                    currentFileIndex = fileIndex
+                    currentFileName = file.displayName
                     _screenState.update {
                         it.copy(
                             sendOperationState = SendOperationState.SendingFile(
-                                deviceName = device.deviceName,
+                                deviceName = deviceToSendFiles.deviceName,
                                 fileName = file.displayName,
-                                fileNumber = fileIndex + 1,
-                                totalFiles = files.size
+                                fileNumber = currentFileIndex + 1,
+                                totalFiles = files.size,
+                                progress = latestProgress
+                            )
+                        )
+                    }
+                },
+                onProgress = { progress ->
+                    latestProgress = progress
+                    _screenState.update {
+                        it.copy(
+                            sendOperationState = SendOperationState.SendingFile(
+                                deviceName = deviceToSendFiles.deviceName,
+                                fileName = currentFileName,
+                                fileNumber = currentFileIndex + 1,
+                                totalFiles = files.size,
+                                progress = progress
                             )
                         )
                     }
@@ -160,7 +189,7 @@ class SendScreenViewModel(
                     _screenState.update {
                         it.copy(
                             sendOperationState = SendOperationState.FilesSent(
-                                deviceName = device.deviceName,
+                                deviceName = deviceToSendFiles.deviceName,
                                 fileCount = files.size
                             )
                         )

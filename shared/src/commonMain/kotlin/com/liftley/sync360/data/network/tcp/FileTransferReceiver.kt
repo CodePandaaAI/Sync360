@@ -1,6 +1,7 @@
 package com.liftley.sync360.data.network.tcp
 
-import com.liftley.sync360.domain.model.FileTransferOffer
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.domain.model.FileTransferProgress
 
 interface FileTransferReceiver {
     val port: Int
@@ -8,8 +9,9 @@ interface FileTransferReceiver {
     suspend fun start()
 
     fun prepareForTransfer(
-        fileOffer: FileTransferOffer,
+        fileOffer: FileOfferRequest,
         onFileSaved: (completedFileCount: Int) -> Unit,
+        onProgress: (FileTransferProgress) -> Unit,
         onTransferFinished: (wasSuccessful: Boolean) -> Unit
     )
 

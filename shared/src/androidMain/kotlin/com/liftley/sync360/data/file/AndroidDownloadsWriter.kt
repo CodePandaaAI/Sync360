@@ -15,7 +15,8 @@ class AndroidDownloadsWriter(
         fileName: String,
         mimeType: String?,
         fileSizeBytes: Long,
-        input: InputStream
+        input: InputStream,
+        onBytesWritten: (byteCount: Int) -> Unit
     ) {
         val safeFileName = File(fileName).name
 
@@ -65,6 +66,7 @@ class AndroidDownloadsWriter(
 
                     it.write(buffer, 0, bytesRead)
                     bytesRemaining -= bytesRead
+                    onBytesWritten(bytesRead)
                 }
 
                 it.flush()

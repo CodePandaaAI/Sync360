@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.presentation.app.components.Sync360Surface
+import com.liftley.sync360.presentation.app.components.NetworkRepairAction
 import com.liftley.sync360.presentation.send.model.NearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
 
@@ -25,6 +26,7 @@ import com.liftley.sync360.presentation.send.model.SendScreenState
 fun NearbyDevicesSection(
     screenState: SendScreenState,
     onReloadClick: () -> Unit,
+    onRepairClick: () -> Unit,
     onDeviceClick: (NearbyDeviceUiModel) -> Unit
 ) {
     Sync360Surface {
@@ -69,6 +71,13 @@ fun NearbyDevicesSection(
             NearbyDeviceEmptyCard(
                 status = screenState.discoveryStatus,
                 onReloadClick = onReloadClick
+            )
+
+            NetworkRepairAction(
+                enabled = screenState.discoveryStatus == DiscoveryStatus.Idle ||
+                    screenState.discoveryStatus == DiscoveryStatus.Running,
+                onRepairClick = onRepairClick,
+                modifier = Modifier.fillMaxWidth()
             )
         }
     }

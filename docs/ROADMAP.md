@@ -15,14 +15,13 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Android public Downloads writing with incomplete-entry cleanup.
 - Desktop Downloads writing through temporary `.part` files and collision-safe final names.
 - Best-effort sender cancellation.
+- Batch-wide byte percentage on the sender and receiver.
 - Shared Compose UI with compact navigation and a wider 50/50 Send/Receive scene.
 
 ## Next
 
 ### Transfer feedback and reliability
 
-- Track byte-level progress.
-- Show percentage, current speed, and time remaining.
 - Improve receiver-side failure details and per-file results.
 - Test cancellation and failure at more points in large multi-file batches.
 - Add focused protocol and storage tests.
