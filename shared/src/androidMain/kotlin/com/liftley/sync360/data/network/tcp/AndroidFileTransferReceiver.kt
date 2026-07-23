@@ -32,7 +32,6 @@ class AndroidFileTransferReceiver(
     @Volatile
     private var expectedFileOffer: FileOfferRequest? = null
 
-    private var nextExpectedFileIndex: Int = 0
     private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
     private var onProgress: ((FileTransferProgress) -> Unit)? = null
     private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
@@ -75,7 +74,6 @@ class AndroidFileTransferReceiver(
         onTransferFinished: (wasSuccessful: Boolean) -> Unit
     ) {
         expectedFileOffer = fileOffer
-        nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
         this.onProgress = onProgress
         this.onTransferFinished = onTransferFinished
@@ -86,7 +84,6 @@ class AndroidFileTransferReceiver(
     override fun clearExpectedTransfer() {
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
-        nextExpectedFileIndex = 0
         onFileSaved = null
         onProgress = null
         onTransferFinished = null
@@ -107,6 +104,8 @@ class AndroidFileTransferReceiver(
 
             val socketOutput = DataOutputStream(socket.getOutputStream())
 
+            var completedFileCount = 0
+
             try {
                 val fileOffer = expectedFileOffer
                     ?: error("No accepted file offer is waiting")
@@ -119,20 +118,16 @@ class AndroidFileTransferReceiver(
                     val receivedFileIndex = socketInput.readInt()
                     val receivedFileSize = socketInput.readLong()
 
-                    if (receivedFileIndex != nextExpectedFileIndex) {
+                    if (receivedFileIndex != expectedFile.index) {
                         error(
-                            "Expected file index $nextExpectedFileIndex " +
-                                "but received $receivedFileIndex"
+                            "Expected file index ${expectedFile.index}, " +
+                                    "but received $receivedFileIndex"
                         )
-                    }
-
-                    if (expectedFile.index != receivedFileIndex) {
-                        error("File index does not match the accepted offer")
                     }
 
                     val expectedFileSize = expectedFile.fileSizeBytes
 
-                    if (receivedFileSize != expectedFileSize) {
+                    if (expectedFileSize != receivedFileSize) {
                         error("File size does not match the accepted offer")
                     }
 
@@ -144,21 +139,22 @@ class AndroidFileTransferReceiver(
                         onBytesWritten = progressTracker::addBytes
                     )
 
-                    markCurrentFileComplete(
-                        completedFileIndex = receivedFileIndex
-                    )
+                    completedFileCount++
 
-                    sendSaveResult(socketOutput, wasSaved = true)
+                    onFileSaved?.invoke(completedFileCount)
                 }
+                socketOutput.writeBoolean(true)
+                socketOutput.writeInt(completedFileCount)
+                socketOutput.flush()
 
                 finishTransfer(wasSuccessful = true)
             } catch (exception: Exception) {
                 exception.printStackTrace()
 
-                try {
-                    sendSaveResult(socketOutput, wasSaved = false)
-                } catch (_: Exception) {
-                    // The sender may already have closed the socket.
+                runCatching {
+                    socketOutput.writeBoolean(false)
+                    socketOutput.writeInt(completedFileCount)
+                    socketOutput.flush()
                 }
 
                 finishTransfer(wasSuccessful = false)
@@ -167,24 +163,11 @@ class AndroidFileTransferReceiver(
     }
 
     @Synchronized
-    private fun markCurrentFileComplete(
-        completedFileIndex: Int
-    ) {
-        if (completedFileIndex != nextExpectedFileIndex) {
-            return
-        }
-
-        nextExpectedFileIndex++
-        onFileSaved?.invoke(nextExpectedFileIndex)
-    }
-
-    @Synchronized
     private fun finishTransfer(wasSuccessful: Boolean) {
         val completionCallback = onTransferFinished
 
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
-        nextExpectedFileIndex = 0
         onFileSaved = null
         onProgress = null
         onTransferFinished = null
@@ -201,13 +184,5 @@ class AndroidFileTransferReceiver(
             )
             finishTransfer(wasSuccessful = false)
         }
-    }
-
-    private fun sendSaveResult(
-        output: DataOutputStream,
-        wasSaved: Boolean
-    ) {
-        output.writeBoolean(wasSaved)
-        output.flush()
     }
 }

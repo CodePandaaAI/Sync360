@@ -66,10 +66,19 @@ class AndroidFileTransferSender(
                             fileIndex = fileIndex,
                             file = file,
                             socketOutput = socketOutput,
-                            socketInput = socketInput,
                             buffer = buffer,
                             progressTracker = progressTracker
                         )
+                    }
+
+                    // Ensure every remaining buffered byte reaches the receiver.
+                    socketOutput.flush()
+
+                    val receiverSavedTransferSuccessfully = socketInput.readBoolean()
+                    val completedFileCount = socketInput.readInt()
+
+                    check(receiverSavedTransferSuccessfully && completedFileCount == files.size) {
+                        "Receiver saved $completedFileCount of ${files.size} files"
                     }
                 } finally {
                     activeSocket.compareAndSet(socket, null)
@@ -89,7 +98,6 @@ class AndroidFileTransferSender(
         fileIndex: Int,
         file: SelectedFile,
         socketOutput: DataOutputStream,
-        socketInput: DataInputStream,
         buffer: ByteArray,
         progressTracker: FileTransferProgressTracker
     ) {
@@ -132,14 +140,6 @@ class AndroidFileTransferSender(
                 bytesRemaining -= bytesRead
                 progressTracker.addBytes(bytesRead)
             }
-
-            socketOutput.flush()
-
-            val receiverSavedFile = socketInput.readBoolean()
-
-            if (!receiverSavedFile) {
-                error("Receiver could not save ${file.displayName}")
-            }
         }
     }
 
@@ -166,5 +166,4 @@ class AndroidFileTransferSender(
 
         throw lastFailure ?: error("No address is available for ${device.deviceName}")
     }
-
 }

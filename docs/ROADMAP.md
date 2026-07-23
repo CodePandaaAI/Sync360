@@ -11,7 +11,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Android and Desktop multiple-file selection.
 - File metadata offer before any file bytes are sent.
 - One persistent raw TCP connection per accepted file batch.
-- Sequential file framing, index/size validation, and per-file save acknowledgements.
+- Sequential file framing, index/size validation, and one final success/completed-count result per batch.
 - Android public Downloads writing with incomplete-entry cleanup.
 - Desktop Downloads writing through temporary `.part` files and collision-safe final names.
 - Best-effort sender cancellation.
