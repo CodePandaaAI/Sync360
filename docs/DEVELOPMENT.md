@@ -1,30 +1,23 @@
 # Development Guide
 
-This guide explains how to set up and work on Sync360 locally.
+This guide covers the current Android and Desktop/JVM development flow.
 
 ## Requirements
 
 - JDK 17
-- Android Studio or IntelliJ IDEA with Kotlin support
-- Android SDK Platform 37
-- Android SDK Build Tools 36.0.0 or newer
-- Gradle wrapper 9.4.1, already included in this repository
+- A recent Android Studio or IntelliJ IDEA version compatible with Kotlin 2.3.21 and Android Gradle Plugin 9.2.x
+- Android SDK Platform 37 for Android development
 - Git
-- Two Android devices on the same local network for real discovery testing
+- A local network or hotspot that allows device-to-device traffic
+- Two Android 13+ devices for Android-to-Android testing, or Android plus Desktop for cross-platform testing
 
-The project currently uses Android Gradle Plugin 9.2.1. Use a recent Android Studio version that supports AGP 9.2.x.
-
-## Open the project
-
-Open the repository root in Android Studio or IntelliJ IDEA.
-
-Let Gradle sync finish before editing generated project configuration.
+The repository includes the Gradle 9.4.1 wrapper.
 
 ## Modules
 
-- `androidApp` - Android application host.
-- `shared` - KMP shared code, UI, domain models, Ktor prototype, Android source set.
-- `desktopApp` - JVM desktop app shell.
+- `androidApp` — Android application host.
+- `desktopApp` — Compose Desktop entry point and DMG/MSI/DEB packaging configuration.
+- `shared` — shared UI, ViewModels, controllers, Ktor protocol, contracts, and Android/JVM implementations.
 
 ## Common commands
 
@@ -46,68 +39,58 @@ Android release build:
 ./gradlew :androidApp:assembleRelease
 ```
 
-Desktop shell:
+Desktop run:
 
 ```bash
 ./gradlew :desktopApp:run
 ```
 
-## Local network testing
+Windows:
 
-For Android-to-Android testing:
+```powershell
+./gradlew.bat :desktopApp:run
+```
 
-1. Install the app on two physical Android devices.
-2. Connect both to the same Wi-Fi network.
-3. Open the app on both devices.
-4. Watch the Send screen for nearby devices.
-5. Tap a discovered device to trigger the current ping/request experiment.
-6. Use the Receive screen on the other device to accept or decline.
+## Manual local-network testing
 
-If discovery does not work:
+1. Connect both devices to the same trusted Wi-Fi network or hotspot.
+2. Open Sync360 on both devices and keep it in the foreground during current testing.
+3. Wait for the other device to appear on the Send screen.
+4. Test a text offer: Accept, Decline, transfer, Copy, and Clear.
+5. Test one file, multiple files, and cancellation.
+6. Confirm completed files appear in Downloads.
+7. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
 
-- confirm both devices are on the same network
-- try a different Wi-Fi network or hotspot
-- check whether the router blocks client-to-client traffic
-- inspect Android logs for NSD failures
-- verify that the discovered device has host addresses and a non-zero port
+For Desktop testing, also check systems with multiple adapters, VPNs, WSL, Docker, or virtual machines. The current JmDNS implementation selects one site-local IPv4 interface.
 
-## Debugging tips
+## If discovery or transfer fails
 
-Useful places to inspect:
+- Confirm both devices are on the same local network.
+- Check whether the router enables client isolation.
+- Try a trusted phone hotspot or another router.
+- Keep both apps open; background/foreground lifecycle support is not complete.
+- Check the OS firewall and local-network permissions.
+- Verify that HTTP and file-transfer ports are non-zero in logs.
+- Inspect whether the selected Desktop LAN adapter matches the active network.
+- Remember that some networks block multicast even when ordinary internet access works.
 
-- `AndroidNetworkServices` for NSD registration/discovery/resolve events.
-- `Sync360HttpServer` for incoming route behavior.
-- `Sync360HttpClient` for outgoing request URL and response parsing.
-- `IncomingServerRequestsController` for receiver decision state.
-- `NetworkServicesController` for startup order.
+Useful source locations:
+
+- `NetworkServicesController` — startup order and discovery window.
+- `AndroidNetworkServices` — Android NSD registration, discovery, and resolution.
+- `JvmNetworkServices` — JmDNS registration, discovery, and LAN-interface selection.
+- `Sync360HttpServer` / `Sync360HttpClient` — offer and text routes.
+- `OutgoingRequestsController` / `IncomingServerRequestsController` — send/receive coordination.
+- platform `FileTransferSender`, `FileTransferReceiver`, and `DownloadsWriter` implementations — file bytes and storage.
 
 ## Working style
 
-This project values understanding over cleverness.
+Prefer small changes, direct names, explicit ownership, route-specific DTOs, streaming I/O, and platform implementations behind common contracts.
 
-Prefer:
+Avoid large speculative abstractions, networking inside composables, platform APIs in `commonMain`, loading whole files into memory, or claims that have not been manually verified.
 
-- small changes
-- direct names
-- clear ownership
-- route-specific DTOs
-- focused controllers
-- simple state flows
+## Tests and pull requests
 
-Avoid:
+Automated coverage is still minimal. Add focused tests for pure Kotlin logic where practical. For discovery, socket, storage, or lifecycle changes, include the exact devices, operating systems, network setup, scenarios, and results in the pull request.
 
-- large rewrites without discussion
-- generic abstractions too early
-- hidden startup side effects in DI modules
-- UI code that owns networking behavior
-- platform APIs inside composables
-
-## Tests
-
-Test coverage is still minimal. When adding pure Kotlin logic, add focused tests if practical.
-
-For networking and Android NSD changes, include manual test notes in pull requests.
-
-## Release notes
-
-There are no stable releases yet. Use `CHANGELOG.md` to document meaningful changes under `[Unreleased]`.
+There is no stable release yet. Treat current builds as development software.

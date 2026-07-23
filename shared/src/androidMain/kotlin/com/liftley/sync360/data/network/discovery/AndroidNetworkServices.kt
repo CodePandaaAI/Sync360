@@ -14,8 +14,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
+import kotlin.time.Duration.Companion.milliseconds
 
 class AndroidNetworkServices(
     context: Context,
@@ -43,16 +49,28 @@ class AndroidNetworkServices(
 
     val deviceUuid = androidLocalDeviceIdentityStore.getOrCreateDeviceUuid()
 
-    val serviceInfoCallbackMap = mutableMapOf<String, NsdManager.ServiceInfoCallback>()
+    val serviceInfoCallbackMap = ConcurrentHashMap<String, NsdManager.ServiceInfoCallback>()
+
+    private val repairMutex = Mutex()
+    @Volatile
+    private var isDiscoveryRunning = false
+    @Volatile
+    private var isRegistrationRequested = false
+    private var discoveryStoppedCompletion: CompletableDeferred<Unit>? = null
+    private var serviceUnregisteredCompletion: CompletableDeferred<Unit>? = null
 
     val discoveryListener = object : NsdManager.DiscoveryListener {
         override fun onDiscoveryStarted(serviceType: String?) {
+            isDiscoveryRunning = true
             _discoveryServiceStatus.value = DiscoveryStatus.Running
             Log.d("AndroidNetworkServices", "onDiscoveryStarted: $serviceType")
         }
 
         override fun onDiscoveryStopped(serviceType: String?) {
+            isDiscoveryRunning = false
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            discoveryStoppedCompletion?.complete(Unit)
+            discoveryStoppedCompletion = null
             Log.d("AndroidNetworkServices", "onDiscoveryStopped: $serviceType")
         }
 
@@ -70,8 +88,8 @@ class AndroidNetworkServices(
                                 "AndroidNetworkServices",
                                 "onServiceInfoCallbackRegistrationFailed: $errorCode"
                             )
-                            if (serviceInfoCallbackMap.containsKey(resolvedNearbyDeviceInfo?.id)) {
-                                serviceInfoCallbackMap.remove(resolvedNearbyDeviceInfo?.id)
+                            resolvedNearbyDeviceInfo?.id?.let { deviceId ->
+                                serviceInfoCallbackMap.remove(deviceId)
                             }
                         }
 
@@ -97,9 +115,8 @@ class AndroidNetworkServices(
                                 listWithoutLostDevice
                             }
 
-                            if (serviceInfoCallbackMap.containsKey(resolvedNearbyDeviceInfo?.id)) {
-                                val serviceCallbackObject =
-                                    serviceInfoCallbackMap.remove(resolvedNearbyDeviceInfo?.id)
+                            resolvedNearbyDeviceInfo?.id?.let { deviceId ->
+                                val serviceCallbackObject = serviceInfoCallbackMap.remove(deviceId)
                                 serviceCallbackObject?.let { listener ->
                                     nsdManager.unregisterServiceInfoCallback(listener)
                                 }
@@ -111,18 +128,16 @@ class AndroidNetworkServices(
                                 "AndroidNetworkServices",
                                 "onServiceUpdated: $updatedResolvedDeviceInfo"
                             )
-                            resolvedNearbyDeviceInfo =
-                                updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
-                            if (resolvedNearbyDeviceInfo == null) {
+                            val newDevice = updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
+                            resolvedNearbyDeviceInfo = newDevice
+                            if (newDevice == null) {
                                 nsdManager.unregisterServiceInfoCallback(this)
                                 return
                             }
 
-                            if (resolvedNearbyDeviceInfo?.id == deviceUuid) return
+                            if (newDevice.id == deviceUuid) return
 
                             _nearbyDevices.update { currentList ->
-                                val newDevice =
-                                    resolvedNearbyDeviceInfo ?: return@update currentList
                                 val withoutOldDeviceId =
                                     currentList.filterNot { device -> device.id == newDevice.id }
 
@@ -130,9 +145,7 @@ class AndroidNetworkServices(
                                 newList
                             }
 
-                            val foundDeviceKey = resolvedNearbyDeviceInfo?.id
-
-                            serviceInfoCallbackMap[foundDeviceKey!!] = this
+                            serviceInfoCallbackMap[newDevice.id] = this
                         }
                     }
 
@@ -176,6 +189,7 @@ class AndroidNetworkServices(
         }
 
         override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
+            isDiscoveryRunning = false
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
             Log.d("AndroidNetworkServices", "onStartDiscoveryFailed: $serviceType, $errorCode")
         }
@@ -183,23 +197,34 @@ class AndroidNetworkServices(
         override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {
             Log.d("AndroidNetworkServices", "onStopDiscoveryFailed: $serviceType, $errorCode")
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            isDiscoveryRunning = false
+            discoveryStoppedCompletion?.complete(Unit)
+            discoveryStoppedCompletion = null
         }
     }
 
     val registrationListener = object : NsdManager.RegistrationListener {
         override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+            isRegistrationRequested = false
             Log.d("AndroidNetworkServices", "onRegistrationFailed: $serviceInfo, $errorCode")
         }
 
         override fun onServiceRegistered(serviceInfo: NsdServiceInfo?) {
+            isRegistrationRequested = true
             Log.d("AndroidNetworkServices", "onServiceRegistered: $serviceInfo")
         }
 
         override fun onServiceUnregistered(serviceInfo: NsdServiceInfo?) {
+            isRegistrationRequested = false
+            serviceUnregisteredCompletion?.complete(Unit)
+            serviceUnregisteredCompletion = null
             Log.d("AndroidNetworkServices", "onServiceUnregistered: $serviceInfo")
         }
 
         override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
+            isRegistrationRequested = false
+            serviceUnregisteredCompletion?.complete(Unit)
+            serviceUnregisteredCompletion = null
             Log.d("AndroidNetworkServices", "onUnregistrationFailed: $serviceInfo, $errorCode")
         }
     }
@@ -247,8 +272,61 @@ class AndroidNetworkServices(
             )
         }
 
+        isRegistrationRequested = true
         nsdManager.registerService(serviceInfo, NsdManager.PROTOCOL_DNS_SD, registrationListener)
         nsdManager.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, discoveryListener)
+    }
+
+    override suspend fun repairNetworkServices(
+        httpServerPort: Int,
+        fileTransferPort: Int
+    ) {
+        repairMutex.withLock {
+            _discoveryServiceStatus.value = DiscoveryStatus.Stopping
+
+            if (isDiscoveryRunning) {
+                val stopped = CompletableDeferred<Unit>()
+                discoveryStoppedCompletion = stopped
+
+                runCatching {
+                    nsdManager.stopServiceDiscovery(discoveryListener)
+                }.onFailure {
+                    stopped.complete(Unit)
+                }
+
+                withTimeoutOrNull(REPAIR_STEP_TIMEOUT_MILLIS.milliseconds) {
+                    stopped.await()
+                }
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                clearAndStopResolvingServices()
+            }
+
+            if (isRegistrationRequested) {
+                val unregistered = CompletableDeferred<Unit>()
+                serviceUnregisteredCompletion = unregistered
+
+                runCatching {
+                    nsdManager.unregisterService(registrationListener)
+                }.onFailure {
+                    unregistered.complete(Unit)
+                }
+
+                withTimeoutOrNull(REPAIR_STEP_TIMEOUT_MILLIS.milliseconds) {
+                    unregistered.await()
+                }
+            }
+
+            isDiscoveryRunning = false
+            isRegistrationRequested = false
+            discoveryStoppedCompletion = null
+            serviceUnregisteredCompletion = null
+            _nearbyDevices.value = emptyList()
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
+
+            startNetworkServices(httpServerPort, fileTransferPort)
+        }
     }
 
     override fun stopDiscoveryServices() {
@@ -291,7 +369,13 @@ class AndroidNetworkServices(
         serviceInfoCallbackMap.clear()
 
         callbacks.forEach { callback ->
-            nsdManager.unregisterServiceInfoCallback(callback)
+            runCatching {
+                nsdManager.unregisterServiceInfoCallback(callback)
+            }
         }
+    }
+
+    private companion object {
+        const val REPAIR_STEP_TIMEOUT_MILLIS = 3_000L
     }
 }

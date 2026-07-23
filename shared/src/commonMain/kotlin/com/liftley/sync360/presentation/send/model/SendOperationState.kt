@@ -1,5 +1,7 @@
 package com.liftley.sync360.presentation.send.model
 
+import com.liftley.sync360.domain.model.FileTransferProgress
+
 sealed interface SendOperationState {
     data object Idle : SendOperationState
 
@@ -16,7 +18,8 @@ sealed interface SendOperationState {
         val deviceName: String,
         val fileName: String,
         val fileNumber: Int,
-        val totalFiles: Int
+        val totalFiles: Int,
+        val progress: FileTransferProgress
     ) : SendOperationState
 
     data class TextSent(

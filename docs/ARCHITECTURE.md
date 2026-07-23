@@ -1,215 +1,138 @@
 # Architecture
 
-Sync360 is being rebuilt as an Android-first Kotlin Multiplatform app for local network sharing.
+Sync360 is an Android-first Kotlin Multiplatform app for direct nearby sharing over a local network. Android and Desktop reuse the common UI and transfer flow; platform source sets implement discovery, file access, storage, identity, clipboard, and raw socket I/O.
 
-The current architecture is intentionally small. It is not trying to be a perfect final system yet. The priority is understanding the real flow: discovery, route resolution, local HTTP request/response, UI state, and receiver decisions.
-
-## Current high-level flow
+The architecture intentionally follows one readable path:
 
 ```text
-Android app starts
-  -> Koin creates long-lived services/controllers
-  -> SendScreenViewModel starts network services
-  -> NetworkServicesController starts local Ktor server
-  -> server returns its dynamic port
-  -> Android NSD advertises device with that port
-  -> other devices discover hostAddresses + port
-  -> Ktor client calls /sync360/ping
-  -> receiver UI accepts/declines
-  -> server responds to sender
+Compose screen -> ViewModel -> controller/service -> common contract -> platform implementation
 ```
 
-## Module layout
+## Current end-to-end flow
+
+```text
+app starts
+  -> Koin creates common services and platform implementations
+  -> SendScreenViewModel starts NetworkServicesController
+  -> FileTransferReceiver opens an OS-assigned TCP port
+  -> Sync360HttpServer opens an OS-assigned HTTP port
+  -> NetworkServices advertises both ports through DNS-SD/mDNS
+  -> nearby Sync360 devices are resolved into NearbyDevice
+  -> sender posts a text or file offer through Ktor HTTP
+  -> receiver accepts or declines
+  -> accepted text continues through HTTP
+  -> accepted file bytes stream through one raw TCP connection
+  -> platform DownloadsWriter saves the files
+```
+
+## Shared and platform code
 
 ```text
 androidApp/
-  Android application entry point
+  Android application host and entry point
 
 desktopApp/
-  JVM desktop shell; not active in rebuilt networking flow yet
+  Compose Desktop entry point and native packaging configuration
 
-shared/
-  commonMain/
-    shared Compose UI
-    ViewModels
-    domain models
-    Koin common module
-    Ktor client/server proof
-    request coordination controllers
+shared/src/commonMain/
+  shared Compose UI and adaptive Navigation 3 layout
+  ViewModels and presentation state
+  controllers and domain models
+  Ktor HTTP client/server and DTOs
+  discovery, transfer, storage, clipboard, and identity contracts
 
-  androidMain/
-    Android NSD implementation
-    Android local device identity
-    Android Koin bindings
+shared/src/androidMain/
+  Android NsdManager discovery/registration
+  ContentResolver file access and MediaStore Downloads writing
+  Android clipboard, identity, device info, TCP sender/receiver, and DI
+
+shared/src/jvmMain/
+  JmDNS discovery/registration
+  AWT file selection and clipboard
+  Java file/Downloads handling, identity, device info, TCP sender/receiver, and DI
 ```
 
-## Current main components
+## Main responsibilities
 
 ### `Sync360Root`
 
-Shared Compose root. It owns the main scaffold, Navigation 3 display, Send/Receive destinations, and current navigation reaction to incoming request state.
+Owns the single app `Scaffold`, compact bottom navigation, and one Navigation 3 `NavDisplay`. A small `TwoPaneSceneStrategy` renders Send and Receive in a fixed 50/50 split when the Material adaptive window size reaches the medium-width breakpoint. Compact windows use Navigation 3's normal single-pane fallback.
 
-### `SendScreenViewModel`
+### ViewModels
 
-UI-facing state holder for the Send screen.
+- `SendScreenViewModel` owns nearby-device state, selected files/text, send operations, results, and cancellation.
+- `ReceiveScreenViewModel` maps incoming server state to Receive UI and handles Accept, Decline, Copy, Clear, and Open Downloads actions.
+- `NavigationViewModel` keeps Send and Receive available as top-level entries and selects the active compact destination.
 
-Currently exposes:
+ViewModels launch UI-facing work. They do not implement platform APIs or socket protocols.
 
-- nearby devices
-- discovery status
-- experimental send request status
-- reload action
-- outgoing ping action
+### Controllers
 
-It should not become the HTTP client or server. It should call lower-level controllers.
+- `NetworkServicesController` starts the file receiver, HTTP server, and discovery/registration in the required order.
+- `OutgoingRequestsController` creates offers, calls the Ktor client, and starts accepted file transfers.
+- `IncomingServerRequestsController` exposes incoming offers and receiver decisions to the HTTP server and Receive UI.
 
-### `ReceiveScreenViewModel`
+### Discovery
 
-UI-facing state holder for the Receive screen.
+`NetworkServices` is the common contract.
 
-Currently exposes:
+- Android uses `NsdManager` with `_sync360._tcp.`.
+- Desktop uses JmDNS with `_sync360._tcp.local.`.
 
-- incoming server request state
-- Accept/Decline decision action
+Both advertise a stable device UUID, device name/type, protocol version, dynamic HTTP port, and dynamic file-transfer port. A device filters its own UUID from discovery results.
 
-### `NetworkServicesController`
+The current Desktop implementation selects the first active, non-loopback, non-virtual, site-local IPv4 interface. Machines with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters still need broader validation.
 
-Coordinates network startup order.
+## Control plane: Ktor HTTP
 
-Current job:
-
-1. Start `Sync360HttpServer`.
-2. Read the dynamic HTTP server port.
-3. Start `NetworkServices` with that port.
-4. Keep discovery scanning for a short window.
-5. Stop discovery scan.
-
-This exists because discovery needs a port, but discovery should not need to know how to start the HTTP server.
-
-### `NetworkServices`
-
-Common discovery contract.
-
-Current Android implementation: `AndroidNetworkServices`.
-
-It exposes:
-
-- `nearbyDevices: StateFlow<List<NearbyDevice>>`
-- `discoveryServiceStatus: StateFlow<DiscoveryStatus>`
-- start/restart/stop discovery operations
-
-### `AndroidNetworkServices`
-
-Android NSD implementation.
-
-Current job:
-
-- advertise this device through Android `NsdManager`
-- discover `_sync360._tcp.` services
-- resolve services
-- map Android `NsdServiceInfo` into common `NearbyDevice`
-- filter out this device by UUID
-
-### `Sync360HttpServer`
-
-Embedded Ktor CIO server.
-
-Current route:
+Ktor carries offers, decisions, metadata, and text:
 
 ```text
-GET /sync360/ping
+POST /sync360/text/offer
+POST /sync360/text/transfer
+POST /sync360/file/offer
 ```
 
-It starts on port `0`, meaning the OS chooses a free port. That assigned port is advertised through NSD.
+An offer waits up to 55 seconds for the receiver's decision. File metadata is converted from HTTP DTOs into the shared `FileTransferOffer` domain model at the Ktor boundary.
 
-### `Sync360HttpClient`
+## File data plane: raw TCP
 
-Ktor CIO client for outgoing local requests.
-
-Currently sends ping requests to discovered devices using:
+Accepted file bytes use a separate raw TCP connection:
 
 ```text
-http://{host}:{port}/sync360/ping
+one connection for the accepted batch
+  -> file index: Int
+  -> promised file size: Long
+  -> exactly promised-size bytes
+  -> receiver save acknowledgement: Boolean
+  -> repeat for the next file
 ```
 
-### `IncomingServerRequestsController`
+Files remain sequential. The receiver verifies each index and size against the accepted offer before saving. It acknowledges a file only after the platform Downloads writer completes it.
 
-Bridge between server routes and Receive UI.
+`FileTransferConstants` currently provides:
 
-Pattern:
+- 512 KiB payload buffers
+- 5-second connect timeout
+- 60-second connected-socket timeout
+- 10-second wait for the first file connection after acceptance
 
-```text
-server route receives request
-  -> sets ServerState.Busy
-  -> waits for CompletableDeferred<UserDecision>
-  -> Receive UI completes decision
-  -> server route resumes and responds
-```
+The sender and receiver do not need matching read boundaries because TCP is a byte stream; exact file sizes define the protocol framing.
 
-### `OutgoingRequestsController`
+## Platform storage
 
-Small wrapper around outgoing HTTP client calls. It converts lower-level failures into route-specific response objects for UI-facing code.
+- Android writes into public Downloads with a pending `MediaStore` entry. It publishes the entry only after success and deletes the incomplete current entry on failure.
+- Desktop writes to a temporary `.part` file in the user's Downloads folder, deletes it on failure, and moves it to a collision-safe final name after success.
 
-## Current data models
+Previously completed files remain when a later file in the same batch fails.
 
-Important models:
+## Current limitations
 
-- `NearbyDevice`
-- `DiscoveryStatus`
-- `ServerState`
-- `RequestType`
-- `UserDecision`
-- `PingRequestResponse`
-- `PingResponse`
-
-The project currently prefers route-specific DTOs over generic polymorphic wrappers. This avoids unclear JSON shapes while the protocol is still being learned and designed.
-
-## Current architecture diagram
-
-```mermaid
-flowchart TD
-    Root[Sync360Root] --> SendScreen[Send screen]
-    Root --> ReceiveScreen[Receive screen]
-
-    SendScreen --> SendVM[SendScreenViewModel]
-    ReceiveScreen --> ReceiveVM[ReceiveScreenViewModel]
-
-    SendVM --> NetworkController[NetworkServicesController]
-    SendVM --> OutgoingController[OutgoingRequestsController]
-    ReceiveVM --> IncomingController[IncomingServerRequestsController]
-
-    NetworkController --> HttpServer[Sync360HttpServer]
-    NetworkController --> Discovery[NetworkServices]
-    Discovery --> AndroidDiscovery[AndroidNetworkServices]
-
-    HttpServer --> IncomingController
-    OutgoingController --> HttpClient[Sync360HttpClient]
-    HttpClient --> NearbyHTTP[Nearby device HTTP server]
-    AndroidDiscovery --> NearbyDevice[NearbyDevice hostAddresses + port]
-```
-
-## What is intentionally not final
-
-- Naming is still evolving.
-- Ping currently exercises Accept/Decline, but real offer routes should own that flow later.
-- Discovery and server lifecycle are still simple.
-- No timeout exists for pending user decisions yet.
-- No final file transfer architecture exists in the rebuilt flow yet.
-- No security layer exists yet.
-
-## Direction
-
-The intended direction is:
-
-```text
-Screen -> ViewModel -> controller/service -> data/platform implementation
-```
-
-Rules of thumb:
-
-- Screens render state and call ViewModel functions.
-- ViewModels expose UI state and launch UI actions.
-- Controllers coordinate flows across multiple services.
-- Data/remote classes own Ktor work.
-- Android data classes own Android APIs.
-- Domain models describe shared app concepts.
+- No authentication, encryption, session token, or cryptographic integrity check.
+- No retry, pause/resume, or interrupted-transfer recovery.
+- Foreground/background and network-change lifecycle handling are not complete.
+- Receiver failures do not yet provide rich error details.
+- Host selection still uses the first resolved address.
+- Desktop interface selection and firewall behavior need broader validation.
+- Automated transfer coverage is minimal.
+- iOS targets and implementations are inactive.

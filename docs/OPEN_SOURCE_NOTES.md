@@ -1,6 +1,6 @@
 # Open Source Notes
 
-Sync360 is being prepared as an open-source project and a build-in-public learning record.
+Sync360 is an open-source project and a build-in-public learning record.
 
 ## Why open source
 
@@ -32,7 +32,7 @@ Helpful feedback:
 - "This naming hides ownership."
 - "This Android NSD call can fail in this lifecycle state."
 - "This Ktor route can hang without timeout."
-- "This package boundary will hurt when desktop support arrives."
+- "This Desktop interface-selection rule will fail when multiple adapters are active."
 - "Here is a clearer DTO shape."
 
 Less helpful feedback:
@@ -51,15 +51,15 @@ Good moments to share publicly:
 - first text send
 - first file send
 - progress UI
-- Android-to-desktop proof
+- broader Android/Desktop validation
 - first security pass
 
 ## Current message
 
-Sync360 is early, but the foundation is becoming real:
+Sync360 is still early, but the useful local flow is real:
 
 ```text
-local discovery + dynamic port + local HTTP request/response
+local discovery -> receiver approval -> direct text or file transfer
 ```
 
-That is the story to tell clearly before promising a finished sharing app.
+Android is the most-tested platform. Desktop/JVM now implements the same shared flow and has initial Desktop-to-Android validation, but broader operating-system, adapter, firewall, and router testing is still needed. That is the story to tell clearly without presenting the app as a finished or secure release.

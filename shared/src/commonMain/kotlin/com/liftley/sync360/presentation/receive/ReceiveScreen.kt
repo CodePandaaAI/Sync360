@@ -2,12 +2,12 @@ package com.liftley.sync360.presentation.receive
 
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.domain.model.UserDecision
+import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.receive.components.FileOfferStateUi
 import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
@@ -18,16 +18,20 @@ import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import org.koin.compose.koinInject
 
 @Composable
-fun ReceiveScreen() {
+fun ReceiveScreen(
+    onTroubleshootClick: () -> Unit
+) {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
-    Surface(
+    Sync360Surface(
         modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.surfaceContainer
+        containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         when (val state = receiveScreenState) {
             ReceiveScreenState.Idle -> {
-                IdleReceiveStateUi()
+                IdleReceiveStateUi(
+                    onTroubleshootClick = onTroubleshootClick
+                )
             }
 
             is ReceiveScreenState.IncomingTextOffer -> {

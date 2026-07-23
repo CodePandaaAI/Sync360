@@ -9,6 +9,8 @@ interface NetworkServices {
     val discoveryServiceStatus: StateFlow<DiscoveryStatus>
     suspend fun startNetworkServices(httpServerPort: Int, fileTransferPort: Int)
 
+    suspend fun repairNetworkServices(httpServerPort: Int, fileTransferPort: Int)
+
     fun restartDiscoveryServices()
 
     fun stopDiscoveryServices()

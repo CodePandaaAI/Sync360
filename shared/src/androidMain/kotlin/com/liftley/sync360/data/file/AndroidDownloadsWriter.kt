@@ -2,29 +2,32 @@ package com.liftley.sync360.data.file
 
 import android.content.ContentValues
 import android.content.Context
-import android.net.Uri
 import android.os.Environment
 import android.provider.MediaStore
+import android.webkit.MimeTypeMap
+import com.liftley.sync360.data.network.tcp.FileTransferConstants
 import java.io.File
 import java.io.InputStream
 
 class AndroidDownloadsWriter(
     private val context: Context
-) {
-    fun writeFile(
+) : DownloadsWriter<InputStream> {
+    override fun writeFile(
         fileName: String,
         mimeType: String?,
         fileSizeBytes: Long,
-        input: InputStream
-    ): Uri {
+        input: InputStream,
+        onBytesWritten: (byteCount: Int) -> Unit
+    ) {
         val safeFileName = File(fileName).name
+        val resolvedMimeType = resolveMimeType(
+            fileName = safeFileName,
+            providedMimeType = mimeType
+        )
 
         val fileDetails = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, safeFileName)
-            put(
-                MediaStore.Downloads.MIME_TYPE,
-                mimeType ?: "application/octet-stream"
-            )
+            put(MediaStore.Downloads.MIME_TYPE, resolvedMimeType)
             put(
                 MediaStore.Downloads.RELATIVE_PATH,
                 Environment.DIRECTORY_DOWNLOADS
@@ -44,7 +47,7 @@ class AndroidDownloadsWriter(
                 ?: error("Could not open $safeFileName for writing")
 
             output.use {
-                val buffer = ByteArray(FILE_BUFFER_SIZE_BYTES)
+                val buffer = ByteArray(FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES)
                 var bytesRemaining = fileSizeBytes
 
                 while (bytesRemaining > 0) {
@@ -65,6 +68,7 @@ class AndroidDownloadsWriter(
 
                     it.write(buffer, 0, bytesRead)
                     bytesRemaining -= bytesRead
+                    onBytesWritten(bytesRead)
                 }
 
                 it.flush()
@@ -79,14 +83,27 @@ class AndroidDownloadsWriter(
                 null
             )
 
-            return destinationUri
         } catch (exception: Exception) {
             contentResolver.delete(destinationUri, null, null)
             throw exception
         }
     }
 
+    private fun resolveMimeType(
+        fileName: String,
+        providedMimeType: String?
+    ): String {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val extensionMimeType = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?: return DEFAULT_MIME_TYPE
+
+        return providedMimeType
+            ?.takeIf { it.equals(extensionMimeType, ignoreCase = true) }
+            ?: extensionMimeType
+    }
+
     private companion object {
-        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
+        const val DEFAULT_MIME_TYPE = "application/octet-stream"
     }
 }

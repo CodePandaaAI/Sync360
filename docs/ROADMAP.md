@@ -1,100 +1,66 @@
 # Roadmap
 
-Sync360 is early. This roadmap is honest about what exists and what is still planned.
+Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, request receiver approval, transfer text, and stream multiple files over the local network. Android is the most-tested platform; the Desktop/JVM implementation now exists and has initial Desktop-to-Android manual validation.
 
-## Current milestone
+## Working now
 
-Android local request/response proof:
+- Android DNS-SD/mDNS discovery and registration through `NsdManager`.
+- Desktop DNS-SD/mDNS discovery and registration through JmDNS.
+- Dynamic HTTP and file-transfer ports advertised with device metadata.
+- Text offer, Accept/Decline, transfer, Copy, and Clear.
+- Android and Desktop multiple-file selection.
+- File metadata offer before any file bytes are sent.
+- One persistent raw TCP connection per accepted file batch.
+- Sequential file framing, index/size validation, and per-file save acknowledgements.
+- Android public Downloads writing with incomplete-entry cleanup.
+- Desktop Downloads writing through temporary `.part` files and collision-safe final names.
+- Best-effort sender cancellation.
+- Batch-wide byte percentage on the sender and receiver.
+- Shared Compose UI with compact navigation and a wider 50/50 Send/Receive scene.
 
-- Android NSD advertisement and discovery.
-- Dynamic Ktor server port advertisement.
-- Nearby device route resolution.
-- Ktor client request to another device.
-- Receiver Accept/Decline proof.
+## Next
 
-## MVP
+### Transfer feedback and reliability
 
-The first useful MVP should support:
+- Improve receiver-side failure details and per-file results.
+- Test cancellation and failure at more points in large multi-file batches.
+- Add focused protocol and storage tests.
 
-- Android-to-Android nearby device discovery.
-- Receiver approval for incoming send requests.
-- Sending a direct text snippet.
-- Sending one file.
-- Basic progress state.
-- Basic success/failure result.
-- Manual reload/rescan.
+### Discovery and lifecycle
 
-## Near-term work
+- Repair registration automatically after network/address changes.
+- Add the appropriate Android foreground/background service behavior.
+- Improve Desktop LAN-interface selection for multi-adapter systems.
+- Test more routers, hotspots, firewalls, VPNs, and multicast-restricted networks.
+- Improve IPv4/IPv6 host selection and URL handling.
 
-### Networking
+### Security
 
-- Replace ping-based experiment with real send-offer route.
-- Add request DTOs for send offers.
-- Add response DTOs for accepted/declined/busy/error.
-- Add timeout for receiver decisions.
-- Prefer IPv4 host address where available.
-- Handle IPv6 URL formatting correctly.
-- Improve discovery lifecycle and advertisement cleanup.
+- Bind accepted offers to file connections with a transfer/session token.
+- Authenticate nearby peers deliberately.
+- Add cryptographic integrity verification.
+- Evaluate encryption and replay protection.
+- Add transfer size and resource limits.
 
-### Send UI
+## Later
 
-- Add file picker.
-- Add selected file list.
-- Add direct text input.
-- Allow removing selected items.
-- Keep selected items after sending until explicitly cleared.
-- Show outgoing request state.
-- Show send result or failure.
-
-### Receive UI
-
-- Show incoming sender name/device.
-- Show incoming item summary.
-- Accept/Decline real send offers.
-- Show receive progress.
-- Show received result.
-- Handle busy receiver state.
-
-### Transfer
-
-- Send one text object.
-- Send one file.
-- Save received files safely on Android.
-- Add progress updates.
-- Validate file size and received byte count.
-
-## Future work
-
-- Multiple files in one send bundle.
-- Mixed text and file bundles.
-- Desktop support.
-- iOS investigation.
-- Transfer history, if it fits the product.
-- Clipboard-oriented flows, if they stay explicit and privacy-friendly.
-- Better onboarding and empty states.
-- Better local-network troubleshooting UI.
-
-## Security phase
-
-Security should be designed after the simple local flow is working and understood.
-
-Possible security work:
-
-- sender identity validation
-- session token exchange
-- request signing
-- nonce/timestamp replay protection
-- transfer token validation
-- file name and path validation
-- transfer size limits
-- integrity checks
-- encryption evaluation
+- Retry or resume support if its protocol complexity is justified.
+- Desktop packaging, update, and release workflow.
+- Wider Windows, macOS, and Linux compatibility testing.
+- iOS discovery, transfer, storage, and permission investigation.
+- Better onboarding and local-network troubleshooting UI.
 
 ## Not planned right now
 
-- Cloud sync.
+- Cloud sync or cloud storage.
 - Accounts.
 - Permanent chat history.
-- Database-backed device ledger.
-- WebRTC or NAT traversal.
+- A database-backed device ledger.
+- WebRTC or internet/NAT traversal.
 - Background clipboard scraping.
+
+The product direction remains focused:
+
+```text
+find nearby -> approve -> send directly
+```

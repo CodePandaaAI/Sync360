@@ -1,5 +1,7 @@
 package com.liftley.sync360.presentation.receive.model
 
+import com.liftley.sync360.domain.model.FileTransferProgress
+
 sealed interface ReceiveScreenState {
     data object Idle : ReceiveScreenState
 
@@ -18,7 +20,8 @@ sealed interface ReceiveScreenState {
     data class ReceivingFiles(
         val senderDeviceName: String,
         val fileCount: Int,
-        val completedFileCount: Int
+        val completedFileCount: Int,
+        val progress: FileTransferProgress
     ) : ReceiveScreenState
 
     data class ReceivedText(

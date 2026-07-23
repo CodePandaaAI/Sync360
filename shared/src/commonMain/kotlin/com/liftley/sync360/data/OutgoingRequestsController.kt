@@ -1,15 +1,16 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
+import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
 import com.liftley.sync360.data.network.tcp.FileTransferSender
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
+import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.domain.model.FileTransferOffer
 import com.liftley.sync360.domain.model.SelectedFile
-import com.liftley.sync360.domain.model.OfferedFile
 
 class OutgoingRequestsController(
     private val httpClient: Sync360HttpClient,
@@ -47,7 +48,8 @@ class OutgoingRequestsController(
     suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         selectedFiles: List<SelectedFile>,
-        onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit
+        onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
+        onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit> {
         if (selectedFiles.isEmpty()) {
             return Result.failure(
@@ -70,7 +72,7 @@ class OutgoingRequestsController(
         val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
 
         val offeredFiles = selectedFiles.mapIndexed { index, file ->
-            OfferedFile(
+            FileOfferItem(
                 index = index,
                 fileName = file.displayName,
                 fileSizeBytes = requireNotNull(file.sizeBytes),
@@ -82,21 +84,21 @@ class OutgoingRequestsController(
             requireNotNull(it.sizeBytes)
         }
 
-        val fileOffer = FileTransferOffer(
+        val fileOfferRequest = FileOfferRequest(
             senderDeviceId = myDeviceInfo.deviceId,
             senderDeviceName = myDeviceInfo.deviceName,
             files = offeredFiles,
             totalSizeBytes = totalSizeBytes
         )
 
-        val offerResult = httpClient.sendFileOffer(
+        val fileOfferResult = httpClient.sendFileOffer(
             device = deviceToSendFiles,
-            fileOffer = fileOffer
+            fileOfferRequest = fileOfferRequest
         )
 
-        if (offerResult.isFailure) {
+        if (fileOfferResult.isFailure) {
             return Result.failure(
-                offerResult.exceptionOrNull()
+                fileOfferResult.exceptionOrNull()
                     ?: Exception("File offer failed")
             )
         }
@@ -104,7 +106,8 @@ class OutgoingRequestsController(
         return fileTransferSender.sendFiles(
             deviceToSendFiles = deviceToSendFiles,
             files = selectedFiles,
-            onFileStarted = onFileStarted
+            onFileStarted = onFileStarted,
+            onProgress = onProgress
         )
     }
 }

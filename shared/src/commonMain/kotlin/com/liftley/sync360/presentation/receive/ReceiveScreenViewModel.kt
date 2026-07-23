@@ -45,13 +45,14 @@ class ReceiveScreenViewModel(
     fun openDownloads() {
         downloadsFolderOpener.openDownloads()
     }
+
 }
 
 private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
     return when (this) {
         ClientServerState.Idle -> ReceiveScreenState.Idle
 
-        is ClientServerState.Busy.FileOffer -> {
+        is ClientServerState.FileOffer -> {
             ReceiveScreenState.IncomingFileOffer(
                 senderDeviceName = fileOffer.senderDeviceName,
                 fileCount = fileOffer.files.size,
@@ -59,15 +60,16 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
             )
         }
 
-        is ClientServerState.Busy.ReceivingFiles -> {
+        is ClientServerState.ReceivingFiles -> {
             ReceiveScreenState.ReceivingFiles(
                 senderDeviceName = senderDeviceName,
                 fileCount = fileCount,
-                completedFileCount = completedFileCount
+                completedFileCount = completedFileCount,
+                progress = progress
             )
         }
 
-        is ClientServerState.Busy.TextOffer -> {
+        is ClientServerState.TextOffer -> {
             ReceiveScreenState.IncomingTextOffer(
                 senderDeviceName = senderDeviceName,
                 preview = preview,
@@ -75,7 +77,7 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
             )
         }
 
-        is ClientServerState.Received -> {
+        is ClientServerState.ReceivedText -> {
             ReceiveScreenState.ReceivedText(
                 text = data
             )

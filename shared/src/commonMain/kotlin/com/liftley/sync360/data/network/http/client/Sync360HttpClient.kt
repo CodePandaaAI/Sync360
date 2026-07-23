@@ -1,13 +1,12 @@
 package com.liftley.sync360.data.network.http.client
 
-import com.liftley.sync360.data.network.http.dto.file.toFileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
 import com.liftley.sync360.domain.model.NearbyDevice
-import com.liftley.sync360.domain.model.FileTransferOffer
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -39,16 +38,16 @@ class Sync360HttpClient {
         nearbyDevice: NearbyDevice,
         textOfferRequest: TextOfferRequest
     ): Result<TextOfferResponse> {
-        val deviceToSendOfferHost = nearbyDevice.hostAddresses.first()
         val deviceToSendOfferPort = nearbyDevice.port
 
         return try {
-            val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/text/offer"
-
-            val textOfferResponse = httpClient.post(url) {
-                contentType(ContentType.Application.Json)
-                setBody(textOfferRequest)
-            }.body<TextOfferResponse>()
+            val textOfferResponse = requestUsingReachableAddress(nearbyDevice) { host ->
+                val url = "http://${host.asUrlHost()}:$deviceToSendOfferPort/sync360/text/offer"
+                httpClient.post(url) {
+                    contentType(ContentType.Application.Json)
+                    setBody(textOfferRequest)
+                }.body<TextOfferResponse>()
+            }
 
             when (textOfferResponse) {
                 TextOfferResponse.Accepted -> {
@@ -85,16 +84,19 @@ class Sync360HttpClient {
 
         result.fold(
             onSuccess = {
-                val deviceToSendOfferHost = deviceToSendOfferInfo.hostAddresses.first()
                 val deviceToSendOfferPort = deviceToSendOfferInfo.port
 
                 return try {
-                    val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/text/transfer"
-
-                    val textTransferResponse = httpClient.post(url) {
-                        contentType(ContentType.Application.Json)
-                        setBody(textTransferRequest)
-                    }.body<TextTransferResponse>()
+                    val textTransferResponse = requestUsingReachableAddress(
+                        deviceToSendOfferInfo
+                    ) { host ->
+                        val url =
+                            "http://${host.asUrlHost()}:$deviceToSendOfferPort/sync360/text/transfer"
+                        httpClient.post(url) {
+                            contentType(ContentType.Application.Json)
+                            setBody(textTransferRequest)
+                        }.body<TextTransferResponse>()
+                    }
 
                     Result.success(textTransferResponse)
                 } catch (e: Exception) {
@@ -121,18 +123,18 @@ class Sync360HttpClient {
 
     suspend fun sendFileOffer(
         device: NearbyDevice,
-        fileOffer: FileTransferOffer
+        fileOfferRequest: FileOfferRequest
     ): Result<FileOfferResponse> {
-        val deviceToSendOfferHost = device.hostAddresses.first()
         val deviceToSendOfferPort = device.port
-        val request = fileOffer.toFileOfferRequest()
 
         return try {
-            val url = "http://$deviceToSendOfferHost:$deviceToSendOfferPort/sync360/file/offer"
-            val fileOfferResponse = httpClient.post(url) {
-                contentType(ContentType.Application.Json)
-                setBody(request)
-            }.body<FileOfferResponse>()
+            val fileOfferResponse = requestUsingReachableAddress(device) { host ->
+                val url = "http://${host.asUrlHost()}:$deviceToSendOfferPort/sync360/file/offer"
+                httpClient.post(url) {
+                    contentType(ContentType.Application.Json)
+                    setBody(fileOfferRequest)
+                }.body<FileOfferResponse>()
+            }
 
             when (fileOfferResponse) {
                 FileOfferResponse.Accepted -> {
@@ -158,5 +160,57 @@ class Sync360HttpClient {
                 else -> Result.failure(e)
             }
         }
+    }
+
+    private suspend fun <Response> requestUsingReachableAddress(
+        device: NearbyDevice,
+        request: suspend (host: String) -> Response
+    ): Response {
+        val addresses = device.hostAddresses.distinct()
+        var lastConnectionFailure: Throwable? = null
+
+        addresses.forEachIndexed { index, host ->
+            try {
+                return request(host)
+            } catch (exception: CancellationException) {
+                throw exception
+            } catch (exception: Throwable) {
+                val hasAnotherAddress = index < addresses.lastIndex
+                if (!exception.isConnectionFailure() || !hasAnotherAddress) {
+                    throw exception
+                }
+                lastConnectionFailure = exception
+            }
+        }
+
+        throw lastConnectionFailure
+            ?: IllegalArgumentException("No address is available for ${device.deviceName}")
+    }
+
+    private fun Throwable.isConnectionFailure(): Boolean {
+        var current: Throwable? = this
+
+        while (current != null) {
+            if (current is ConnectTimeoutException) return true
+
+            if (
+                current::class.simpleName == "ConnectException" ||
+                current::class.simpleName == "NoRouteToHostException" ||
+                current::class.simpleName == "UnresolvedAddressException"
+            ) {
+                return true
+            }
+
+            current = current.cause
+        }
+
+        return false
+    }
+
+    private fun String.asUrlHost(): String {
+        if (!contains(':')) return this
+
+        val unwrappedHost = removePrefix("[").removeSuffix("]")
+        return "[$unwrappedHost]"
     }
 }

@@ -7,5 +7,5 @@ data class FileOfferRequest(
     val senderDeviceId: String,
     val senderDeviceName: String,
     val files: List<FileOfferItem>,
-    val totalSizeBytes: Long?
+    val totalSizeBytes: Long
 )

@@ -1,7 +1,8 @@
 package com.liftley.sync360.data.network.tcp
 
-import com.liftley.sync360.data.file.AndroidDownloadsWriter
-import com.liftley.sync360.domain.model.FileTransferOffer
+import com.liftley.sync360.data.file.DownloadsWriter
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.domain.model.FileTransferProgress
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,12 +14,13 @@ import kotlinx.coroutines.withContext
 import java.io.BufferedInputStream
 import java.io.DataInputStream
 import java.io.DataOutputStream
+import java.io.InputStream
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.time.Duration.Companion.milliseconds
 
 class AndroidFileTransferReceiver(
-    private val downloadsWriter: AndroidDownloadsWriter
+    private val downloadsWriter: DownloadsWriter<InputStream>
 ) : FileTransferReceiver {
 
     private val receiverScope = CoroutineScope(
@@ -28,10 +30,11 @@ class AndroidFileTransferReceiver(
     private var serverSocket: ServerSocket? = null
 
     @Volatile
-    private var expectedFileOffer: FileTransferOffer? = null
+    private var expectedFileOffer: FileOfferRequest? = null
 
     private var nextExpectedFileIndex: Int = 0
     private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
+    private var onProgress: ((FileTransferProgress) -> Unit)? = null
     private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
     private var waitingForSenderTimeout: Job? = null
 
@@ -66,17 +69,17 @@ class AndroidFileTransferReceiver(
 
     @Synchronized
     override fun prepareForTransfer(
-        fileOffer: FileTransferOffer,
+        fileOffer: FileOfferRequest,
         onFileSaved: (completedFileCount: Int) -> Unit,
+        onProgress: (FileTransferProgress) -> Unit,
         onTransferFinished: (wasSuccessful: Boolean) -> Unit
     ) {
         expectedFileOffer = fileOffer
         nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
+        this.onProgress = onProgress
         this.onTransferFinished = onTransferFinished
-        startWaitingForSenderTimeout(
-            timeoutMillis = WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS
-        )
+        startWaitingForSenderTimeout()
     }
 
     @Synchronized
@@ -85,6 +88,7 @@ class AndroidFileTransferReceiver(
         expectedFileOffer = null
         nextExpectedFileIndex = 0
         onFileSaved = null
+        onProgress = null
         onTransferFinished = null
     }
 
@@ -92,12 +96,12 @@ class AndroidFileTransferReceiver(
         waitingForSenderTimeout?.cancel()
 
         senderSocket.use { socket ->
-            socket.soTimeout = SOCKET_TIMEOUT_MILLIS
+            socket.soTimeout = FileTransferConstants.SOCKET_TIMEOUT_MILLIS
 
             val socketInput = DataInputStream(
                 BufferedInputStream(
                     socket.getInputStream(),
-                    FILE_BUFFER_SIZE_BYTES
+                    FileTransferConstants.PAYLOAD_BUFFER_SIZE_BYTES
                 )
             )
 
@@ -106,6 +110,10 @@ class AndroidFileTransferReceiver(
             try {
                 val fileOffer = expectedFileOffer
                     ?: error("No accepted file offer is waiting")
+                val progressTracker = FileTransferProgressTracker(
+                    totalBytes = fileOffer.totalSizeBytes,
+                    onProgress = { progress -> onProgress?.invoke(progress) }
+                )
 
                 fileOffer.files.forEach { expectedFile ->
                     val receivedFileIndex = socketInput.readInt()
@@ -132,7 +140,8 @@ class AndroidFileTransferReceiver(
                         fileName = expectedFile.fileName,
                         mimeType = expectedFile.mimeType,
                         fileSizeBytes = expectedFileSize,
-                        input = socketInput
+                        input = socketInput,
+                        onBytesWritten = progressTracker::addBytes
                     )
 
                     markCurrentFileComplete(
@@ -177,16 +186,19 @@ class AndroidFileTransferReceiver(
         expectedFileOffer = null
         nextExpectedFileIndex = 0
         onFileSaved = null
+        onProgress = null
         onTransferFinished = null
 
         completionCallback?.invoke(wasSuccessful)
     }
 
-    private fun startWaitingForSenderTimeout(timeoutMillis: Long) {
+    private fun startWaitingForSenderTimeout() {
         waitingForSenderTimeout?.cancel()
 
         waitingForSenderTimeout = receiverScope.launch {
-            delay(timeoutMillis.milliseconds)
+            delay(
+                FileTransferConstants.WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS.milliseconds
+            )
             finishTransfer(wasSuccessful = false)
         }
     }
@@ -197,11 +209,5 @@ class AndroidFileTransferReceiver(
     ) {
         output.writeBoolean(wasSaved)
         output.flush()
-    }
-
-    private companion object {
-        const val FILE_BUFFER_SIZE_BYTES = 256 * 1024
-        const val SOCKET_TIMEOUT_MILLIS = 60_000
-        const val WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS = 10_000L
     }
 }
