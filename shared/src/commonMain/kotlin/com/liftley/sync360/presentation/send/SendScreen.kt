@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.SecondaryTabRow
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -26,7 +27,9 @@ import com.liftley.sync360.presentation.send.model.SendTab
 import org.koin.compose.koinInject
 
 @Composable
-fun SendScreen() {
+fun SendScreen(
+    onTroubleshootClick: () -> Unit
+) {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
     val screenState by sendScreenViewModel.screenState.collectAsStateWithLifecycle()
 
@@ -78,7 +81,6 @@ fun SendScreen() {
                 NearbyDevicesSection(
                     screenState = screenState,
                     onReloadClick = sendScreenViewModel::restartDiscoveryServices,
-                    onRepairClick = sendScreenViewModel::repairNetworkServices,
                     onDeviceClick = { device ->
                         if (screenState.selectedTab == SendTab.Text) {
                             sendScreenViewModel.sendTextToDevice(device.id)
@@ -89,6 +91,10 @@ fun SendScreen() {
                         }
                     }
                 )
+
+                TextButton(onClick = onTroubleshootClick) {
+                    Text("Troubleshoot")
+                }
             }
         }
 

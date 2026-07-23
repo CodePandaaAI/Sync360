@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -56,8 +57,11 @@ fun NearbyDeviceEmptyCard(
             verticalArrangement = Arrangement.spacedBy(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            if (status != DiscoveryStatus.Idle) {
-                CircularWavyProgressIndicator()
+            when(status) {
+                DiscoveryStatus.Starting -> LoadingIndicator()
+                DiscoveryStatus.Stopping -> LoadingIndicator()
+                DiscoveryStatus.Running -> CircularWavyProgressIndicator()
+                else -> {}
             }
             Text(
                 title,

@@ -3,7 +3,6 @@ package com.liftley.sync360.presentation.receive
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.IncomingServerRequestsController
-import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.domain.repository.ClipboardProvider
@@ -17,13 +16,11 @@ import kotlinx.coroutines.launch
 class ReceiveScreenViewModel(
     private val incomingServerRequestsController: IncomingServerRequestsController,
     private val clipboardProvider: ClipboardProvider,
-    private val downloadsFolderOpener: DownloadsFolderOpener,
-    private val networkServicesController: NetworkServicesController
+    private val downloadsFolderOpener: DownloadsFolderOpener
 ) : ViewModel() {
 
     private val _screenState = MutableStateFlow<ReceiveScreenState>(ReceiveScreenState.Idle)
     val screenState: StateFlow<ReceiveScreenState> = _screenState.asStateFlow()
-    val discoveryStatus = networkServicesController.discoveryServiceStatus
 
     init {
         viewModelScope.launch {
@@ -49,11 +46,6 @@ class ReceiveScreenViewModel(
         downloadsFolderOpener.openDownloads()
     }
 
-    fun repairNetworkServices() {
-        viewModelScope.launch {
-            networkServicesController.repairNetworkServices()
-        }
-    }
 }
 
 private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {

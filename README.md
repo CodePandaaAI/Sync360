@@ -53,7 +53,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Select images, videos, documents, and multiple files.
 - Show file metadata to the receiver before any file bytes are sent.
 - Stream file bytes directly over raw TCP without loading an entire file into memory.
-- Save received files into public Android Downloads through `MediaStore`.
+- Save received files into public Android Downloads through `MediaStore`, preserving the extension when duplicate names are resolved.
 - Delete the incomplete current file if its receive operation fails or is cancelled.
 - Send files sequentially with a save acknowledgement after each file.
 - Cancel a pending send or active file transfer on a best-effort basis.
@@ -64,6 +64,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
 - Copy received text and open the Downloads folder on Desktop.
+- Open connection troubleshooting from Send, Receive, or the top app bar, then manually restart local discovery and service advertising without resetting the app or removing received files.
 
 ### Still needs work
 
@@ -126,7 +127,7 @@ Platform file picker
 
 One TCP socket is opened for the complete accepted batch. Each file begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the index and size against the accepted offer before saving the file, then sends one save acknowledgement before the sender continues. The current shared payload buffer is 512 KiB; TCP correctness does not depend on sender and receiver reads using identical chunk boundaries.
 
-Files are sent sequentially. If a later file fails, files that were already completed stay in Downloads; the incomplete current file is cleaned up. Android uses a pending `MediaStore` entry, while Desktop writes a temporary `.part` file before moving a completed file into place.
+Files are sent sequentially. If a later file fails, files that were already completed stay in Downloads; the incomplete current file is cleaned up. Android uses a pending `MediaStore` entry and resolves its MIME type from the filename extension so duplicate names remain in the form `file (1).ext`. Desktop writes a temporary `.part` file before moving a completed file into place without overwriting an existing name.
 
 ## A small performance note
 
@@ -230,6 +231,8 @@ macOS/Linux:
 
 Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
 
+If devices still cannot discover this device or fail to connect after a network change, open **Settings** from the top app bar or select **Troubleshoot** on Send or Receive, then use **Repair connection**. Repair restarts local discovery and advertises Sync360 again; it does not reset the app or remove received files.
+
 ## Security warning
 
 Sync360 is **not secure for untrusted networks yet**.
@@ -253,7 +256,7 @@ Use the current app only for development and testing on private networks you con
 
 - Desktop packaging, release workflow, and broader compatibility testing.
 - iOS investigation and implementation.
-- Better cross-device UX and troubleshooting.
+- More actionable connection errors and broader troubleshooting guidance.
 - Retry or resume support where the added protocol complexity is justified.
 
 Sync360 is not trying to become a chat app, cloud-sync product, or permanent device manager. The product direction stays focused:

@@ -18,10 +18,11 @@ import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import org.koin.compose.koinInject
 
 @Composable
-fun ReceiveScreen() {
+fun ReceiveScreen(
+    onTroubleshootClick: () -> Unit
+) {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
-    val discoveryStatus by receiveScreenViewModel.discoveryStatus.collectAsStateWithLifecycle()
     Sync360Surface(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -29,8 +30,7 @@ fun ReceiveScreen() {
         when (val state = receiveScreenState) {
             ReceiveScreenState.Idle -> {
                 IdleReceiveStateUi(
-                    discoveryStatus = discoveryStatus,
-                    onRepairClick = receiveScreenViewModel::repairNetworkServices
+                    onTroubleshootClick = onTroubleshootClick
                 )
             }
 

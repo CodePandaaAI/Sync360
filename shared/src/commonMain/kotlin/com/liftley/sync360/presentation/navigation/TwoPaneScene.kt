@@ -58,6 +58,14 @@ class TwoPaneSceneStrategy<T : Any>(
             return null
         }
 
+        val currentEntry = entries.lastOrNull() ?: return null
+        if (
+            TwoPaneScene.FirstPaneKey !in currentEntry.metadata &&
+            TwoPaneScene.SecondPaneKey !in currentEntry.metadata
+        ) {
+            return null
+        }
+
         val firstEntry = entries.findLast {
             TwoPaneScene.FirstPaneKey in it.metadata
         } ?: return null

@@ -18,8 +18,10 @@ class NavigationViewModel : ViewModel() {
     }
 
     fun removeLast() {
-        if (checkCurrentTop() == NavScreen.ReceiveScreen) {
-            addScreen(NavScreen.SendScreen)
+        when (checkCurrentTop()) {
+            NavScreen.SettingsScreen -> backstack.removeLast()
+            NavScreen.ReceiveScreen -> addScreen(NavScreen.SendScreen)
+            NavScreen.SendScreen -> Unit
         }
     }
 

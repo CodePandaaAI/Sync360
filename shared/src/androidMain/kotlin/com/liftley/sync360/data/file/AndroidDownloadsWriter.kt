@@ -4,6 +4,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.os.Environment
 import android.provider.MediaStore
+import android.webkit.MimeTypeMap
 import com.liftley.sync360.data.network.tcp.FileTransferConstants
 import java.io.File
 import java.io.InputStream
@@ -19,13 +20,14 @@ class AndroidDownloadsWriter(
         onBytesWritten: (byteCount: Int) -> Unit
     ) {
         val safeFileName = File(fileName).name
+        val resolvedMimeType = resolveMimeType(
+            fileName = safeFileName,
+            providedMimeType = mimeType
+        )
 
         val fileDetails = ContentValues().apply {
             put(MediaStore.Downloads.DISPLAY_NAME, safeFileName)
-            put(
-                MediaStore.Downloads.MIME_TYPE,
-                mimeType ?: "application/octet-stream"
-            )
+            put(MediaStore.Downloads.MIME_TYPE, resolvedMimeType)
             put(
                 MediaStore.Downloads.RELATIVE_PATH,
                 Environment.DIRECTORY_DOWNLOADS
@@ -87,4 +89,21 @@ class AndroidDownloadsWriter(
         }
     }
 
+    private fun resolveMimeType(
+        fileName: String,
+        providedMimeType: String?
+    ): String {
+        val extension = fileName.substringAfterLast('.', "").lowercase()
+        val extensionMimeType = MimeTypeMap.getSingleton()
+            .getMimeTypeFromExtension(extension)
+            ?: return DEFAULT_MIME_TYPE
+
+        return providedMimeType
+            ?.takeIf { it.equals(extensionMimeType, ignoreCase = true) }
+            ?: extensionMimeType
+    }
+
+    private companion object {
+        const val DEFAULT_MIME_TYPE = "application/octet-stream"
+    }
 }

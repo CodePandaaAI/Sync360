@@ -11,18 +11,16 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
-import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.presentation.app.components.NetworkRepairAction
 
 @Composable
 fun IdleReceiveStateUi(
-    discoveryStatus: DiscoveryStatus,
-    onRepairClick: () -> Unit
+    onTroubleshootClick: () -> Unit
 ) {
     Box(
         modifier = Modifier
@@ -58,12 +56,9 @@ fun IdleReceiveStateUi(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
-            NetworkRepairAction(
-                enabled = discoveryStatus == DiscoveryStatus.Idle ||
-                    discoveryStatus == DiscoveryStatus.Running,
-                onRepairClick = onRepairClick,
-                modifier = Modifier.fillMaxWidth()
-            )
+            TextButton(onClick = onTroubleshootClick) {
+                Text("Troubleshoot")
+            }
         }
     }
 }
