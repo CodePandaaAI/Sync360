@@ -101,14 +101,16 @@ Accepted file bytes use a separate raw TCP connection:
 
 ```text
 one connection for the accepted batch
-  -> file index: Int
-  -> promised file size: Long
-  -> exactly promised-size bytes
-  -> receiver save acknowledgement: Boolean
-  -> repeat for the next file
+  -> repeat for each accepted file:
+       -> file index: Int
+       -> promised file size: Long
+       -> exactly promised-size bytes
+  -> sender flushes after the complete batch
+  -> receiver result: Boolean
+  -> completed-file count: Int
 ```
 
-Files remain sequential. The receiver verifies each index and size against the accepted offer before saving. It acknowledges a file only after the platform Downloads writer completes it.
+Files remain sequential. The receiver verifies each index and size directly against the matching file in the accepted offer before saving. It increments the completed-file count only after the platform Downloads writer returns successfully. After every file has been processed, the receiver sends one final success flag and completed count. If processing fails, it attempts to send `false` with the number of files that were fully saved.
 
 `FileTransferConstants` currently provides:
 
@@ -117,7 +119,7 @@ Files remain sequential. The receiver verifies each index and size against the a
 - 60-second connected-socket timeout
 - 10-second wait for the first file connection after acceptance
 
-The sender and receiver do not need matching read boundaries because TCP is a byte stream; exact file sizes define the protocol framing.
+The sender and receiver do not need matching read boundaries because TCP is a byte stream; exact file sizes define the protocol framing. Flushing once after the batch makes any remaining buffered bytes available before the sender waits for the final result, but the flush does not define file boundaries.
 
 ## Platform storage
 

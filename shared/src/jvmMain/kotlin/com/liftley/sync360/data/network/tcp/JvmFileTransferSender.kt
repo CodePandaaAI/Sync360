@@ -37,8 +37,6 @@ class JvmFileTransferSender : FileTransferSender {
             }
 
             connectToDevice(deviceToSendFiles).use { socket ->
-                activeSocket.set(socket)
-
                 try {
                     currentCoroutineContext().ensureActive()
                     socket.soTimeout = FileTransferConstants.SOCKET_TIMEOUT_MILLIS
@@ -64,10 +62,18 @@ class JvmFileTransferSender : FileTransferSender {
                             fileIndex = fileIndex,
                             file = file,
                             socketOutput = socketOutput,
-                            socketInput = socketInput,
                             buffer = buffer,
                             progressTracker = progressTracker
                         )
+                    }
+
+                    socketOutput.flush()
+
+                    val receiverSavedTransferSuccessfully = socketInput.readBoolean()
+                    val completedFileCount = socketInput.readInt()
+
+                    check(receiverSavedTransferSuccessfully && completedFileCount == files.size) {
+                        "Receiver saved $completedFileCount of ${files.size} files"
                     }
                 } finally {
                     activeSocket.compareAndSet(socket, null)
@@ -87,7 +93,6 @@ class JvmFileTransferSender : FileTransferSender {
         fileIndex: Int,
         file: SelectedFile,
         socketOutput: DataOutputStream,
-        socketInput: DataInputStream,
         buffer: ByteArray,
         progressTracker: FileTransferProgressTracker
     ) {
@@ -125,12 +130,6 @@ class JvmFileTransferSender : FileTransferSender {
                 bytesRemaining -= bytesRead
                 progressTracker.addBytes(bytesRead)
             }
-
-            socketOutput.flush()
-
-            if (!socketInput.readBoolean()) {
-                error("Receiver could not save ${file.displayName}")
-            }
         }
     }
 
@@ -157,5 +156,4 @@ class JvmFileTransferSender : FileTransferSender {
 
         throw lastFailure ?: error("No address is available for ${device.deviceName}")
     }
-
 }

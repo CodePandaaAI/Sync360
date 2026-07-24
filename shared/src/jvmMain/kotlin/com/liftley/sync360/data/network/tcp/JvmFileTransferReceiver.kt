@@ -30,8 +30,6 @@ class JvmFileTransferReceiver(
 
     @Volatile
     private var expectedFileOffer: FileOfferRequest? = null
-
-    private var nextExpectedFileIndex: Int = 0
     private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
     private var onProgress: ((FileTransferProgress) -> Unit)? = null
     private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
@@ -69,7 +67,6 @@ class JvmFileTransferReceiver(
         onTransferFinished: (wasSuccessful: Boolean) -> Unit
     ) {
         expectedFileOffer = fileOffer
-        nextExpectedFileIndex = 0
         this.onFileSaved = onFileSaved
         this.onProgress = onProgress
         this.onTransferFinished = onTransferFinished
@@ -80,7 +77,6 @@ class JvmFileTransferReceiver(
     override fun clearExpectedTransfer() {
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
-        nextExpectedFileIndex = 0
         onFileSaved = null
         onProgress = null
         onTransferFinished = null
@@ -100,29 +96,35 @@ class JvmFileTransferReceiver(
             )
             val socketOutput = DataOutputStream(socket.getOutputStream())
 
+            var completedFileCount = 0
+
             try {
                 val fileOffer = expectedFileOffer
                     ?: error("No accepted file offer is waiting")
+
                 val progressTracker = FileTransferProgressTracker(
                     totalBytes = fileOffer.totalSizeBytes,
-                    onProgress = { progress -> onProgress?.invoke(progress) }
+                    onProgress = { progress ->
+                        onProgress?.invoke(progress)
+                    }
                 )
 
                 fileOffer.files.forEach { expectedFile ->
                     val receivedFileIndex = socketInput.readInt()
                     val receivedFileSize = socketInput.readLong()
 
-                    if (receivedFileIndex != nextExpectedFileIndex) {
+                    if (receivedFileIndex != expectedFile.index) {
                         error(
-                            "Expected file index $nextExpectedFileIndex " +
-                                "but received $receivedFileIndex"
+                            "Expected file index ${expectedFile.index}, " +
+                                    "but received $receivedFileIndex"
                         )
                     }
-                    if (expectedFile.index != receivedFileIndex) {
-                        error("File index does not match the accepted offer")
-                    }
+
                     if (receivedFileSize != expectedFile.fileSizeBytes) {
-                        error("File size does not match the accepted offer")
+                        error(
+                            "Expected file size ${expectedFile.fileSizeBytes}, " +
+                                    "but received $receivedFileSize"
+                        )
                     }
 
                     downloadsWriter.writeFile(
@@ -133,28 +135,28 @@ class JvmFileTransferReceiver(
                         onBytesWritten = progressTracker::addBytes
                     )
 
-                    markCurrentFileComplete(receivedFileIndex)
-                    sendSaveResult(socketOutput, wasSaved = true)
+                    completedFileCount++
+                    onFileSaved?.invoke(completedFileCount)
                 }
+
+                // Send only one result after every file has been saved.
+                socketOutput.writeBoolean(true)
+                socketOutput.writeInt(completedFileCount)
+                socketOutput.flush()
 
                 finishTransfer(wasSuccessful = true)
             } catch (exception: Exception) {
                 exception.printStackTrace()
 
                 runCatching {
-                    sendSaveResult(socketOutput, wasSaved = false)
+                    socketOutput.writeBoolean(false)
+                    socketOutput.writeInt(completedFileCount)
+                    socketOutput.flush()
                 }
+
                 finishTransfer(wasSuccessful = false)
             }
         }
-    }
-
-    @Synchronized
-    private fun markCurrentFileComplete(completedFileIndex: Int) {
-        if (completedFileIndex != nextExpectedFileIndex) return
-
-        nextExpectedFileIndex++
-        onFileSaved?.invoke(nextExpectedFileIndex)
     }
 
     @Synchronized
@@ -163,7 +165,6 @@ class JvmFileTransferReceiver(
 
         waitingForSenderTimeout?.cancel()
         expectedFileOffer = null
-        nextExpectedFileIndex = 0
         onFileSaved = null
         onProgress = null
         onTransferFinished = null
@@ -180,10 +181,4 @@ class JvmFileTransferReceiver(
             finishTransfer(wasSuccessful = false)
         }
     }
-
-    private fun sendSaveResult(output: DataOutputStream, wasSaved: Boolean) {
-        output.writeBoolean(wasSaved)
-        output.flush()
-    }
-
 }

@@ -55,7 +55,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Stream file bytes directly over raw TCP without loading an entire file into memory.
 - Save received files into public Android Downloads through `MediaStore`, preserving the extension when duplicate names are resolved.
 - Delete the incomplete current file if its receive operation fails or is cancelled.
-- Send files sequentially with a save acknowledgement after each file.
+- Stream each accepted file batch continuously, then confirm the batch with one final receiver result.
 - Cancel a pending send or active file transfer on a best-effort basis.
 - Show batch-wide byte percentage while files are being sent and received.
 - Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
@@ -122,10 +122,10 @@ Platform file picker
   -> platform FileTransferSender opens an InputStream
   -> one raw TCP connection streams the accepted file batch
   -> platform DownloadsWriter saves each file
-  -> receiver acknowledges that the file was saved
+  -> receiver returns final success and completed-file count
 ```
 
-One TCP socket is opened for the complete accepted batch. Each file begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the index and size against the accepted offer before saving the file, then sends one save acknowledgement before the sender continues. The current shared payload buffer is 512 KiB; TCP correctness does not depend on sender and receiver reads using identical chunk boundaries.
+One TCP socket is opened for the complete accepted batch. Each file begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the index and size against the accepted offer before saving each file. The sender writes every file sequentially, flushes once after the complete batch, then reads one final success flag and completed-file count from the receiver. The count increases only after the platform Downloads writer successfully returns. The current shared payload buffer is 512 KiB; exact byte counts define file boundaries, so correctness does not depend on `flush()` calls or matching sender and receiver read chunks.
 
 Files are sent sequentially. If a later file fails, files that were already completed stay in Downloads; the incomplete current file is cleaned up. Android uses a pending `MediaStore` entry and resolves its MIME type from the filename extension so duplicate names remain in the form `file (1).ext`. Desktop writes a temporary `.part` file before moving a completed file into place without overwriting an existing name.
 

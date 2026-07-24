@@ -51,11 +51,12 @@ Raw TCP is the file data plane:
 
 ```text
 one connection per accepted batch
-  -> file index
-  -> promised byte count
-  -> exact file bytes
-  -> save acknowledgement
-  -> next file
+  -> repeat for each file:
+       -> file index
+       -> promised byte count
+       -> exact file bytes
+  -> sender flushes once
+  -> receiver returns final success and completed-file count
 ```
 
 Current shared transfer constants use a 512 KiB payload buffer, 5-second connect timeout, 60-second connected-socket timeout, and 10-second wait for the first file connection after acceptance.
