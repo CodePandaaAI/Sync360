@@ -39,6 +39,7 @@ import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
 import com.liftley.sync360.core.designsystem.icons.Settings
 import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.navigation.NavScreen
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
 import com.liftley.sync360.presentation.navigation.TwoPaneScene
@@ -69,6 +70,17 @@ fun Sync360Root() {
     val twoPaneStrategy = remember(windowSizeClass) {
         TwoPaneSceneStrategy<NavScreen>(windowSizeClass)
     }
+    val discoveryIsStable =
+        sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
+            sendScreenState.discoveryStatus == DiscoveryStatus.Running
+    val registrationIsStable =
+        sendScreenState.registrationStatus == RegistrationStatus.Idle ||
+            sendScreenState.registrationStatus == RegistrationStatus.Running
+    val repairEnabled =
+        sendScreenState.sendOperationState == SendOperationState.Idle &&
+            receiveScreenState == ReceiveScreenState.Idle &&
+            discoveryIsStable &&
+            registrationIsStable
 
     val receiveTitle = when (receiveScreenState) {
         ReceiveScreenState.Idle -> "Receive"
@@ -228,10 +240,7 @@ fun Sync360Root() {
                 is NavScreen.SettingsScreen -> {
                     NavEntry(key = screen) {
                         SettingsScreen(
-                            repairEnabled = sendScreenState.sendOperationState == SendOperationState.Idle &&
-                                    receiveScreenState == ReceiveScreenState.Idle &&
-                                    (sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
-                                            sendScreenState.discoveryStatus == DiscoveryStatus.Running),
+                            repairEnabled = repairEnabled,
                             onRepairClick = sendScreenViewModel::repairNetworkServices
                         )
                     }

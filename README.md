@@ -60,7 +60,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Show batch-wide byte percentage while files are being sent and received.
 - Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
 - Run the shared Send/Receive UI on Desktop, with an adaptive 50/50 two-pane layout in wider windows.
-- Discover and advertise Desktop devices through JmDNS using the same DNS-SD service as Android.
+- Discover and advertise Desktop devices through JmDNS on eligible IPv4 and IPv6 LAN addresses using the same DNS-SD service as Android.
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
 - Copy received text and open the Downloads folder on Desktop.
@@ -72,7 +72,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - File integrity hashes/checksums.
 - Rich receiver-side failure details and per-file results.
 - More robust discovery, server, foreground/background, and cleanup lifecycles.
-- Better IP address selection and IPv6 handling.
+- Broader IPv6 transfer validation and better address preference/selection.
 - Retry, pause/resume, and interrupted-transfer recovery.
 - Automated transfer coverage and broader device/router testing.
 - Broader Desktop validation across Windows, macOS, Linux, routers, firewalls, VPNs, and machines with multiple network adapters.
@@ -97,6 +97,8 @@ flowchart LR
 ```
 
 Android uses `NsdManager`; Desktop uses JmDNS. Both advertise the `_sync360._tcp.` DNS-SD service with a stable per-install device ID, device details, protocol version, an OS-assigned HTTP port, and a separate OS-assigned file-transfer port.
+
+Android and Desktop start the shared network controller from their application entry points after Koin is ready. Discovery and registration have separate lifecycle states, and the 60-second discovery window begins only after discovery reports `Running`. A normal Reload restarts only discovery while registration remains active; connection repair stops and recreates both operations after their current platform callbacks reach stable states.
 
 ### Text path
 
@@ -232,6 +234,8 @@ macOS/Linux:
 Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
 
 If devices still cannot discover this device or fail to connect after a network change, open **Settings** from the top app bar or select **Troubleshoot** on Send or Receive, then use **Repair connection**. Repair restarts local discovery and advertises Sync360 again; it does not reset the app or remove received files.
+
+Reload is available only after the current discovery window has stopped while service registration is still running. Repair is enabled only while sending, receiving, discovery, and registration are in states where restarting them is safe.
 
 ## Security warning
 

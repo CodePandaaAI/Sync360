@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.send.model.NearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
@@ -27,6 +28,10 @@ fun NearbyDevicesSection(
     onReloadClick: () -> Unit,
     onDeviceClick: (NearbyDeviceUiModel) -> Unit
 ) {
+    val reloadEnabled =
+        screenState.discoveryStatus == DiscoveryStatus.Idle &&
+            screenState.registrationStatus == RegistrationStatus.Running
+
     Sync360Surface {
         Column(
             modifier = Modifier
@@ -49,7 +54,7 @@ fun NearbyDevicesSection(
                         containerColor = MaterialTheme.colorScheme.surfaceContainer
                     ),
                     modifier = Modifier.height(48.dp),
-                    enabled = screenState.discoveryStatus == DiscoveryStatus.Idle,
+                    enabled = reloadEnabled,
                     onClick = onReloadClick
                 ) {
                     Icon(
@@ -68,6 +73,7 @@ fun NearbyDevicesSection(
 
             NearbyDeviceEmptyCard(
                 status = screenState.discoveryStatus,
+                reloadEnabled = reloadEnabled,
                 onReloadClick = onReloadClick
             )
         }

@@ -13,9 +13,9 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 ```text
 app starts
   -> Koin creates common services and platform implementations
-  -> SendScreenViewModel starts NetworkServicesController
-  -> FileTransferReceiver opens an OS-assigned TCP port
+  -> Android or Desktop entry point starts NetworkServicesController once
   -> Sync360HttpServer opens an OS-assigned HTTP port
+  -> FileTransferReceiver opens an OS-assigned TCP port
   -> NetworkServices advertises both ports through DNS-SD/mDNS
   -> nearby Sync360 devices are resolved into NearbyDevice
   -> sender posts a text or file offer through Ktor HTTP
@@ -68,7 +68,7 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 
 ### Controllers
 
-- `NetworkServicesController` starts the file receiver, HTTP server, and discovery/registration in the required order.
+- `NetworkServicesController` starts the HTTP server, file receiver, and discovery/registration once for the application lifetime. It also coordinates timed discovery stop, discovery restart, and full connection repair.
 - `OutgoingRequestsController` creates offers, calls the Ktor client, and starts accepted file transfers.
 - `IncomingServerRequestsController` exposes incoming offers and receiver decisions to the HTTP server and Receive UI.
 
@@ -81,7 +81,11 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 
 Both advertise a stable device UUID, device name/type, protocol version, dynamic HTTP port, and dynamic file-transfer port. A device filters its own UUID from discovery results.
 
-The current Desktop implementation selects the first active, non-loopback, non-virtual, site-local IPv4 interface. Machines with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters still need broader validation.
+Discovery and registration expose independent `StateFlow` values. Each can be `Idle`, `Starting`, `Running`, or `Stopping`, and lifecycle commands are accepted only from compatible states. The controller derives the 60-second discovery window from `DiscoveryStatus.Running`, so platform startup time does not consume the scan window. Reload starts discovery again only while registration is still running.
+
+Connection repair waits until both operations are stable, then stops discovery and registration, clears stale devices, and advertises the existing HTTP and TCP ports again. Android advances repair from `NsdManager` callbacks instead of fixed callback timeouts. JVM repair closes and recreates its JmDNS instances; an instance that fails to close remains tracked so a later repair can retry cleanup.
+
+The Desktop implementation starts JmDNS on eligible IPv4 and IPv6 addresses from every active, multicast-capable, non-loopback, non-virtual LAN interface. Machines with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters still need broader validation.
 
 ## Control plane: Ktor HTTP
 
@@ -93,7 +97,7 @@ POST /sync360/text/transfer
 POST /sync360/file/offer
 ```
 
-An offer waits up to 55 seconds for the receiver's decision. File metadata is converted from HTTP DTOs into the shared `FileTransferOffer` domain model at the Ktor boundary.
+An offer waits up to 55 seconds for the receiver's decision. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents still remain in platform file readers and are not placed in the HTTP request.
 
 ## File data plane: raw TCP
 
@@ -117,7 +121,7 @@ Files remain sequential. The receiver verifies each index and size directly agai
 - 512 KiB payload buffers
 - 5-second connect timeout
 - 60-second connected-socket timeout
-- 10-second wait for the first file connection after acceptance
+- 30-second wait for the first file connection after acceptance
 
 The sender and receiver do not need matching read boundaries because TCP is a byte stream; exact file sizes define the protocol framing. Flushing once after the batch makes any remaining buffered bytes available before the sender waits for the final result, but the flush does not define file boundaries.
 
@@ -132,7 +136,7 @@ Previously completed files remain when a later file in the same batch fails.
 
 - No authentication, encryption, session token, or cryptographic integrity check.
 - No retry, pause/resume, or interrupted-transfer recovery.
-- Foreground/background and network-change lifecycle handling are not complete.
+- Foreground/background and automatic network-change lifecycle handling are not complete.
 - Receiver failures do not yet provide rich error details.
 - Host selection still uses the first resolved address.
 - Desktop interface selection and firewall behavior need broader validation.

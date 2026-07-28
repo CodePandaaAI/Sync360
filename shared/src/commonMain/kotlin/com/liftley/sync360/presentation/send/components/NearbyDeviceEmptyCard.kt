@@ -25,6 +25,7 @@ import com.liftley.sync360.domain.model.DiscoveryStatus
 @Composable
 fun NearbyDeviceEmptyCard(
     status: DiscoveryStatus = DiscoveryStatus.Running,
+    reloadEnabled: Boolean = false,
     onReloadClick: () -> Unit = {}
 ) {
     val title = when (status) {
@@ -35,7 +36,9 @@ fun NearbyDeviceEmptyCard(
     }
 
     val subtitle = when (status) {
-        DiscoveryStatus.Idle -> "Tap to rescan"
+        DiscoveryStatus.Idle -> {
+            if (reloadEnabled) "Tap to rescan" else "Use connection repair in Settings"
+        }
         DiscoveryStatus.Starting -> "Preparing nearby scan"
         DiscoveryStatus.Running -> "Keep both devices on the same Wi-Fi"
         DiscoveryStatus.Stopping -> "Cleaning up current scan"
@@ -46,7 +49,7 @@ fun NearbyDeviceEmptyCard(
             .fillMaxWidth()
             .clip(MaterialTheme.shapes.large)
             .clickable(
-                enabled = status == DiscoveryStatus.Idle,
+                enabled = reloadEnabled,
                 onClick = onReloadClick
             )
             .background(MaterialTheme.colorScheme.surfaceContainer),

@@ -37,10 +37,6 @@ class SendScreenViewModel(
 
     init {
         viewModelScope.launch {
-            networkServicesController.startNetworkServices()
-        }
-
-        viewModelScope.launch {
             networkServicesController.nearbyDevices.collect { devices ->
                 latestNearbyDevices = devices
 
@@ -58,6 +54,14 @@ class SendScreenViewModel(
             networkServicesController.discoveryServiceStatus.collect { status ->
                 _screenState.update {
                     it.copy(discoveryStatus = status)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            networkServicesController.registrationServiceStatus.collect { status ->
+                _screenState.update {
+                    it.copy(registrationStatus = status)
                 }
             }
         }

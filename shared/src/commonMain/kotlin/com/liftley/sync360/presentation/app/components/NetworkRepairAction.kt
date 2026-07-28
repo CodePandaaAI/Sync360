@@ -4,9 +4,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,23 +26,18 @@ fun NetworkRepairAction(
                 .fillMaxWidth()
                 .padding(16.dp),
             horizontalAlignment = Alignment.Start,
-            verticalArrangement = Arrangement.spacedBy(Spacing.sm)
+            verticalArrangement = Arrangement.spacedBy(Spacing.lg)
         ) {
             Text(
                 text = "Connection repair",
-                style = MaterialTheme.typography.titleMedium
+                style = MaterialTheme.typography.titleLarge
             )
             Text(
-                text = "Use this if nearby devices cannot discover this device or fail to connect after the network changes.",
+                text = "Use this if nearby devices cannot discover this device or fail to connect after the network changes.\n\nRepair restarts local discovery and advertises Sync360 again. It does not remove received files or reset the app.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Text(
-                text = "Repair restarts local discovery and advertises Sync360 again. It does not remove received files or reset the app.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            TextButton(
+            Button(
                 onClick = onRepairClick,
                 enabled = enabled
             ) {

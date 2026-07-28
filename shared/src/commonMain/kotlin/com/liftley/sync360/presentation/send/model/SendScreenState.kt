@@ -1,6 +1,7 @@
 package com.liftley.sync360.presentation.send.model
 
 import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.domain.model.SelectedFile
 
 data class SendScreenState(
@@ -9,5 +10,6 @@ data class SendScreenState(
     val files: List<SelectedFile> = emptyList(),
     val sendOperationState: SendOperationState = SendOperationState.Idle,
     val nearbyDevices: List<NearbyDeviceUiModel> = emptyList(),
-    val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle
+    val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle,
+    val registrationStatus: RegistrationStatus = RegistrationStatus.Idle
 )

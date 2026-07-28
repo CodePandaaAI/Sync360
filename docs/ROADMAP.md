@@ -5,7 +5,10 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 ## Working now
 
 - Android DNS-SD/mDNS discovery and registration through `NsdManager`.
-- Desktop DNS-SD/mDNS discovery and registration through JmDNS.
+- Desktop DNS-SD/mDNS discovery and registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
+- Application-lifetime network startup with separate discovery and registration lifecycle states.
+- A 60-second discovery window derived from the platform-reported running state.
+- Manual discovery Reload while registration remains active, plus full connection repair when both lifecycle states are stable.
 - Dynamic HTTP and file-transfer ports advertised with device metadata.
 - Text offer, Accept/Decline, transfer, Copy, and Clear.
 - Android and Desktop multiple-file selection.
@@ -28,11 +31,11 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 ### Discovery and lifecycle
 
-- Repair registration automatically after network/address changes.
+- Detect network/address changes and repair registration automatically.
 - Add the appropriate Android foreground/background service behavior.
-- Improve Desktop LAN-interface selection for multi-adapter systems.
+- Validate Desktop LAN-interface selection on more multi-adapter systems.
 - Test more routers, hotspots, firewalls, VPNs, and multicast-restricted networks.
-- Improve IPv4/IPv6 host selection and URL handling.
+- Improve IPv4/IPv6 host preference and scoped-address URL handling.
 
 ### Security
 

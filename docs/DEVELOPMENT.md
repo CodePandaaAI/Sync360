@@ -61,7 +61,7 @@ Windows:
 6. Confirm completed files appear in Downloads.
 7. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
 
-For Desktop testing, also check systems with multiple adapters, VPNs, WSL, Docker, or virtual machines. The current JmDNS implementation selects one site-local IPv4 interface.
+For Desktop testing, also check IPv4 and IPv6 on systems with multiple adapters, VPNs, WSL, Docker, or virtual machines. JmDNS starts on eligible addresses from every active multicast-capable LAN interface, so each platform and adapter combination still needs manual validation.
 
 ## If discovery or transfer fails
 
@@ -76,9 +76,10 @@ For Desktop testing, also check systems with multiple adapters, VPNs, WSL, Docke
 
 Useful source locations:
 
-- `NetworkServicesController` — startup order and discovery window.
-- `AndroidNetworkServices` — Android NSD registration, discovery, and resolution.
-- `JvmNetworkServices` — JmDNS registration, discovery, and LAN-interface selection.
+- Android `Sync360Application` and Desktop `main` — one-time application network startup after Koin initialization.
+- `NetworkServicesController` — startup order, state-derived discovery window, restart, and repair coordination.
+- `AndroidNetworkServices` — callback-driven Android NSD registration, discovery, resolution, and repair.
+- `JvmNetworkServices` — JmDNS registration, discovery, repair cleanup, and IPv4/IPv6 LAN-interface selection.
 - `Sync360HttpServer` / `Sync360HttpClient` — offer and text routes.
 - `OutgoingRequestsController` / `IncomingServerRequestsController` — send/receive coordination.
 - platform `FileTransferSender`, `FileTransferReceiver`, and `DownloadsWriter` implementations — file bytes and storage.

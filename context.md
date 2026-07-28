@@ -13,7 +13,8 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Shared Compose Send/Receive UI, ViewModels, controllers, state, and Navigation 3.
 - Compact single-pane navigation and a 50/50 Send/Receive scene on wider windows.
 - Android discovery/registration through `NsdManager`.
-- Desktop discovery/registration through JmDNS.
+- Desktop discovery/registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
+- Application-lifetime network startup with separate discovery and registration lifecycle states.
 - Ktor HTTP offers, receiver decisions, metadata, and text payloads.
 - Raw TCP streaming for file bytes.
 - Multiple files sent sequentially over one accepted-batch connection.
@@ -59,12 +60,12 @@ one connection per accepted batch
   -> receiver returns final success and completed-file count
 ```
 
-Current shared transfer constants use a 512 KiB payload buffer, 5-second connect timeout, 60-second connected-socket timeout, and 10-second wait for the first file connection after acceptance.
+Current shared transfer constants use a 512 KiB payload buffer, 5-second connect timeout, 60-second connected-socket timeout, and 30-second wait for the first file connection after acceptance.
 
 ## Current priorities
 
 - Better receiver-side errors and per-file results.
-- Android registration repair after network/address changes.
+- Automatic registration repair after network/address changes.
 - Foreground/background lifecycle support.
 - Broader Desktop adapter, firewall, router, and operating-system validation.
 - Session validation, authentication, encryption, and integrity verification.

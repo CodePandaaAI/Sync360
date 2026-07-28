@@ -6,7 +6,7 @@ import com.liftley.sync360.domain.model.FileTransferProgress
 interface FileTransferReceiver {
     val port: Int
 
-    suspend fun start()
+    suspend fun start(): Int
 
     fun prepareForTransfer(
         fileOffer: FileOfferRequest,

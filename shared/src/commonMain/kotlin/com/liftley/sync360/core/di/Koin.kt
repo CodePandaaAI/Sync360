@@ -8,6 +8,7 @@ import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
 import com.liftley.sync360.presentation.receive.ReceiveScreenViewModel
 import com.liftley.sync360.presentation.send.SendScreenViewModel
+import org.koin.core.KoinApplication
 import org.koin.core.context.startKoin
 import org.koin.core.module.Module
 import org.koin.dsl.KoinAppDeclaration
@@ -40,8 +41,8 @@ val appModule = module {
     single<NetworkServicesController> { NetworkServicesController(get(), get(), get()) }
 }
 
-fun initKoin(platformModule: Module, appDeclaration: KoinAppDeclaration) {
-    startKoin {
+fun initKoinSync360(platformModule: Module, appDeclaration: KoinAppDeclaration): KoinApplication {
+    return startKoin {
         appDeclaration()
         modules(platformModule, appModule)
     }
