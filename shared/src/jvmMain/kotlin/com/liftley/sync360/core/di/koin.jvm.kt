@@ -9,6 +9,7 @@ import com.liftley.sync360.data.local.JvmClipboardProvider
 import com.liftley.sync360.data.local.JvmLocalDeviceIdentityStore
 import com.liftley.sync360.data.local.JvmLocalDeviceInfoProvider
 import com.liftley.sync360.data.network.discovery.JvmNetworkServices
+import com.liftley.sync360.data.network.discovery.windows.WindowsNetworkServices
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
 import com.liftley.sync360.data.network.tcp.FileTransferSender
 import com.liftley.sync360.data.network.tcp.JvmFileTransferReceiver
@@ -35,5 +36,15 @@ val jvmModule = module {
             deviceUuid = get<LocalDeviceIdentityStore>().getOrCreateDeviceUuid()
         )
     }
-    single<NetworkServices> { JvmNetworkServices(get()) }
+    single<NetworkServices> {
+        if (
+            System.getProperty("os.name")
+                .orEmpty()
+                .startsWith("Windows", ignoreCase = true)
+        ) {
+            WindowsNetworkServices(get())
+        } else {
+            JvmNetworkServices(get())
+        }
+    }
 }

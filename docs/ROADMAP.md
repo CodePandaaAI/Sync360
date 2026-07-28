@@ -1,11 +1,12 @@
 # Roadmap
 
-Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, request receiver approval, transfer text, and stream multiple files over the local network. Android is the most-tested platform; the Desktop/JVM implementation now exists and has initial Desktop-to-Android manual validation.
+Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, request receiver approval, transfer text, and stream multiple files over the local network. Android is the most-tested platform. Desktop-to-Android transfer has initial manual validation, and one Windows 11 Ethernet test confirmed prompt discovery and removal in both directions when the corresponding app opened or closed.
 
 ## Working now
 
 - Android DNS-SD/mDNS discovery and registration through `NsdManager`.
-- Desktop DNS-SD/mDNS discovery and registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
+- Windows DNS-SD/mDNS discovery and registration through the operating system `dnsapi.dll` API on all interfaces.
+- Current macOS/Linux DNS-SD/mDNS discovery and registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Application-lifetime network startup with separate discovery and registration lifecycle states.
 - A 60-second discovery window derived from the platform-reported running state.
 - Manual discovery Reload while registration remains active, plus full connection repair when both lifecycle states are stable.
@@ -33,6 +34,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 - Detect network/address changes and repair registration automatically.
 - Add the appropriate Android foreground/background service behavior.
+- Replace the remaining macOS/Linux JmDNS fallback with Bonjour and Avahi after the Windows-native path is validated.
 - Validate Desktop LAN-interface selection on more multi-adapter systems.
 - Test more routers, hotspots, firewalls, VPNs, and multicast-restricted networks.
 - Improve IPv4/IPv6 host preference and scoped-address URL handling.

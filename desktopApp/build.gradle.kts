@@ -1,9 +1,16 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinJvm)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_23)
+    }
 }
 
 dependencies {
@@ -22,6 +29,7 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.liftley.sync360.MainKt"
+        jvmArgs += listOf("--enable-native-access=ALL-UNNAMED")
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)

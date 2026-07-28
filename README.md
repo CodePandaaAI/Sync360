@@ -7,7 +7,7 @@
 
   Direct text and file sharing between Android and Desktop devices on the same local network.
 
-  [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+  [![Kotlin](https://img.shields.io/badge/Kotlin-2.4.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
   [![Compose Multiplatform](https://img.shields.io/badge/Compose%20Multiplatform-1.11.1-4285F4)](https://www.jetbrains.com/lp/compose-multiplatform/)
   [![Ktor](https://img.shields.io/badge/Ktor-3.5.1-087CFA)](https://ktor.io/)
   [![Android](https://img.shields.io/badge/Android-13%2B-3DDC84?logo=android&logoColor=white)](https://developer.android.com/)
@@ -44,6 +44,8 @@ Chat apps and cloud drives are great when the other person is far away. Sync360 
 
 Sync360 has a working Android-to-Android MVP for text and multiple-file transfer. The Desktop/JVM app now uses the same shared flow, and Desktop-to-Android file transfer is working in manual testing. It is still an active rebuild, not a production-ready release.
 
+In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discovered the Android device quickly, removed it promptly after the Android app closed, appeared promptly on Android after Sync360 started, and disappeared from Android after the Desktop app closed. The Desktop discovery UI also left its initial loading state when the native browse operation started instead of continuing to show loading while resolved devices were already visible. These are manual observations from one setup, not broad Windows or laptop compatibility guarantees.
+
 ### Working now
 
 - Discover nearby Android devices with Android NSD/mDNS.
@@ -60,7 +62,7 @@ Sync360 has a working Android-to-Android MVP for text and multiple-file transfer
 - Show batch-wide byte percentage while files are being sent and received.
 - Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
 - Run the shared Send/Receive UI on Desktop, with an adaptive 50/50 two-pane layout in wider windows.
-- Discover and advertise Desktop devices through JmDNS on eligible IPv4 and IPv6 LAN addresses using the same DNS-SD service as Android.
+- Discover and advertise Windows devices through the operating system DNS-SD API, with JmDNS retained for macOS and Linux, using the same service as Android.
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
 - Copy received text and open the Downloads folder on Desktop.
@@ -90,13 +92,13 @@ Sync360 uses two small networking paths with different jobs:
 
 ```mermaid
 flowchart LR
-    A["Sender device"] -->|"Android NSD or Desktop JmDNS"| B["Receiver device"]
+    A["Sender device"] -->|"Android NSD or platform Desktop DNS-SD"| B["Receiver device"]
     A -->|"Ktor: offer + decision + metadata"| B
     A -->|"Raw TCP: streamed file bytes"| B
     B -->|"Platform Downloads writer"| D["Downloads"]
 ```
 
-Android uses `NsdManager`; Desktop uses JmDNS. Both advertise the `_sync360._tcp.` DNS-SD service with a stable per-install device ID, device details, protocol version, an OS-assigned HTTP port, and a separate OS-assigned file-transfer port.
+Android uses `NsdManager`. Windows uses the built-in `dnsapi.dll` DNS-SD API on all interfaces through Java's Foreign Function and Memory API. macOS and Linux currently retain JmDNS. Every implementation advertises the `_sync360._tcp.` DNS-SD service with a stable per-install device ID, device details, protocol version, an OS-assigned HTTP port, and a separate OS-assigned file-transfer port.
 
 Android and Desktop start the shared network controller from their application entry points after Koin is ready. Discovery and registration have separate lifecycle states, and the 60-second discovery window begins only after discovery reports `Running`. A normal Reload restarts only discovery while registration remains active; connection repair stops and recreates both operations after their current platform callbacks reach stable states.
 
@@ -150,7 +152,7 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 - `androidApp/` — Android application host, manifest, launcher assets, and app entry point.
 - `shared/src/commonMain/` — shared Compose UI, adaptive Navigation 3 layout, ViewModels, screen/domain state, controllers, Ktor client/server, transfer contracts, and dependency injection.
 - `shared/src/androidMain/` — Android NSD, file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Android DI bindings.
-- `shared/src/jvmMain/` — JmDNS discovery/registration, native file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Desktop DI bindings.
+- `shared/src/jvmMain/` — Windows system DNS-SD and macOS/Linux JmDNS discovery/registration, native file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Desktop DI bindings.
 - `desktopApp/` — Compose Desktop entry point and DMG/MSI/DEB packaging configuration.
 - `iosApp/` — iOS shell; iOS targets are currently disabled in the shared Gradle configuration.
 
@@ -158,7 +160,7 @@ The project remains Android-first, but the current Desktop app reuses the shared
 
 ## Tech stack
 
-- Kotlin 2.3.21 and Kotlin Multiplatform
+- Kotlin 2.4.10 and Kotlin Multiplatform
 - Compose Multiplatform 1.11.1 with Material 3
 - Android min SDK 33, compile/target SDK 37
 - Ktor 3.5.1 client/server with CIO
@@ -166,18 +168,19 @@ The project remains Android-first, but the current Desktop app reuses the shared
 - Coroutines and `StateFlow`
 - kotlinx.serialization JSON
 - Android NSD/mDNS
-- JmDNS 3.6.3 for Desktop DNS-SD/mDNS
+- Windows `dnsapi.dll` through the JDK Foreign Function and Memory API
+- JmDNS 3.6.3 for current macOS/Linux DNS-SD/mDNS
 - Java `Socket` / `ServerSocket` for file bytes
 - Android `ContentResolver` and `MediaStore`
 - Navigation 3 with a Material-adaptive 50/50 two-pane Scene on wider windows
-- Gradle 9.4.1 wrapper
+- Gradle 9.3.1 wrapper
 
 ## Getting started
 
 ### Requirements
 
-- JDK 17
-- A recent Android Studio version compatible with Android Gradle Plugin 9.2.x
+- JDK 23
+- A recent Android Studio version compatible with Android Gradle Plugin 9.1.x
 - Android SDK Platform 37
 - Two physical Android 13+ devices for Android-to-Android testing, or one Android device and one Desktop machine for cross-platform testing
 - A Wi-Fi network or hotspot that allows devices to communicate with each other

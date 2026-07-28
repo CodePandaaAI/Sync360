@@ -13,7 +13,8 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Shared Compose Send/Receive UI, ViewModels, controllers, state, and Navigation 3.
 - Compact single-pane navigation and a 50/50 Send/Receive scene on wider windows.
 - Android discovery/registration through `NsdManager`.
-- Desktop discovery/registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
+- Windows discovery/registration through the operating system `dnsapi.dll` DNS-SD API on all interfaces.
+- Current macOS/Linux discovery/registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Application-lifetime network startup with separate discovery and registration lifecycle states.
 - Ktor HTTP offers, receiver decisions, metadata, and text payloads.
 - Raw TCP streaming for file bytes.
@@ -22,7 +23,7 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Desktop native file selection, Java file streams, and safe Downloads writing through temporary `.part` files.
 - Best-effort cancellation and batch-wide byte percentage.
 
-Android-to-Android text and multiple-file flows have manual validation. The Desktop/JVM implementation is present, and Desktop-to-Android transfer has initial manual validation. The app is still development software, not a production-ready release.
+Android-to-Android text and multiple-file flows have manual validation. Desktop-to-Android transfer has initial manual validation. In one Windows 11 Ethernet test, native Windows discovery added and removed Android promptly as its app opened and closed, while Android added and removed Windows promptly as the Desktop app opened and closed. Laptop, macOS, Linux, and broader adapter/network behavior still need validation. The app is still development software, not a production-ready release.
 
 ## Architecture rule
 

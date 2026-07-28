@@ -77,15 +77,18 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 `NetworkServices` is the common contract.
 
 - Android uses `NsdManager` with `_sync360._tcp.`.
-- Desktop uses JmDNS with `_sync360._tcp.local.`.
+- Windows uses the operating system DNS-SD functions in `dnsapi.dll`.
+- macOS and Linux currently use JmDNS with `_sync360._tcp.local.`.
 
 Both advertise a stable device UUID, device name/type, protocol version, dynamic HTTP port, and dynamic file-transfer port. A device filters its own UUID from discovery results.
 
 Discovery and registration expose independent `StateFlow` values. Each can be `Idle`, `Starting`, `Running`, or `Stopping`, and lifecycle commands are accepted only from compatible states. The controller derives the 60-second discovery window from `DiscoveryStatus.Running`, so platform startup time does not consume the scan window. Reload starts discovery again only while registration is still running.
 
-Connection repair waits until both operations are stable, then stops discovery and registration, clears stale devices, and advertises the existing HTTP and TCP ports again. Android advances repair from `NsdManager` callbacks instead of fixed callback timeouts. JVM repair closes and recreates its JmDNS instances; an instance that fails to close remains tracked so a later repair can retry cleanup.
+Connection repair waits until both operations are stable, then stops discovery and registration, clears stale devices, and advertises the existing HTTP and TCP ports again. Android advances repair from `NsdManager` callbacks instead of fixed callback timeouts. Windows cancels its native browse and pending resolves, deregisters through the Windows API, and waits for the corresponding state transitions. The macOS/Linux fallback closes and recreates its JmDNS instances; an instance that fails to close remains tracked so a later repair can retry cleanup.
 
-The Desktop implementation starts JmDNS on eligible IPv4 and IPv6 addresses from every active, multicast-capable, non-loopback, non-virtual LAN interface. Machines with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters still need broader validation.
+Windows calls `DnsServiceBrowse`, `DnsServiceResolve`, `DnsServiceRegister`, and `DnsServiceDeRegister` through the JDK Foreign Function and Memory API. Browse and registration use interface index `0`, which delegates all-interface IPv4/IPv6 handling to Windows. Native registration and deregistration callbacks drive `RegistrationStatus`; browse cancellation drives the final transition back to `DiscoveryStatus.Idle`. Browse callbacks start resolution for added PTR records and remove devices reported with a zero TTL. Resolved TXT properties and IPv4/IPv6 addresses are converted into the same shared `NearbyDevice` model used by Android.
+
+The macOS/Linux JmDNS fallback starts on eligible IPv4 and IPv6 addresses from every active, multicast-capable, non-loopback, non-virtual LAN interface. Windows DNS-SD and the fallback still need broader validation with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters.
 
 ## Control plane: Ktor HTTP
 

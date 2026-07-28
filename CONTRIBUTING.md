@@ -6,20 +6,20 @@ The project is not looking for giant rewrites right now. The most useful contrib
 
 ## Current project status
 
-Current working slice:
+Implemented today:
 
-- Android NSD discovery.
-- Dynamic Ktor server port advertisement.
-- Ktor client/server ping request.
-- Experimental receiver Accept/Decline state.
+- Android nearby discovery and registration through `NsdManager`.
+- Windows nearby discovery and registration through the system DNS-SD API.
+- Current macOS/Linux discovery and registration through JmDNS.
+- Direct text and multi-file transfer between nearby devices.
+- Shared Compose UI for Android and Desktop.
 
-Not built yet:
+Important current limitations:
 
-- Real file transfer.
-- Direct text sending.
-- Desktop rebuilt networking flow.
-- Security/session validation.
-- Production-ready UX.
+- Local transfers are not authenticated or encrypted.
+- Background and automatic network-change lifecycle handling is incomplete.
+- Desktop networking has not been broadly validated across operating systems, adapters, VPNs, and routers.
+- iOS platform implementations are inactive.
 
 Please keep that status in mind when opening issues or PRs.
 
@@ -27,7 +27,7 @@ Please keep that status in mind when opening issues or PRs.
 
 Prerequisites:
 
-- JDK 17
+- JDK 23
 - Android Studio or IntelliJ IDEA
 - Android SDK
 - Gradle wrapper from this repository
@@ -53,13 +53,13 @@ On Windows:
 ./gradlew.bat :androidApp:assembleDebug
 ```
 
-Desktop shell:
+Run Desktop:
 
 ```bash
 ./gradlew :desktopApp:run
 ```
 
-The rebuilt networking flow is currently Android-first, so desktop behavior may lag behind Android.
+Android remains the primary reference implementation. Platform networking behavior can differ where operating-system APIs require it.
 
 ## Before you start
 
@@ -69,7 +69,7 @@ For anything large, open an issue first. Examples:
 
 - changing architecture boundaries
 - changing discovery behavior
-- adding file transfer
+- changing the transfer protocol
 - adding security
 - changing Gradle/KMP target setup
 - adding persistence/database code
@@ -82,6 +82,7 @@ Good early contributions:
 - Add screenshots or demo GIFs.
 - Improve error messages and logs.
 - Test Android discovery on different devices/routers.
+- Test Windows discovery across Ethernet, Wi-Fi, VPN, and virtual adapters.
 - Improve host address selection, especially IPv4 vs IPv6.
 - Clean up naming where the current intent is obvious.
 - Add small tests around pure Kotlin models/controllers when useful.
@@ -153,6 +154,8 @@ For networking changes, manual validation notes are useful:
 
 - one Android device
 - two Android devices on same Wi-Fi
+- Android and Desktop on the same network
+- Desktop adapter and operating-system version
 - Android hotspot if relevant
 - what happened on sender
 - what happened on receiver
