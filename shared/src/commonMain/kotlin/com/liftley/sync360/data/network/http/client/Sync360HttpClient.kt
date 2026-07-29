@@ -211,6 +211,7 @@ class Sync360HttpClient {
         if (!contains(':')) return this
 
         val unwrappedHost = removePrefix("[").removeSuffix("]")
+            .replace("%", "%25")
         return "[$unwrappedHost]"
     }
 }
