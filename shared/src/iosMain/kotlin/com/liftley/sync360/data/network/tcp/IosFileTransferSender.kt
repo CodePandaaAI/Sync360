@@ -120,8 +120,7 @@ class IosFileTransferSender : FileTransferSender {
         val hasSecurityScopedAccess = fileUrl.startAccessingSecurityScopedResource()
 
         try {
-            val input = NSInputStream.inputStreamWithURL(fileUrl)
-                ?: error("Could not open file: ${file.displayName}")
+            val input = NSInputStream(uRL = fileUrl)
             input.open()
 
             try {

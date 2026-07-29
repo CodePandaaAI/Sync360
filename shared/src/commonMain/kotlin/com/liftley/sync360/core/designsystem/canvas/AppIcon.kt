@@ -18,6 +18,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import kotlin.math.cos
+import kotlin.math.PI
 import kotlin.math.sin
 
 @Preview(showBackground = true)
@@ -59,7 +60,7 @@ fun AppIcon() {
             val midY = (startY + endY) / 2f
 
             // 4. Convert angle to radians
-            val radians = Math.toRadians(pullAngleDegrees.toDouble()).toFloat()
+            val radians = (pullAngleDegrees * PI / 180.0).toFloat()
 
             // 5. Calculate the control point by offsetting from the midpoint towards the angle
             val controlX = midX + pullDistance * cos(radians)

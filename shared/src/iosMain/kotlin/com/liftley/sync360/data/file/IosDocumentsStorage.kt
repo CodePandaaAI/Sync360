@@ -28,12 +28,9 @@ class IosDocumentsStorage {
         val temporaryUrl = documentsUrl.URLByAppendingPathComponent(
             ".sync360-${NSUUID().UUIDString}.part"
         ) ?: error("Could not create a temporary file URL")
-        val temporaryPath = temporaryUrl.path
-            ?: error("Could not create a temporary file path")
-
         try {
-            val output = NSOutputStream.outputStreamToFileAtPath(
-                path = temporaryPath,
+            val output = NSOutputStream(
+                uRL = temporaryUrl,
                 append = false
             )
             output.open()

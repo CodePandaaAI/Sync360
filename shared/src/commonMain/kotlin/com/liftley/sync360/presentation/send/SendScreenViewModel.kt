@@ -242,7 +242,7 @@ class SendScreenViewModel(
 
     fun handleFilesSelected(rawPlatformFiles: List<Any>) {
         viewModelScope.launch {
-            val parsedFiles = withContext(Dispatchers.IO) {
+            val parsedFiles = withContext(Dispatchers.Default) {
                 selectedFileReader.readSelectedFiles(rawPlatformFiles)
             }
 
