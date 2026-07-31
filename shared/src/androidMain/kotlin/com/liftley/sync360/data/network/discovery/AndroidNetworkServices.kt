@@ -51,7 +51,8 @@ class AndroidNetworkServices(
 
     val deviceUuid = androidLocalDeviceIdentityStore.getOrCreateDeviceUuid()
 
-    val serviceInfoCallbacks: MutableSet<NsdManager.ServiceInfoCallback> = ConcurrentHashMap.newKeySet()
+    val serviceInfoCallbacks: MutableSet<NsdManager.ServiceInfoCallback> =
+        ConcurrentHashMap.newKeySet()
 
     @Volatile
     private var pendingRepair: PendingRepair? = null
@@ -164,8 +165,7 @@ class AndroidNetworkServices(
                             exception
                         )
                     }
-                } else
-                {
+                } else {
                     val resolveListener = object : NsdManager.ResolveListener {
                         override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
                             Log.d(
@@ -177,9 +177,13 @@ class AndroidNetworkServices(
                         override fun onServiceResolved(resolvedDeviceInfo: NsdServiceInfo?) {
                             if (!discoveryIsActive()) return
 
-                            Log.d("AndroidNetworkServices", "onServiceResolved: $resolvedDeviceInfo")
+                            Log.d(
+                                "AndroidNetworkServices",
+                                "onServiceResolved: $resolvedDeviceInfo"
+                            )
 
-                            val newDevice = resolvedDeviceInfo?.toNearbyDeviceAndroidImpl() ?: return
+                            val newDevice =
+                                resolvedDeviceInfo?.toNearbyDeviceAndroidImpl() ?: return
 
                             if (newDevice.id == deviceUuid) return
 
@@ -198,6 +202,12 @@ class AndroidNetworkServices(
 
         override fun onServiceLost(lostServiceInfo: NsdServiceInfo?) {
             Log.d("AndroidNetworkServices", "onServiceLost on Discovery: $lostServiceInfo")
+            _nearbyDevices.update { currentList ->
+
+                val withoutOldDevice =
+                    currentList.filterNot { device -> device.serviceName == lostServiceInfo?.serviceName }
+                withoutOldDevice
+            }
         }
 
         override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
@@ -342,10 +352,10 @@ class AndroidNetworkServices(
     ) {
         val discoveryIsStable =
             discoveryServiceStatus.value == DiscoveryStatus.Idle ||
-                discoveryServiceStatus.value == DiscoveryStatus.Running
+                    discoveryServiceStatus.value == DiscoveryStatus.Running
         val registrationIsStable =
             registrationServiceStatus.value == RegistrationStatus.Idle ||
-                registrationServiceStatus.value == RegistrationStatus.Running
+                    registrationServiceStatus.value == RegistrationStatus.Running
 
         if (!discoveryIsStable || !registrationIsStable) return
 
@@ -414,7 +424,7 @@ class AndroidNetworkServices(
             Log.d(
                 "AndroidNetworkServices",
                 "restartDiscoveryServices ignored because discovery=${discoveryServiceStatus.value}, " +
-                    "registration=${registrationServiceStatus.value}"
+                        "registration=${registrationServiceStatus.value}"
             )
             return
         }
@@ -444,7 +454,7 @@ class AndroidNetworkServices(
 
     private fun discoveryIsActive(): Boolean {
         return discoveryServiceStatus.value == DiscoveryStatus.Starting ||
-            discoveryServiceStatus.value == DiscoveryStatus.Running
+                discoveryServiceStatus.value == DiscoveryStatus.Running
     }
 
     @Suppress("NewApi")

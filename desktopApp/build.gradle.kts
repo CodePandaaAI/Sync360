@@ -29,12 +29,18 @@ dependencies {
 compose.desktop {
     application {
         mainClass = "com.liftley.sync360.MainKt"
-        jvmArgs += listOf("--enable-native-access=ALL-UNNAMED")
+        jvmArgs += listOf(
+            "--enable-native-access=ALL-UNNAMED",
+            "-splash:\$APPDIR/resources/sync360-splash.png"
+        )
 
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Sync360"
             packageVersion = "1.0.0"
+            appResourcesRootDir.set(
+                project.layout.projectDirectory.dir("packaging/app-resources")
+            )
 
             macOS {
                 iconFile.set(project.file("src/main/resources/icons/icon.icns"))
