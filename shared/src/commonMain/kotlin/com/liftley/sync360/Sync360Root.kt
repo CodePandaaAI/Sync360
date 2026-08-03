@@ -111,7 +111,7 @@ fun Sync360Root() {
                         // 2. Add outer floating padding around the bar (converted from dp)
                         .padding(horizontal = 32.dp, vertical = 16.dp)
                         // 3. Clip the corners after padding to create the floating card shape
-                        .clip(MaterialTheme.shapes.extraLarge),
+                        .clip(MaterialTheme.shapes.extraExtraLarge),
                     containerColor = MaterialTheme.colorScheme.surface,
                     // 4. Disable internal inset consumption so our custom modifiers control the shape
                     windowInsets = WindowInsets(0, 0, 0, 0)
