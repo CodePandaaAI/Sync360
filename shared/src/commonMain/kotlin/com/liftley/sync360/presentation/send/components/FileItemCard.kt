@@ -1,9 +1,12 @@
 package com.liftley.sync360.presentation.send.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -15,53 +18,55 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
-import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.domain.model.SelectedFile
 
 @Composable
-fun FileItemCard(file: SelectedFile, onRemoveClick: (SelectedFile) -> Unit) {
-    Sync360Surface(containerColor = MaterialTheme.colorScheme.surface) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(
-                file.displayName.formatDisplayName(),
-                style = MaterialTheme.typography.titleMedium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+fun FileItemCard(
+    file: SelectedFile,
+    onRemoveClick: (SelectedFile) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxWidth()) {
+            SelectedFilePreview(
+                file = file,
+                modifier = Modifier.fillMaxWidth().aspectRatio(1f)
             )
 
             IconButton(
                 onClick = { onRemoveClick(file) },
                 colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer
-                )
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    contentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(40.dp)
             ) {
-                Icon(imageVector = Close, contentDescription = null)
+                Icon(
+                    imageVector = Close,
+                    contentDescription = "Remove ${file.displayName}",
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
+
+        Text(
+            text = file.displayName,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Text(
+            text = formatSelectedFileSize(file.sizeBytes),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1
+        )
     }
-}
-
-fun String.formatDisplayName(): String {
-    // If the name is already short, don't change anything
-    if (this.length <= 20) return this
-
-    // Find the last dot to isolate the extension
-    val dotIndex = this.lastIndexOf('.')
-
-    // Edge case: No extension found or dot is at the very beginning/end
-    if (dotIndex <= 0 || dotIndex >= this.length - 1) {
-        return this.take(20) + "..."
-    }
-
-    val nameWithoutExtension = this.substring(0, dotIndex)
-    val extension = this.substring(dotIndex) // Includes the dot (e.g., ".pdf")
-
-    // Take the first 20 characters of the name, add ellipsis, and paste the extension
-    val truncatedName = nameWithoutExtension.take(20)
-
-    return "$truncatedName...$extension"
 }

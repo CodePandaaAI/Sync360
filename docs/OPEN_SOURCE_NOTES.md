@@ -62,4 +62,4 @@ Sync360 is still early, but the useful local flow is real:
 local discovery -> receiver approval -> direct text or file transfer
 ```
 
-Android is the most-tested platform. Desktop/JVM now implements the same shared flow and has initial Desktop-to-Android validation, but broader operating-system, adapter, firewall, and router testing is still needed. That is the story to tell clearly without presenting the app as a finished or secure release.
+Android is the most-tested platform. Desktop/JVM implements the same shared flow and has initial Desktop-to-Android validation. An enabled iOS implementation exists in source and has opened in a cloud simulator, but same-LAN and physical-device transfer remain unverified. Broader operating-system, adapter, firewall, and router testing is still needed. That is the story to tell clearly without presenting the app as finished or secure.

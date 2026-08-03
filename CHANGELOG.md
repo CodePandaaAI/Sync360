@@ -25,6 +25,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Compose Desktop startup, platform DI implementations, native file dialog, clipboard, and Downloads actions.
 - Navigation 3 adaptive 50/50 Send/Receive scene for wider windows.
 - Application-lifetime network startup and state-driven connection repair.
+- Enabled iOS device and Apple-silicon Simulator targets with native Bonjour discovery, document selection, clipboard, Files-visible storage, and streamed TCP transfer implementations.
+- Added an iOS-only GitHub Actions workflow for an unsigned Simulator app and optional development-signed iPhone IPA.
+- Prepared version `0.1.0` across Android, Desktop, and iOS; added private Android release signing configuration and a permanent Windows MSI upgrade identity.
 - Public architecture, development, roadmap, security, privacy, and contribution documentation.
 
 ### Changed
@@ -52,4 +55,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - No speed, ETA, retry, pause/resume, or interrupted-transfer recovery; transfer progress currently shows batch-wide whole-byte percentage.
 - Foreground/background and network-change lifecycle handling are incomplete.
 - Desktop support needs broader operating-system, adapter, firewall, and router validation.
-- Automated transfer coverage is minimal; iOS is inactive.
+- Automated transfer coverage is minimal; iOS physical-device discovery and transfer are unverified.

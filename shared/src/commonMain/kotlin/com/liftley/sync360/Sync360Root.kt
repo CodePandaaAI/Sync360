@@ -1,10 +1,7 @@
 package com.liftley.sync360
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CenterAlignedTopAppBar
@@ -25,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.tooling.preview.Preview
@@ -72,18 +68,18 @@ fun Sync360Root() {
     }
     val discoveryIsStable =
         sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
-            sendScreenState.discoveryStatus == DiscoveryStatus.Running
+                sendScreenState.discoveryStatus == DiscoveryStatus.Running
     val registrationIsStable =
         sendScreenState.registrationStatus == RegistrationStatus.Idle ||
-            sendScreenState.registrationStatus == RegistrationStatus.Running
+                sendScreenState.registrationStatus == RegistrationStatus.Running
     val repairEnabled =
         sendScreenState.sendOperationState == SendOperationState.Idle &&
-            receiveScreenState == ReceiveScreenState.Idle &&
-            discoveryIsStable &&
-            registrationIsStable
+                receiveScreenState == ReceiveScreenState.Idle &&
+                discoveryIsStable &&
+                registrationIsStable
 
     val receiveTitle = when (receiveScreenState) {
-        ReceiveScreenState.Idle -> "Receive"
+        ReceiveScreenState.Idle -> "Sync360"
         is ReceiveScreenState.IncomingTextOffer -> "Incoming text"
         is ReceiveScreenState.IncomingFileOffer -> "Incoming files"
         is ReceiveScreenState.ReceivingFiles -> "Receiving files"
@@ -112,7 +108,7 @@ fun Sync360Root() {
                         .padding(horizontal = 32.dp, vertical = 16.dp)
                         // 3. Clip the corners after padding to create the floating card shape
                         .clip(MaterialTheme.shapes.extraExtraLarge),
-                    containerColor = MaterialTheme.colorScheme.surface,
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
                     // 4. Disable internal inset consumption so our custom modifiers control the shape
                     windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
@@ -150,7 +146,7 @@ fun Sync360Root() {
                 navigationIcon = {
                     if (currentScreen == NavScreen.SettingsScreen) {
                         IconButton(
-                            modifier = Modifier.height(48.dp),
+                            modifier = Modifier,
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
                             onClick = navigationViewModel::removeLast
                         ) {
@@ -162,28 +158,19 @@ fun Sync360Root() {
                     }
                 },
                 title = {
-                    Box(
-                        Modifier
-                            .clip(MaterialTheme.shapes.extraLarge)
-                            .height(48.dp)
-                            .background(MaterialTheme.colorScheme.surface)
-                            .padding(horizontal = 16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = when (currentScreen) {
-                                NavScreen.SendScreen -> sendTitle
-                                NavScreen.ReceiveScreen -> receiveTitle
-                                NavScreen.SettingsScreen -> "Settings"
-                            },
-                            style = MaterialTheme.typography.titleLarge
-                        )
-                    }
+                    Text(
+                        text = when (currentScreen) {
+                            NavScreen.SendScreen -> sendTitle
+                            NavScreen.ReceiveScreen -> receiveTitle
+                            NavScreen.SettingsScreen -> "Settings"
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier
+                    )
                 },
                 actions = {
                     if (currentScreen != NavScreen.SettingsScreen) {
                         IconButton(
-                            modifier = Modifier.height(48.dp),
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
                             onClick = {
                                 navigationViewModel.addScreen(NavScreen.SettingsScreen)

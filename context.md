@@ -21,9 +21,10 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Multiple files sent sequentially over one accepted-batch connection.
 - Android file access through `ContentResolver` and Downloads writing through `MediaStore`.
 - Desktop native file selection, Java file streams, and safe Downloads writing through temporary `.part` files.
+- iOS Bonjour discovery, native document selection, streamed Ktor TCP transfer, and Files-visible Downloads storage.
 - Best-effort cancellation and batch-wide byte percentage.
 
-Android-to-Android text and multiple-file flows have manual validation. Desktop-to-Android transfer has initial manual validation. In one Windows 11 Ethernet test, native Windows discovery added and removed Android promptly as its app opened and closed, while Android added and removed Windows promptly as the Desktop app opened and closed. Laptop, macOS, Linux, and broader adapter/network behavior still need validation. The app is still development software, not a production-ready release.
+Android-to-Android text and multiple-file flows have manual validation. Desktop-to-Android transfer has initial manual validation. In one Windows 11 Ethernet test, native Windows discovery added and removed Android promptly as its app opened and closed, while Android added and removed Windows promptly as the Desktop app opened and closed. The enabled iOS implementation has opened successfully in a cloud simulator, but same-LAN discovery and transfer could not be tested there. Laptop, macOS, Linux, physical iOS, and broader adapter/network behavior still need validation. The app is still development software, not a production-ready release.
 
 ## Architecture rule
 
@@ -37,7 +38,7 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 - Ktor DTOs remain at the HTTP boundary.
 - Blocking file/socket work runs on `Dispatchers.IO`.
 - Files are streamed; they are never loaded whole into memory.
-- Platform APIs stay in Android/JVM source sets.
+- Platform APIs stay in Android, JVM, and iOS source sets.
 
 ## Protocol summary
 

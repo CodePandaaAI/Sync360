@@ -1,6 +1,6 @@
 # Architecture
 
-Sync360 is an Android-first Kotlin Multiplatform app for direct nearby sharing over a local network. Android and Desktop reuse the common UI and transfer flow; platform source sets implement discovery, file access, storage, identity, clipboard, and raw socket I/O.
+Sync360 is an Android-first Kotlin Multiplatform app for direct nearby sharing over a local network. Android, Desktop, and iOS reuse the common UI and transfer flow; platform source sets implement discovery, file access, storage, identity, clipboard, and raw socket I/O.
 
 The architecture intentionally follows one readable path:
 
@@ -13,7 +13,7 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 ```text
 app starts
   -> Koin creates common services and platform implementations
-  -> Android or Desktop entry point starts NetworkServicesController once
+  -> Android, Desktop, or iOS entry point starts NetworkServicesController once
   -> Sync360HttpServer opens an OS-assigned HTTP port
   -> FileTransferReceiver opens an OS-assigned TCP port
   -> NetworkServices advertises both ports through DNS-SD/mDNS
@@ -47,9 +47,14 @@ shared/src/androidMain/
   Android clipboard, identity, device info, TCP sender/receiver, and DI
 
 shared/src/jvmMain/
-  JmDNS discovery/registration
+  Windows system DNS-SD or macOS/Linux JmDNS discovery/registration
   AWT file selection and clipboard
   Java file/Downloads handling, identity, device info, TCP sender/receiver, and DI
+
+shared/src/iosMain/
+  Apple Bonjour discovery/registration
+  native document selection and clipboard
+  Files-visible storage, identity, device info, Ktor TCP sender/receiver, and DI
 ```
 
 ## Main responsibilities
@@ -132,6 +137,7 @@ The sender and receiver do not need matching read boundaries because TCP is a by
 
 - Android writes into public Downloads with a pending `MediaStore` entry. It publishes the entry only after success and deletes the incomplete current entry on failure.
 - Desktop writes to a temporary `.part` file in the user's Downloads folder, deletes it on failure, and moves it to a collision-safe final name after success.
+- iOS writes to a temporary `.part` file in the app's Files-visible `Documents/Downloads` directory, deletes it on failure, and moves it to a collision-safe final name after success.
 
 Previously completed files remain when a later file in the same batch fails.
 
@@ -141,7 +147,7 @@ Previously completed files remain when a later file in the same batch fails.
 - No retry, pause/resume, or interrupted-transfer recovery.
 - Foreground/background and automatic network-change lifecycle handling are not complete.
 - Receiver failures do not yet provide rich error details.
-- Host selection still uses the first resolved address.
+- HTTP and file-transfer senders retry distinct advertised addresses after connection failures; broader address preference and scoped IPv6 validation still need work.
 - Desktop interface selection and firewall behavior need broader validation.
 - Automated transfer coverage is minimal.
-- iOS targets and implementations are inactive.
+- iOS source targets and implementations are enabled, but physical-device discovery and transfer remain unverified.

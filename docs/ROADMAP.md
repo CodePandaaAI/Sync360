@@ -21,6 +21,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Best-effort sender cancellation.
 - Batch-wide byte percentage on the sender and receiver.
 - Shared Compose UI with compact navigation and a wider 50/50 Send/Receive scene.
+- Enabled iOS device and Apple-silicon Simulator targets with initial Bonjour, selection, clipboard, storage, and TCP transfer implementations.
 
 ## Next
 
@@ -52,7 +53,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Retry or resume support if its protocol complexity is justified.
 - Desktop packaging, update, and release workflow.
 - Wider Windows, macOS, and Linux compatibility testing.
-- iOS discovery, transfer, storage, and permission investigation.
+- iOS physical-device discovery, transfer, cancellation, storage, permission, signing, and distribution validation.
 - Better onboarding and local-network troubleshooting UI.
 
 ## Not planned right now

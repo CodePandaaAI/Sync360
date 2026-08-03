@@ -13,13 +13,14 @@ Implemented today:
 - Current macOS/Linux discovery and registration through JmDNS.
 - Direct text and multi-file transfer between nearby devices.
 - Shared Compose UI for Android and Desktop.
+- Enabled iOS source implementation for Bonjour discovery, text/file transfer, selection, clipboard, and Files-visible storage.
 
 Important current limitations:
 
 - Local transfers are not authenticated or encrypted.
 - Background and automatic network-change lifecycle handling is incomplete.
 - Desktop networking has not been broadly validated across operating systems, adapters, VPNs, and routers.
-- iOS platform implementations are inactive.
+- iOS physical-device discovery and transfer behavior is not yet validated.
 
 Please keep that status in mind when opening issues or PRs.
 

@@ -42,7 +42,7 @@ Chat apps and cloud drives are great when the other person is far away. Sync360 
 
 ## Current status
 
-Sync360 has a working Android-to-Android MVP for text and multiple-file transfer. The Desktop/JVM app now uses the same shared flow, and Desktop-to-Android file transfer is working in manual testing. It is still an active rebuild, not a production-ready release.
+Sync360 has a working Android-to-Android MVP for text and multiple-file transfer. The Desktop/JVM app now uses the same shared flow, and Desktop-to-Android file transfer is working in manual testing. An initial iOS implementation is enabled in source and has opened successfully in a cloud simulator, but nearby discovery and transfer still need physical-device validation. It is still an active rebuild, not a production-ready release.
 
 In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discovered the Android device quickly, removed it promptly after the Android app closed, appeared promptly on Android after Sync360 started, and disappeared from Android after the Desktop app closed. The Desktop discovery UI also left its initial loading state when the native browse operation started instead of continuing to show loading while resolved devices were already visible. These are manual observations from one setup, not broad Windows or laptop compatibility guarantees.
 
@@ -67,6 +67,7 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
 - Copy received text and open the Downloads folder on Desktop.
 - Open connection troubleshooting from Send, Receive, or the top app bar, then manually restart local discovery and service advertising without resetting the app or removing received files.
+- Provide enabled iOS device and simulator targets with native Bonjour discovery, file selection, clipboard, Files-visible storage, and streamed TCP transfer implementations.
 
 ### Still needs work
 
@@ -79,7 +80,8 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Automated transfer coverage and broader device/router testing.
 - Broader Desktop validation across Windows, macOS, Linux, routers, firewalls, VPNs, and machines with multiple network adapters.
 - Desktop packaging and release testing.
-- iOS discovery, transfer, and storage implementations.
+- Physical iOS device testing for local-network permission, discovery, text/file transfer, cancellation, and Files behavior.
+- Public iOS packaging, signing, and distribution.
 
 The current progress UI tracks the exact bytes transferred across the accepted batch and displays the resulting percentage.
 
@@ -154,9 +156,10 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 - `shared/src/androidMain/` — Android NSD, file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Android DI bindings.
 - `shared/src/jvmMain/` — Windows system DNS-SD and macOS/Linux JmDNS discovery/registration, native file selection metadata, clipboard, local identity, raw TCP transfer, Downloads storage, and Desktop DI bindings.
 - `desktopApp/` — Compose Desktop entry point and DMG/MSI/DEB packaging configuration.
-- `iosApp/` — iOS shell; iOS targets are currently disabled in the shared Gradle configuration.
+- `shared/src/iosMain/` — iOS Bonjour discovery/registration, file selection, clipboard, identity, streamed TCP transfer, Files-visible storage, and iOS DI bindings.
+- `iosApp/` — SwiftUI iOS host for the enabled device and Apple-silicon Simulator targets.
 
-The project remains Android-first, but the current Desktop app reuses the shared UI, ViewModels, controllers, HTTP protocol, and transfer contracts. Platform source sets implement only the parts that require Android or JVM APIs.
+The project remains Android-first, but Desktop and iOS reuse the shared UI, ViewModels, controllers, HTTP protocol, and transfer contracts. Platform source sets implement only the parts that require Android, JVM, or iOS APIs.
 
 ## Tech stack
 
@@ -262,7 +265,7 @@ Use the current app only for development and testing on private networks you con
 ### Later: bring the same simple flow to more devices
 
 - Desktop packaging, release workflow, and broader compatibility testing.
-- iOS investigation and implementation.
+- iOS physical-device validation, signing, and distribution.
 - More actionable connection errors and broader troubleshooting guidance.
 - Retry or resume support where the added protocol complexity is justified.
 

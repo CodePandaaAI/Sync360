@@ -19,7 +19,8 @@ Gradle and Desktop use JDK/JVM 23 because the Windows backend uses the finalized
 
 - `androidApp` — Android application host.
 - `desktopApp` — Compose Desktop entry point and DMG/MSI/DEB packaging configuration.
-- `shared` — shared UI, ViewModels, controllers, Ktor protocol, contracts, and Android/JVM implementations.
+- `iosApp` — SwiftUI iOS application host.
+- `shared` — shared UI, ViewModels, controllers, Ktor protocol, contracts, and Android/JVM/iOS implementations.
 
 ## Common commands
 
@@ -52,6 +53,35 @@ Windows:
 ```powershell
 ./gradlew.bat :desktopApp:run
 ```
+
+## Preparing public packages
+
+The first public package version is `0.1.0`.
+
+Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
+
+```properties
+storeFile=C:/absolute/path/to/keystore.jkis
+storePassword=your-keystore-password
+keyAlias=your-key-alias
+keyPassword=your-key-password
+```
+
+Never commit the keystore, `keystore.properties`, passwords, or private keys. Keep secure backups of the signing key because future APK updates must use the same key.
+
+Build the Android release APK:
+
+```powershell
+./gradlew.bat :androidApp:assembleRelease
+```
+
+Windows public packages currently use the normal Compose Desktop MSI task, not the ProGuard release-MSI task:
+
+```powershell
+./gradlew.bat :desktopApp:packageMsi
+```
+
+The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and `packageVersion` must increase for every public MSI so a newer installer can replace an older installed version. Windows packages are currently unsigned and may show an unknown-publisher or SmartScreen warning.
 
 ## Manual local-network testing
 

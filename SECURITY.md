@@ -1,8 +1,8 @@
 # Security Policy
 
-Sync360 is an early local-network sharing app. It is not production-secure yet.
+Sync360 is an early local-network sharing app. It is not secure for untrusted networks yet.
 
-The current rebuild intentionally focuses on understanding local discovery and request/response before adding the final security model. Security work is planned, especially before real file transfer is treated as user-ready.
+The current rebuild implements local discovery, receiver-approved text sharing, and streamed file transfer before adding the final security model. Security work remains required before untrusted-network use.
 
 ## Supported versions
 
@@ -16,13 +16,7 @@ There are no stable supported releases yet.
 
 Please do not open a public issue for security-sensitive reports.
 
-Send private reports to:
-
-```text
-TODO: add security contact email
-```
-
-Until a contact email is added, please contact the maintainer privately through their GitHub/LinkedIn profile once available.
+Until a dedicated security email is added, contact the maintainer privately through the GitHub or LinkedIn profile linked in `README.md`. Do not include exploit details in a public issue.
 
 ## What to report privately
 
@@ -43,16 +37,15 @@ General bugs, crashes, UI issues, documentation problems, and non-sensitive arch
 
 ## Current security status
 
-Current implementation is a learning-stage prototype:
+Current implementation:
 
-- Android NSD discovery works.
-- Ktor request/response proof exists.
-- Receiver Accept/Decline proof exists.
-- Real file transfer is not implemented yet.
-- Final authentication/session validation is not implemented yet.
-- Encryption is not implemented yet.
+- Android NSD, Windows system DNS-SD, macOS/Linux JmDNS, and an initial iOS Bonjour implementation exist.
+- Ktor carries text/file offers, receiver decisions, metadata, and accepted text.
+- Raw TCP streams accepted file batches to platform Downloads storage.
+- File names and promised sizes are validated, but a file socket is not bound to its approved offer with a session token.
+- Sender authentication, encryption, replay protection, and cryptographic integrity verification are not implemented.
 
-Do not use the current code as a security model for production file transfer.
+Use current builds only on private local networks you control. Do not use the current code as a security model for production file transfer.
 
 ## Planned security work
 
