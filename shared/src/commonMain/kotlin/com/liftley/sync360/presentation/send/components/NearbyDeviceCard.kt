@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -23,6 +24,7 @@ import com.liftley.sync360.core.designsystem.icons.Tv
 import com.liftley.sync360.presentation.app.components.Sync360Surface
 import com.liftley.sync360.presentation.send.model.NearbyDeviceUiModel
 
+@OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Preview
 @Composable
 fun NearbyDeviceCard(
@@ -42,8 +44,8 @@ fun NearbyDeviceCard(
 ) {
     Sync360Surface(
         modifier = Modifier.fillMaxWidth(),
-        containerColor = MaterialTheme.colorScheme.surfaceContainer
-
+        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+        shape = MaterialTheme.shapes.extraExtraLarge
     ) {
         Row(
             modifier = Modifier
@@ -58,7 +60,7 @@ fun NearbyDeviceCard(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer
+                containerColor = MaterialTheme.colorScheme.surface
             ) {
                 val deviceIcon = when (device.deviceType) {
                     "Android" -> Android

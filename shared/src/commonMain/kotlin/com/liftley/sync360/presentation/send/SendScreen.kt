@@ -51,37 +51,40 @@ fun SendScreen(
                 Sync360Surface(
                     containerColor = MaterialTheme.colorScheme.surface
                 ) {
+                    ButtonGroup(
+                        overflowIndicator = { menuState ->
+                            ButtonGroupDefaults.OverflowIndicator(menuState)
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(8.dp)
+                    ) {
+                        toggleableItem(
+                            checked = screenState.selectedTab == SendTab.Text,
+                            label = "Text",
+                            onCheckedChange = { checked ->
+                                if (checked) sendScreenViewModel.onTabSelected(SendTab.Text)
+                            },
+                            weight = 1f
+                        )
+
+                        toggleableItem(
+                            checked = screenState.selectedTab == SendTab.Files,
+                            label = "Files",
+                            onCheckedChange = { checked ->
+                                if (checked) sendScreenViewModel.onTabSelected(SendTab.Files)
+                            },
+                            weight = 1f
+                        )
+                    }
+                }
+                Sync360Surface(
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(16.dp),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        ButtonGroup(
-                            overflowIndicator = { menuState ->
-                                ButtonGroupDefaults.OverflowIndicator(menuState)
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            toggleableItem(
-                                checked = screenState.selectedTab == SendTab.Text,
-                                label = "Text",
-                                onCheckedChange = { checked ->
-                                    if (checked) sendScreenViewModel.onTabSelected(SendTab.Text)
-                                },
-                                weight = 1f
-                            )
-
-                            toggleableItem(
-                                checked = screenState.selectedTab == SendTab.Files,
-                                label = "Files",
-                                onCheckedChange = { checked ->
-                                    if (checked) sendScreenViewModel.onTabSelected(SendTab.Files)
-                                },
-                                weight = 1f
-                            )
-                        }
-
                         when (screenState.selectedTab) {
                             SendTab.Text -> {
                                 TextSendContent(

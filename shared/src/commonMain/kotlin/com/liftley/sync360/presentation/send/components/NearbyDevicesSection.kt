@@ -70,7 +70,7 @@ fun NearbyDevicesSection(
                 } else {
                     IconButton(
                         colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surface
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer
                         ),
                         enabled = reloadEnabled,
                         onClick = onReloadClick
@@ -86,7 +86,7 @@ fun NearbyDevicesSection(
             if (screenState.nearbyDevices.isNotEmpty()) {
                 Column(
                     modifier = Modifier.selectableGroup(),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     screenState.nearbyDevices.forEach { device ->
                         NearbyDeviceCard(
