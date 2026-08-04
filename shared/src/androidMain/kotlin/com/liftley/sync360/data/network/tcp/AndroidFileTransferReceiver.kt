@@ -40,9 +40,9 @@ class AndroidFileTransferReceiver(
     override var port: Int = 0
         private set
 
-    override suspend fun start() {
+    override suspend fun start(): Int {
         if (serverSocket != null) {
-            return
+            return port
         }
 
         val startedServerSocket = withContext(Dispatchers.IO) {
@@ -64,6 +64,8 @@ class AndroidFileTransferReceiver(
                 }
             }
         }
+
+        return port
     }
 
     @Synchronized

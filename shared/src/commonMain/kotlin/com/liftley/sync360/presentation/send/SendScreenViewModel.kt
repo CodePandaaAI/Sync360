@@ -37,10 +37,6 @@ class SendScreenViewModel(
 
     init {
         viewModelScope.launch {
-            networkServicesController.startNetworkServices()
-        }
-
-        viewModelScope.launch {
             networkServicesController.nearbyDevices.collect { devices ->
                 latestNearbyDevices = devices
 
@@ -48,6 +44,9 @@ class SendScreenViewModel(
                     it.copy(
                         nearbyDevices = devices.map { device ->
                             device.toNearbyDeviceUiModel()
+                        },
+                        selectedDeviceId = it.selectedDeviceId?.takeIf { selectedId ->
+                            devices.any { device -> device.id == selectedId }
                         }
                     )
                 }
@@ -58,6 +57,14 @@ class SendScreenViewModel(
             networkServicesController.discoveryServiceStatus.collect { status ->
                 _screenState.update {
                     it.copy(discoveryStatus = status)
+                }
+            }
+        }
+
+        viewModelScope.launch {
+            networkServicesController.registrationServiceStatus.collect { status ->
+                _screenState.update {
+                    it.copy(registrationStatus = status)
                 }
             }
         }
@@ -230,6 +237,26 @@ class SendScreenViewModel(
         }
     }
 
+    fun onDeviceSelected(deviceId: String) {
+        if (latestNearbyDevices.none { it.id == deviceId }) return
+
+        _screenState.update {
+            it.copy(selectedDeviceId = deviceId)
+        }
+    }
+
+    fun sendToSelectedDevice() {
+        val state = _screenState.value
+        if (!state.canSend) return
+
+        val deviceId = state.selectedDeviceId ?: return
+
+        when (state.selectedTab) {
+            SendTab.Text -> sendTextToDevice(deviceId)
+            SendTab.Files -> sendFilesToDevice(deviceId)
+        }
+    }
+
     fun clearSendOperation() {
         _screenState.update {
             it.copy(sendOperationState = SendOperationState.Idle)
@@ -238,12 +265,14 @@ class SendScreenViewModel(
 
     fun handleFilesSelected(rawPlatformFiles: List<Any>) {
         viewModelScope.launch {
-            val parsedFiles = withContext(Dispatchers.IO) {
+            val parsedFiles = withContext(Dispatchers.Default) {
                 selectedFileReader.readSelectedFiles(rawPlatformFiles)
             }
 
             _screenState.update { currentState ->
-                currentState.copy(files = currentState.files + parsedFiles)
+                currentState.copy(
+                    files = (currentState.files + parsedFiles).distinctBy { it.uri }
+                )
             }
         }
     }
@@ -254,9 +283,10 @@ class SendScreenViewModel(
         }
     }
 
-    fun removeSelectedFileFromList(file: SelectedFile){
+    fun removeSelectedFileFromList(file: SelectedFile) {
         _screenState.update { currentState ->
-            currentState.copy(files = currentState.files - file)
+            val remainingFiles = currentState.files - file
+            currentState.copy(files = remainingFiles)
         }
     }
 

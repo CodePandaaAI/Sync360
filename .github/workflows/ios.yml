@@ -1,0 +1,232 @@
+name: iOS
+
+on:
+  push:
+    paths:
+      - ".github/workflows/ios.yml"
+      - "iosApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+  pull_request:
+    paths:
+      - ".github/workflows/ios.yml"
+      - "iosApp/**"
+      - "shared/**"
+      - "gradle/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle.properties"
+  workflow_dispatch:
+    inputs:
+      build_signed_ipa:
+        description: "Build a development-signed IPA for registered iPhones"
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-app:
+    name: Build iOS Simulator app
+    runs-on: macos-26
+    timeout-minutes: 60
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 23
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "23"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Select Xcode 26.4
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app/Contents/Developer
+
+      - name: Show Apple toolchain
+        run: xcodebuild -version
+
+      - name: Build unsigned Simulator app
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios-simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            TEAM_ID= \
+            build
+
+      - name: Package Simulator app
+        run: |
+          APP_PATH="build/ios-simulator/Build/Products/Debug-iphonesimulator/Sync360.app"
+          test -d "$APP_PATH"
+          ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" Sync360-iOS-Simulator.zip
+
+      - name: Upload Simulator app
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sync360-iOS-Simulator
+          path: Sync360-iOS-Simulator.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  signed-iphone-ipa:
+    name: Build signed iPhone IPA
+    if: github.event_name == 'workflow_dispatch' && inputs.build_signed_ipa
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      IOS_DEVELOPMENT_CERTIFICATE_BASE64: ${{ secrets.IOS_DEVELOPMENT_CERTIFICATE_BASE64 }}
+      IOS_DEVELOPMENT_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DEVELOPMENT_CERTIFICATE_PASSWORD }}
+      IOS_DEVELOPMENT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_DEVELOPMENT_PROVISIONING_PROFILE_BASE64 }}
+      IOS_TEAM_ID: ${{ secrets.IOS_TEAM_ID }}
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v6
+
+      - name: Set up JDK 23
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "23"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v6
+
+      - name: Select Xcode 26.4
+        run: sudo xcode-select --switch /Applications/Xcode_26.4.app/Contents/Developer
+
+      - name: Require Apple signing secrets
+        shell: bash
+        run: |
+          missing=0
+          for secret_name in \
+            IOS_DEVELOPMENT_CERTIFICATE_BASE64 \
+            IOS_DEVELOPMENT_CERTIFICATE_PASSWORD \
+            IOS_DEVELOPMENT_PROVISIONING_PROFILE_BASE64 \
+            IOS_TEAM_ID
+          do
+            if [ -z "${!secret_name:-}" ]; then
+              echo "::error::Missing GitHub Actions secret: $secret_name"
+              missing=1
+            fi
+          done
+          exit "$missing"
+
+      - name: Install development certificate and provisioning profile
+        shell: bash
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/ios-development.p12"
+          PROFILE_PATH="$RUNNER_TEMP/ios-development.mobileprovision"
+          PROFILE_PLIST="$RUNNER_TEMP/ios-development-profile.plist"
+          KEYCHAIN_PATH="$RUNNER_TEMP/sync360-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 24)"
+
+          printf '%s' "$IOS_DEVELOPMENT_CERTIFICATE_BASE64" | base64 --decode > "$CERTIFICATE_PATH"
+          printf '%s' "$IOS_DEVELOPMENT_PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -P "$IOS_DEVELOPMENT_CERTIFICATE_PASSWORD" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list \
+            -S apple-tool:,apple: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+
+          security cms -D -i "$PROFILE_PATH" > "$PROFILE_PLIST"
+          PROFILE_UUID="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$PROFILE_PLIST")"
+          PROFILE_NAME="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$PROFILE_PLIST")"
+          APPLICATION_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$PROFILE_PLIST")"
+          BUNDLE_IDENTIFIER="${APPLICATION_IDENTIFIER#*.}"
+
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$PROFILE_PATH" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "IOS_PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+          echo "IOS_BUNDLE_IDENTIFIER=$BUNDLE_IDENTIFIER" >> "$GITHUB_ENV"
+          echo "IOS_ARCHIVE_PATH=$RUNNER_TEMP/Sync360.xcarchive" >> "$GITHUB_ENV"
+          echo "IOS_EXPORT_PATH=$RUNNER_TEMP/ios-export" >> "$GITHUB_ENV"
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Archive signed iPhone app
+        shell: bash
+        run: |
+          xcodebuild \
+            -project iosApp/iosApp.xcodeproj \
+            -scheme iosApp \
+            -configuration Debug \
+            -destination "generic/platform=iOS" \
+            -archivePath "$IOS_ARCHIVE_PATH" \
+            TEAM_ID="$IOS_TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$IOS_BUNDLE_IDENTIFIER" \
+            DEVELOPMENT_TEAM="$IOS_TEAM_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="Apple Development" \
+            PROVISIONING_PROFILE_SPECIFIER="$IOS_PROFILE_NAME" \
+            archive
+
+      - name: Export signed IPA
+        shell: bash
+        run: |
+          EXPORT_OPTIONS="$RUNNER_TEMP/ExportOptions.plist"
+          cat > "$EXPORT_OPTIONS" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>debugging</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+              <key>teamID</key>
+              <string>$IOS_TEAM_ID</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$IOS_BUNDLE_IDENTIFIER</key>
+                  <string>$IOS_PROFILE_NAME</string>
+              </dict>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$IOS_ARCHIVE_PATH" \
+            -exportOptionsPlist "$EXPORT_OPTIONS" \
+            -exportPath "$IOS_EXPORT_PATH"
+
+          test -n "$(find "$IOS_EXPORT_PATH" -maxdepth 1 -name '*.ipa' -print -quit)"
+
+      - name: Upload signed IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: Sync360-iPhone-Development-IPA
+          path: ${{ runner.temp }}/ios-export/*.ipa
+          if-no-files-found: error
+          retention-days: 14

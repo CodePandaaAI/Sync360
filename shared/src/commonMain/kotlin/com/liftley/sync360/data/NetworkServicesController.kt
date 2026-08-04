@@ -3,12 +3,13 @@ package com.liftley.sync360.data
 import com.liftley.sync360.data.network.http.server.Sync360HttpServer
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
 import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.domain.service.NetworkServices
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -20,88 +21,107 @@ class NetworkServicesController(
     private val networkServices: NetworkServices,
 ) {
     private val controllerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var discoveryStopJob: Job? = null
     private var httpServerPort: Int? = null
     private var fileTransferPort: Int? = null
-    private val repairMutex = Mutex()
+    private val lifecycleMutex = Mutex()
+    private val repairRequestMutex = Mutex()
+
+    private var hasStarted = false
 
     val nearbyDevices = networkServices.nearbyDevices
 
     val discoveryServiceStatus = networkServices.discoveryServiceStatus
 
-    suspend fun startNetworkServices() {
-        fileTransferReceiver.start()
+    val registrationServiceStatus = networkServices.registrationServiceStatus
 
-        val startedHttpServerPort = httpServer.start()
-        val startedFileTransferPort = fileTransferReceiver.port
+    init {
+        controllerScope.launch {
+            discoveryServiceStatus.collectLatest { status ->
+                if (status == DiscoveryStatus.Running) {
+                    delay(DISCOVERY_DURATION_MILLIS.milliseconds)
+                    stopDiscoveryServices()
+                }
+            }
+        }
+    }
 
-        httpServerPort = startedHttpServerPort
-        fileTransferPort = startedFileTransferPort
+    fun startNetworkServices() {
+        controllerScope.launch {
+            lifecycleMutex.withLock {
+                if (hasStarted) return@withLock
 
-        networkServices.startNetworkServices(startedHttpServerPort, startedFileTransferPort)
-        scheduleDiscoveryStop()
+                val startedHttpServerPort = httpServer.start()
+                val startedFileTransferPort = fileTransferReceiver.start()
+
+                httpServerPort = startedHttpServerPort
+                fileTransferPort = startedFileTransferPort
+
+                networkServices.startNetworkServices(
+                    httpServerPort = startedHttpServerPort,
+                    fileTransferPort = startedFileTransferPort
+                )
+
+                hasStarted = true
+            }
+        }
     }
 
     suspend fun restartDiscoveryServices() {
-        when (discoveryServiceStatus.value) {
-            DiscoveryStatus.Idle -> {
+        lifecycleMutex.withLock {
+            if (discoveryServiceStatus.value == DiscoveryStatus.Idle) {
                 networkServices.restartDiscoveryServices()
-                scheduleDiscoveryStop()
-            }
-
-            DiscoveryStatus.Stopping -> {
-                return
-            }
-
-            DiscoveryStatus.Starting -> {
-                return
-            }
-
-            DiscoveryStatus.Running -> {
-                return
             }
         }
     }
 
     suspend fun repairNetworkServices() {
-        repairMutex.withLock {
-            val activeHttpServerPort = httpServerPort ?: return@withLock
-            val activeFileTransferPort = fileTransferPort ?: return@withLock
+        if (!repairRequestMutex.tryLock()) return
 
-            discoveryStopJob?.cancel()
-            networkServices.repairNetworkServices(
-                httpServerPort = activeHttpServerPort,
-                fileTransferPort = activeFileTransferPort
-            )
-            scheduleDiscoveryStop()
+        try {
+            startRepairWhenServicesAreStable()
+        } finally {
+            repairRequestMutex.unlock()
         }
     }
 
-    fun stopDiscoveryServices() {
-        when (discoveryServiceStatus.value) {
-            DiscoveryStatus.Idle -> {
-                return
-            }
+    private suspend fun startRepairWhenServicesAreStable() {
+        val activeHttpServerPort = httpServerPort ?: return
+        val activeFileTransferPort = fileTransferPort ?: return
 
-            DiscoveryStatus.Stopping -> {
-                return
+        while (true) {
+            val repairStarted = lifecycleMutex.withLock {
+                if (servicesAreStable()) {
+                    networkServices.repairNetworkServices(
+                        httpServerPort = activeHttpServerPort,
+                        fileTransferPort = activeFileTransferPort
+                    )
+                    true
+                } else false
             }
+            if (repairStarted) return
+            delay(500.milliseconds)
+        }
+    }
 
-            DiscoveryStatus.Starting -> {
-                return
-            }
+    private fun servicesAreStable(): Boolean {
+        val discoveryStatus = discoveryServiceStatus.value
+        val registrationStatus = registrationServiceStatus.value
 
-            DiscoveryStatus.Running -> {
+        val discoveryIsStable =
+            discoveryStatus == DiscoveryStatus.Idle ||
+                discoveryStatus == DiscoveryStatus.Running
+        val registrationIsStable =
+            registrationStatus == RegistrationStatus.Idle ||
+                registrationStatus == RegistrationStatus.Running
+
+        return discoveryIsStable && registrationIsStable
+    }
+
+    private suspend fun stopDiscoveryServices() {
+        lifecycleMutex.withLock {
+            if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
                 networkServices.stopDiscoveryServices()
             }
-        }
-    }
-
-    private fun scheduleDiscoveryStop() {
-        discoveryStopJob?.cancel()
-        discoveryStopJob = controllerScope.launch {
-            delay(DISCOVERY_DURATION_MILLIS.milliseconds)
-            stopDiscoveryServices()
         }
     }
 

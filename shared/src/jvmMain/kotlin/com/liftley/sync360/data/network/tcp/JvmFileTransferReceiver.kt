@@ -38,8 +38,8 @@ class JvmFileTransferReceiver(
     override var port: Int = 0
         private set
 
-    override suspend fun start() {
-        if (serverSocket != null) return
+    override suspend fun start(): Int {
+        if (serverSocket != null) return port
 
         val startedServerSocket = withContext(Dispatchers.IO) {
             ServerSocket(0)
@@ -57,6 +57,8 @@ class JvmFileTransferReceiver(
                 }
             }
         }
+
+        return port
     }
 
     @Synchronized

@@ -1,16 +1,18 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -26,12 +28,15 @@ fun TextOfferStateUi(
     onAccept: () -> Unit,
     onDecline: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = Modifier
-            .padding(16.dp)
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Sync360Surface(modifier = Modifier.align(Alignment.Center)) {
+        Sync360Surface {
             Column(
                 modifier = Modifier
                     .padding(16.dp)
@@ -58,8 +63,8 @@ fun TextOfferStateUi(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text(
-                            "Preview",
-                            style = MaterialTheme.typography.titleMedium,
+                            "Text Preview",
+                            style = MaterialTheme.typography.titleLarge,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Text(
@@ -70,25 +75,34 @@ fun TextOfferStateUi(
                         )
                     }
                 }
-            }
-        }
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onAccept,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text("Accept", style = MaterialTheme.typography.titleMedium)
-            }
-            TextButton(
-                onClick = onDecline,
-                modifier = Modifier.fillMaxWidth().height(48.dp)
-            ) {
-                Text("Decline", style = MaterialTheme.typography.titleMedium)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onDecline,
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text(
+                            "Decline",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                    Button(
+                        onClick = onAccept,
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text(
+                            "Accept",
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.titleMedium
+                        )
+                    }
+                }
             }
         }
     }

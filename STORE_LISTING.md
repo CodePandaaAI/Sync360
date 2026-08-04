@@ -6,7 +6,7 @@ Share text and files directly between your Android and desktop devices over your
 
 ## Security Notice
 
-Sync360 currently uses trusted-network mode. Connections require device approval and authenticated session requests, but transferred content is not encrypted by Sync360.
+Sync360 currently uses trusted-network mode. The receiver approves offers in the UI, but requests and file sockets are not authenticated and transferred content is not encrypted by Sync360.
 
 Use Sync360 only on a private home network or personal hotspot controlled by you. Do not use it on public or shared networks such as cafes, hotels, airports, schools, or offices.
 
@@ -14,12 +14,12 @@ Use Sync360 only on a private home network or personal hotspot controlled by you
 
 - Direct local-network transfer; no transfer cloud.
 - No account, ads, analytics, tracking, or telemetry.
-- Session approvals, tokens, and shared text are temporary.
+- Offer decisions, transfer state, and shared text are temporary runtime state.
 - Received files remain on the receiving device.
 
 ## Publishing Checklist
 
-- Add support contact to `PRIVACY.md`.
+- Keep the maintainer contact in `PRIVACY.md` current.
 - Publish `PRIVACY.md` at a public URL for store submission.
 - Keep store data-safety answers consistent with shipped code and permissions.
 - Revisit this disclosure before adding crash reporting, analytics, cloud services, or encrypted pairing.

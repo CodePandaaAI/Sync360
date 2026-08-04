@@ -30,7 +30,7 @@ Project maintainers may remove comments, close issues, reject contributions, or 
 
 If you see a problem, report it privately to the maintainer.
 
-Maintainer contact: TODO: add private contact email
+Until a dedicated contact email is added, contact the maintainer privately through the GitHub or LinkedIn profile linked in `README.md`.
 
 ## Scope
 

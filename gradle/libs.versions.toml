@@ -1,5 +1,5 @@
 [versions]
-agp = "9.2.1"
+agp = "9.1.1"
 android-compileSdk = "37"
 android-minSdk = "33"
 android-targetSdk = "37"
@@ -8,7 +8,7 @@ androidx-core = "1.19.0"
 androidx-lifecycle = "2.11.0"
 composeMultiplatform = "1.11.1"
 junit = "4.13.2"
-kotlin = "2.3.21"
+kotlin = "2.4.10"
 kotlinx-coroutines = "1.11.0"
 material3 = "1.11.0-alpha07"
 ktor = "3.5.1"
@@ -46,6 +46,7 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-server-core = { module = "io.ktor:ktor-server-core", version.ref = "ktor" }
 ktor-server-cio = { module = "io.ktor:ktor-server-cio", version.ref = "ktor" }
 ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation", version.ref = "ktor" }
+ktor-network = { module = "io.ktor:ktor-network", version.ref = "ktor" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 jmdns = { module = "org.jmdns:jmdns", version.ref = "jmdns" }
 

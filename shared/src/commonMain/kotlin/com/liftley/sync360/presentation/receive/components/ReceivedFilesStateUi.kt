@@ -1,8 +1,8 @@
 package com.liftley.sync360.presentation.receive.components
 
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -10,6 +10,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -18,6 +20,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.presentation.app.components.Sync360Surface
@@ -29,13 +32,15 @@ fun ReceivedFilesStateUi(
     onOpenDownloads: () -> Unit,
     onDone: () -> Unit
 ) {
-    Box(
+    Column(
         modifier = Modifier
             .fillMaxSize()
+            .verticalScroll(rememberScrollState())
             .padding(16.dp),
-        contentAlignment = Alignment.Center
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Sync360Surface(modifier = Modifier.align(Alignment.Center)) {
+        Sync360Surface {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -68,34 +73,30 @@ fun ReceivedFilesStateUi(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-            }
-        }
 
-        Column(
-            modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Button(
-                onClick = onDone,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Text("Done")
-            }
-
-            OutlinedButton(
-                onClick = onOpenDownloads,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-            ) {
-                Icon(
-                    imageVector = Download,
-                    contentDescription = null
-                )
-                Spacer(Modifier.width(8.dp))
-                Text("Open Downloads")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = onOpenDownloads,
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = Download,
+                            contentDescription = null
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text("Open Downloads", maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    Button(
+                        onClick = onDone,
+                        modifier = Modifier.weight(1f).height(48.dp)
+                    ) {
+                        Text("Done")
+                    }
+                }
             }
         }
     }

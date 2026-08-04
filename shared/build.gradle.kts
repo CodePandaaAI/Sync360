@@ -11,7 +11,7 @@ plugins {
 kotlin {
     jvm {
         compilerOptions {
-            jvmTarget.set(JvmTarget.JVM_17)
+            jvmTarget.set(JvmTarget.JVM_23)
         }
     }
 
@@ -33,7 +33,6 @@ kotlin {
         }
     }
 
-    /*
     listOf(
         iosArm64(),
         iosSimulatorArm64()
@@ -43,7 +42,6 @@ kotlin {
             isStatic = true
         }
     }
-    */
 
     sourceSets {
         androidMain.dependencies {
@@ -55,6 +53,10 @@ kotlin {
 
         jvmMain.dependencies {
             implementation(libs.jmdns)
+        }
+
+        iosMain.dependencies {
+            implementation(libs.ktor.network)
         }
 
         commonMain.dependencies {
