@@ -11,6 +11,14 @@ sealed interface ReceiveScreenState {
         val characterCount: Int
     ) : ReceiveScreenState
 
+    data class WaitingForText(
+        val senderDeviceName: String
+    ) : ReceiveScreenState
+
+    data class ReceivedText(
+        val text: String
+    ) : ReceiveScreenState
+
     data class IncomingFileOffer(
         val senderDeviceName: String,
         val fileCount: Int,
@@ -22,10 +30,6 @@ sealed interface ReceiveScreenState {
         val fileCount: Int,
         val completedFileCount: Int,
         val progress: FileTransferProgress
-    ) : ReceiveScreenState
-
-    data class ReceivedText(
-        val text: String
     ) : ReceiveScreenState
 
     data class ReceivedFiles(

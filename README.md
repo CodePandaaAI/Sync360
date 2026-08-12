@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="screenshots/sync360-icon.png" width="128" alt="Sync360 app icon" />
+  <img src="shared/src/commonMain/composeResources/drawable/app_icon.png" width="128" alt="Sync360 app icon" />
 
   # Sync360
 
@@ -78,7 +78,10 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Broader IPv6 transfer validation and better address preference/selection.
 - Retry, pause/resume, and interrupted-transfer recovery.
 - Automated transfer coverage and broader device/router testing.
+- Android 17 local-network permission declaration, runtime request, and permission-aware network startup. The current target-SDK-37 build does not yet provide these, so LAN discovery and transfer are blocked by default on Android 17.
+- Serialize legacy Android 13 NSD resolution so several devices discovered together are not lost when another resolve is already active.
 - Broader Desktop validation across Windows, macOS, Linux, routers, firewalls, VPNs, and machines with multiple network adapters.
+- Better Windows first-run firewall guidance; inbound sharing depends on the user or administrator allowing Sync360 through Windows Firewall.
 - Desktop packaging and release testing.
 - Physical iOS device testing for local-network permission, discovery, text/file transfer, cancellation, and Files behavior.
 - Public iOS packaging, signing, and distribution.
@@ -112,11 +115,12 @@ SendScreen
   -> OutgoingRequestsController
   -> POST /sync360/text/offer
   -> receiver Accept/Decline
+  -> accepted receiver waits for the matching text payload
   -> POST /sync360/text/transfer
   -> ReceiveScreen shows the text
 ```
 
-The sender shares a preview and character count first. The full text is posted only after the receiver accepts.
+The sender shares a preview and character count first. After acceptance, the receiver remains in a waiting-for-text state until the matching full text arrives. One operation ID ties the offer, accepted payload, and any explicit cancellation to the same sender operation.
 
 ### File path
 
@@ -131,7 +135,7 @@ Platform file picker
   -> receiver returns final success and completed-file count
 ```
 
-One TCP socket is opened for the complete accepted batch. Each file begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the index and size against the accepted offer before saving each file. The sender writes every file sequentially, flushes once after the complete batch, then reads one final success flag and completed-file count from the receiver. The count increases only after the platform Downloads writer successfully returns. The current shared payload buffer is 512 KiB; exact byte counts define file boundaries, so correctness does not depend on `flush()` calls or matching sender and receiver read chunks.
+One TCP socket is opened for the complete accepted batch. It begins with the operation ID as 16 raw UUID bytes; each file then begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the operation ID, index, and size before saving. The sender writes every file sequentially, flushes once after the complete batch, then reads one final success flag and completed-file count from the receiver. The count increases only after the platform Downloads writer successfully returns. The current shared payload buffer is 512 KiB; exact byte counts define file boundaries, so correctness does not depend on `flush()` calls or matching sender and receiver read chunks.
 
 Files are sent sequentially. If a later file fails, files that were already completed stay in Downloads; the incomplete current file is cleaned up. Android uses a pending `MediaStore` entry and resolves its MIME type from the filename extension so duplicate names remain in the form `file (1).ext`. Desktop writes a temporary `.part` file before moving a completed file into place without overwriting an existing name.
 
@@ -247,7 +251,7 @@ Reload is available only after the current discovery window has stopped while se
 
 Sync360 is **not secure for untrusted networks yet**.
 
-The current Android/Desktop implementation uses cleartext local HTTP and raw TCP. It does not authenticate the sender, encrypt content, bind file sockets to an approved session token, or verify file integrity with a cryptographic hash. Receiver approval exists in the UI, but it is not a complete security boundary.
+The current implementation uses cleartext local HTTP and raw TCP. Operation IDs correlate offers, cancellation, accepted text, and file sockets for correctness, but they are not secret or authenticated. Sync360 does not yet authenticate the sender, encrypt content, or verify file integrity with a cryptographic hash. Receiver approval exists in the UI, but it is not a complete security boundary.
 
 Use the current app only for development and testing on private networks you control. Please report security-sensitive findings according to [SECURITY.md](SECURITY.md), not in a public issue.
 
@@ -257,8 +261,10 @@ Use the current app only for development and testing on private networks you con
 
 - Improve active-transfer feedback around the current byte percentage.
 - Add integrity verification.
-- Improve cancellation and failure reporting.
+- Test cancellation and failure reporting across more network-loss and transfer stages.
+- Close the narrow Accept/Cancel timing gap so an offer cannot report acceptance after its receiver state has already been cancelled.
 - Strengthen lifecycle behavior and local-network reliability.
+- Add Android 17 local-network permission handling and serialize Android 13 legacy NSD resolves.
 - Validate Desktop discovery and transfer across more operating systems, network adapters, routers, and firewall configurations.
 - Design session validation, authentication, and encryption deliberately.
 

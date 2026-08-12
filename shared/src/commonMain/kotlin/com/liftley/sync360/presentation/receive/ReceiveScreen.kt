@@ -14,6 +14,7 @@ import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedTextStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivingFilesStateUi
 import com.liftley.sync360.presentation.receive.components.TextOfferStateUi
+import com.liftley.sync360.presentation.receive.components.WaitingForTextStateUi
 import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import org.koin.compose.koinInject
 
@@ -48,6 +49,10 @@ fun ReceiveScreen(
                     onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
                     onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
                 )
+            }
+
+            is ReceiveScreenState.WaitingForText -> {
+                WaitingForTextStateUi(state)
             }
 
             is ReceiveScreenState.ReceivingFiles -> {

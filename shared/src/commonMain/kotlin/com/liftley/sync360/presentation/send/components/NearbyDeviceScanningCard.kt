@@ -19,7 +19,7 @@ import com.liftley.sync360.domain.model.DiscoveryStatus
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Preview
 @Composable
-fun NearbyDeviceEmptyCard(
+fun NearbyDeviceScanningCard(
     status: DiscoveryStatus = DiscoveryStatus.Running,
     reloadEnabled: Boolean = false,
     onReloadClick: () -> Unit = {}

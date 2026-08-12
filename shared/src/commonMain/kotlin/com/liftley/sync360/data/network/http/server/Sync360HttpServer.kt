@@ -1,15 +1,15 @@
 package com.liftley.sync360.data.network.http.server
 
+import com.liftley.sync360.data.IncomingServerRequestsController
+import com.liftley.sync360.data.network.http.dto.CancelRequest
+import com.liftley.sync360.data.network.http.dto.CancelResponse
+import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
-import com.liftley.sync360.data.IncomingServerRequestsController
-import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
-import com.liftley.sync360.domain.model.ClientServerState
-import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
@@ -21,8 +21,6 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import kotlinx.coroutines.withTimeoutOrNull
-import kotlin.time.Duration.Companion.milliseconds
 
 class Sync360HttpServer(
     private val incomingServerRequestsController: IncomingServerRequestsController,
@@ -42,157 +40,112 @@ class Sync360HttpServer(
 
             routing {
                 post("/sync360/text/offer") {
-                    val currentState = incomingServerRequestsController.clientServerState.value
+                    val request = call.receive<TextOfferRequest>()
+                    val userDecision = incomingServerRequestsController.awaitTextOfferDecision(request)
 
-                    if (currentState != ClientServerState.Idle) {
+                    if (userDecision == null) {
                         call.respond(TextOfferResponse.Declined)
                         return@post
                     }
-                    val textOfferRequest = call.receive<TextOfferRequest>()
 
-                    incomingServerRequestsController.changeServerState(
-                        ClientServerState.TextOffer(
-                            senderDeviceName = textOfferRequest.senderDeviceName,
-                            preview = textOfferRequest.preview,
-                            characterCount = textOfferRequest.characterCount,
-                            senderDeviceId = textOfferRequest.senderDeviceId
-                        )
+                    call.respond(
+                        if (userDecision == UserDecision.ACCEPTED) {
+                            TextOfferResponse.Accepted
+                        } else {
+                            TextOfferResponse.Declined
+                        }
                     )
-
-                    val userDecision = withTimeoutOrNull(55_000.milliseconds) {
-                        incomingServerRequestsController.waitForUserDecision()
-                    }
-
-                    when (userDecision) {
-                        UserDecision.ACCEPTED -> {
-                            call.respond(TextOfferResponse.Accepted)
-                        }
-
-                        UserDecision.DECLINED -> {
-                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
-                            call.respond(TextOfferResponse.Declined)
-                        }
-
-                        null -> {
-                            incomingServerRequestsController.changeServerState(ClientServerState.Idle)
-                            call.respond(TextOfferResponse.Declined)
-                        }
-                    }
                 }
 
                 post("/sync360/text/transfer") {
-                    try {
-                        val textTransferRequest = call.receive<TextTransferRequest>()
+                    val request = call.receive<TextTransferRequest>()
+                    val accepted = incomingServerRequestsController.receiveAcceptedText(
+                        operationId = request.operationId,
+                        senderDeviceId = request.senderDeviceId,
+                        text = request.text
+                    )
 
-                        incomingServerRequestsController.changeServerState(
-                            ClientServerState.ReceivedText(
-                                textTransferRequest.text
-                            )
+                    call.respond(
+                        TextTransferResponse(
+                            success = accepted,
+                            message = if (accepted) {
+                                null
+                            } else {
+                                "No matching accepted text offer"
+                            }
                         )
-
-                        call.respond(TextTransferResponse(success = true))
-                    } catch (e: Exception) {
-                        call.respond(
-                            TextTransferResponse(
-                                success = false,
-                                message = e.message ?: "Something went wrong! Please try again"
-                            )
-                        )
-                    }
+                    )
                 }
 
                 post("/sync360/file/offer") {
-                    val currentState = incomingServerRequestsController.clientServerState.value
+                    val request = call.receive<FileOfferRequest>()
+                    val userDecision =
+                        incomingServerRequestsController.awaitFileOfferDecision(request)
 
-                    if (currentState != ClientServerState.Idle) {
+                    if (userDecision == null) {
                         call.respond(FileOfferResponse.Declined)
                         return@post
                     }
 
-                    val fileOfferRequest = call.receive<FileOfferRequest>()
+                    if (userDecision != UserDecision.ACCEPTED) {
+                        call.respond(FileOfferResponse.Declined)
+                        return@post
+                    }
 
-                    incomingServerRequestsController.changeServerState(
-                        ClientServerState.FileOffer(
-                            fileOffer = fileOfferRequest
+                    val prepared = incomingServerRequestsController.prepareAcceptedFileTransfer(
+                        operationId = request.operationId
+                    ) {
+                        fileTransferReceiver.prepareForTransfer(
+                            fileOffer = request,
+                            onFileSaved = { completedFileCount ->
+                                incomingServerRequestsController.updateCompletedFileCount(
+                                    operationId = request.operationId,
+                                    completedFileCount = completedFileCount
+                                )
+                            },
+                            onProgress = { progress ->
+                                incomingServerRequestsController.updateFileProgress(
+                                    operationId = request.operationId,
+                                    progress = progress
+                                )
+                            },
+                            onTransferFinished = { wasSuccessful ->
+                                incomingServerRequestsController.finishFileTransfer(
+                                    operationId = request.operationId,
+                                    wasSuccessful = wasSuccessful
+                                )
+                            }
                         )
+                    }
+
+                    call.respond(
+                        if (prepared) {
+                            FileOfferResponse.Accepted
+                        } else {
+                            FileOfferResponse.Declined
+                        }
+                    )
+                }
+
+                post("/sync360/operation/cancel") {
+                    val request = call.receive<CancelRequest>()
+                    val cancelled = incomingServerRequestsController.cancelOperation(
+                        operationId = request.operationId,
+                        senderDeviceId = request.senderDeviceId
                     )
 
-                    val userDecision = withTimeoutOrNull(55_000.milliseconds) {
-                        incomingServerRequestsController.waitForUserDecision()
+                    if (cancelled) {
+                        fileTransferReceiver.cancelCurrentTransfer(request.operationId)
                     }
 
-                    when (userDecision) {
-                        UserDecision.ACCEPTED -> {
-                            fileTransferReceiver.prepareForTransfer(
-                                fileOffer = fileOfferRequest,
-                                onFileSaved = { completedFileCount ->
-                                    val currentProgress =
-                                        (incomingServerRequestsController.clientServerState.value as? ClientServerState.ReceivingFiles)?.progress
-                                            ?: FileTransferProgress.waiting(
-                                                fileOfferRequest.totalSizeBytes
-                                            )
-                                    incomingServerRequestsController.changeServerState(
-                                        ClientServerState.ReceivingFiles(
-                                            senderDeviceName = fileOfferRequest.senderDeviceName,
-                                            fileCount = fileOfferRequest.files.size,
-                                            completedFileCount = completedFileCount,
-                                            progress = currentProgress
-                                        )
-                                    )
-                                },
-                                onProgress = { progress ->
-                                    val currentState =
-                                        incomingServerRequestsController.clientServerState.value as? ClientServerState.ReceivingFiles
-
-                                    if (currentState != null) {
-                                        incomingServerRequestsController.changeServerState(
-                                            currentState.copy(progress = progress)
-                                        )
-                                    }
-                                },
-                                onTransferFinished = { wasSuccessful ->
-                                    val finishedState = if (wasSuccessful) {
-                                        ClientServerState.ReceivedFiles(
-                                            senderDeviceName = fileOfferRequest.senderDeviceName,
-                                            fileCount = fileOfferRequest.files.size
-                                        )
-                                    } else {
-                                        ClientServerState.Idle
-                                    }
-
-                                    incomingServerRequestsController.changeServerState(finishedState)
-                                })
-
-                            incomingServerRequestsController.changeServerState(
-                                ClientServerState.ReceivingFiles(
-                                    senderDeviceName = fileOfferRequest.senderDeviceName,
-                                    fileCount = fileOfferRequest.files.size,
-                                    completedFileCount = 0,
-                                    progress = FileTransferProgress.waiting(
-                                        fileOfferRequest.totalSizeBytes
-                                    )
-                                )
-                            )
-
-                            call.respond(FileOfferResponse.Accepted)
-                        }
-
-                        else -> {
-                            fileTransferReceiver.clearExpectedTransfer()
-
-                            incomingServerRequestsController.changeServerState(
-                                ClientServerState.Idle
-                            )
-
-                            call.respond(FileOfferResponse.Declined)
-                        }
-                    }
+                    call.respond(
+                        CancelResponse(cancelled = cancelled)
+                    )
                 }
             }
         }.start(false)
 
         server = newServer
-
         return newServer.engine.resolvedConnectors().first().port
     }
 }

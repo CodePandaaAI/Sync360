@@ -6,7 +6,7 @@ The README currently references these assets:
 
 | File | Purpose | Suggested size |
 | ---- | ------- | -------------- |
-| `sync360-icon.png` | App icon near README title | 512x512 PNG, transparent background if possible |
+| `shared/src/commonMain/composeResources/drawable/app_icon.png` | Active app icon near the README title | 1024x1024 PNG with a transparent background |
 | `hero-demo.gif` | Main README demo showing the current Android discovery, approval, text, and file-transfer experience | 1080x1080 |
 | `desktop-to-android-demo.gif` | README demo showing the current Desktop-to-Android discovery, approval, and file-transfer experience | 1920x1080 (16:9) |
 | `android-send.png` | Android Send screen | 1080x2400 or cropped portrait |
@@ -26,7 +26,7 @@ The README currently references these assets:
 
 ## First assets to create
 
-1. `sync360-icon.png`
+1. `shared/src/commonMain/composeResources/drawable/app_icon.png`
 2. `hero-demo.gif`
 3. `desktop-to-android-demo.gif`
 4. `android-send.png`

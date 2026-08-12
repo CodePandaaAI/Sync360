@@ -3,14 +3,16 @@ package com.liftley.sync360.data.network.tcp
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.domain.model.FileTransferProgress
+import kotlin.uuid.Uuid
 
 interface FileTransferSender {
     suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
+        operationId: Uuid,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
         onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit>
 
-    fun cancelCurrentTransfer()
+    fun cancelCurrentFileTransfer()
 }

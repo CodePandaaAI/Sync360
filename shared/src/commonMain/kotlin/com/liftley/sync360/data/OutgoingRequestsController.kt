@@ -1,6 +1,8 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
+import com.liftley.sync360.data.network.http.dto.CancelRequest
+import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
@@ -11,6 +13,7 @@ import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
+import kotlin.uuid.Uuid
 
 class OutgoingRequestsController(
     private val httpClient: Sync360HttpClient,
@@ -18,28 +21,47 @@ class OutgoingRequestsController(
     private val fileTransferSender: FileTransferSender
 ) {
     fun cancelCurrentFileTransfer() {
-        fileTransferSender.cancelCurrentTransfer()
+        fileTransferSender.cancelCurrentFileTransfer()
+    }
+
+    suspend fun sendCancellationRequestToTargetDevice(
+        targetDevice: NearbyDevice,
+        operationId: Uuid
+    ): Result<CancelResponse> {
+        val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
+
+        return httpClient.cancelOperation(
+            targetDevice = targetDevice,
+            cancelRequest = CancelRequest(
+                operationId = operationId,
+                senderDeviceId = myDeviceInfo.deviceId
+            )
+        )
     }
 
     suspend fun sendText(
-        deviceToSendOfferInfo: NearbyDevice,
-        text: String
+        deviceToSendText: NearbyDevice,
+        text: String,
+        operationId: Uuid
     ): Result<TextTransferResponse> {
         val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
 
         val textOfferRequest = TextOfferRequest(
+            operationId = operationId,
             senderDeviceId = myDeviceInfo.deviceId,
             senderDeviceName = myDeviceInfo.deviceName,
-            preview = text.take(180),
+            preview = text.take(200),
             characterCount = text.count()
         )
 
         val textTransferRequest = TextTransferRequest(
+            operationId = operationId,
+            senderDeviceId = myDeviceInfo.deviceId,
             text = text
         )
 
         return httpClient.textTransferRequest(
-            deviceToSendOfferInfo,
+            deviceToSendText,
             textOfferRequest,
             textTransferRequest
         )
@@ -48,6 +70,7 @@ class OutgoingRequestsController(
     suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         selectedFiles: List<SelectedFile>,
+        operationId: Uuid,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
         onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit> {
@@ -85,29 +108,26 @@ class OutgoingRequestsController(
         }
 
         val fileOfferRequest = FileOfferRequest(
+            operationId = operationId,
             senderDeviceId = myDeviceInfo.deviceId,
             senderDeviceName = myDeviceInfo.deviceName,
-            files = offeredFiles,
+            offeredFiles = offeredFiles,
             totalSizeBytes = totalSizeBytes
         )
 
-        val fileOfferResult = httpClient.sendFileOffer(
-            device = deviceToSendFiles,
-            fileOfferRequest = fileOfferRequest
-        )
-
-        if (fileOfferResult.isFailure) {
-            return Result.failure(
-                fileOfferResult.exceptionOrNull()
-                    ?: Exception("File offer failed")
-            )
-        }
-
-        return fileTransferSender.sendFiles(
-            deviceToSendFiles = deviceToSendFiles,
-            files = selectedFiles,
-            onFileStarted = onFileStarted,
-            onProgress = onProgress
+        httpClient.sendFilesToDevice(deviceToSendFiles, fileOfferRequest).fold(
+            onSuccess = {
+                return fileTransferSender.sendFiles(
+                    deviceToSendFiles = deviceToSendFiles,
+                    files = selectedFiles,
+                    operationId = operationId,
+                    onFileStarted = onFileStarted,
+                    onProgress = onProgress
+                )
+            },
+            onFailure = { error ->
+                return Result.failure(error)
+            }
         )
     }
 }

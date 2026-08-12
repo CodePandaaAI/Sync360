@@ -24,13 +24,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.keepScreenOn
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
-import com.liftley.sync360.core.designsystem.icons.Close
+import com.liftley.sync360.core.designsystem.icons.Back
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
 import com.liftley.sync360.core.designsystem.icons.Settings
@@ -59,13 +60,14 @@ fun Sync360Root() {
 
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
     val sendScreenState by sendScreenViewModel.screenState.collectAsStateWithLifecycle()
-    val currentScreen = navigationViewModel.checkCurrentTop()
+    val currentScreen = navigationViewModel.currentScreen()
 
     val windowSizeClass = currentWindowAdaptiveInfoV2().windowSizeClass
     val useTwoPane = windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
     val twoPaneStrategy = remember(windowSizeClass) {
         TwoPaneSceneStrategy<NavScreen>(windowSizeClass)
     }
+
     val discoveryIsStable =
         sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
                 sendScreenState.discoveryStatus == DiscoveryStatus.Running
@@ -78,10 +80,15 @@ fun Sync360Root() {
                 discoveryIsStable &&
                 registrationIsStable
 
+    val shouldKeepScreenOn =
+        sendScreenState.sendOperationState != SendOperationState.Idle ||
+                receiveScreenState != ReceiveScreenState.Idle
+
     val receiveTitle = when (receiveScreenState) {
         ReceiveScreenState.Idle -> "Sync360"
         is ReceiveScreenState.IncomingTextOffer -> "Incoming text"
         is ReceiveScreenState.IncomingFileOffer -> "Incoming files"
+        is ReceiveScreenState.WaitingForText -> "Receiving text"
         is ReceiveScreenState.ReceivingFiles -> "Receiving files"
         is ReceiveScreenState.ReceivedText -> "Received text"
         is ReceiveScreenState.ReceivedFiles -> "Files received"
@@ -113,10 +120,8 @@ fun Sync360Root() {
                     windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
                     NavigationBarItem(
-                        onClick = {
-                            navigationViewModel.addScreen(NavScreen.ReceiveScreen)
-                        },
-                        selected = navigationViewModel.checkCurrentTop() ==
+                        onClick = navigationViewModel::navigateToReceive,
+                        selected = navigationViewModel.currentScreen() ==
                                 NavScreen.ReceiveScreen,
                         label = { Text("Receive") },
                         icon = {
@@ -127,8 +132,8 @@ fun Sync360Root() {
                         }
                     )
                     NavigationBarItem(
-                        onClick = navigationViewModel::removeAllExceptAddScreen,
-                        selected = navigationViewModel.checkCurrentTop() ==
+                        onClick = navigationViewModel::navigateToSend,
+                        selected = navigationViewModel.currentScreen() ==
                                 NavScreen.SendScreen,
                         label = { Text("Send") },
                         icon = {
@@ -148,10 +153,10 @@ fun Sync360Root() {
                         IconButton(
                             modifier = Modifier,
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
-                            onClick = navigationViewModel::removeLast
+                            onClick = navigationViewModel::goBack
                         ) {
                             Icon(
-                                imageVector = Close,
+                                imageVector = Back,
                                 contentDescription = "Close settings"
                             )
                         }
@@ -172,9 +177,7 @@ fun Sync360Root() {
                     if (currentScreen != NavScreen.SettingsScreen) {
                         IconButton(
                             colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
-                            onClick = {
-                                navigationViewModel.addScreen(NavScreen.SettingsScreen)
-                            }
+                            onClick = navigationViewModel::navigateToSettings
                         ) {
                             Icon(
                                 imageVector = Settings,
@@ -188,13 +191,18 @@ fun Sync360Root() {
                 )
             )
         },
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier
+            .fillMaxSize()
+            .then(
+            if (shouldKeepScreenOn) Modifier.keepScreenOn()
+            else Modifier
+        ),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) { innerPadding ->
         NavDisplay(
             backStack = navigationViewModel.backstack,
             modifier = Modifier.padding(innerPadding),
-            onBack = navigationViewModel::removeLast,
+            onBack = navigationViewModel::goBack,
             sceneStrategies = listOf(twoPaneStrategy)
         ) { screen ->
             when (screen) {
@@ -204,9 +212,7 @@ fun Sync360Root() {
                         metadata = TwoPaneScene.firstPane()
                     ) {
                         SendScreen(
-                            onTroubleshootClick = {
-                                navigationViewModel.addScreen(NavScreen.SettingsScreen)
-                            }
+                            onTroubleshootClick = navigationViewModel::navigateToSettings
                         )
                     }
                 }
@@ -217,9 +223,7 @@ fun Sync360Root() {
                         metadata = TwoPaneScene.secondPane()
                     ) {
                         ReceiveScreen(
-                            onTroubleshootClick = {
-                                navigationViewModel.addScreen(NavScreen.SettingsScreen)
-                            }
+                            onTroubleshootClick = navigationViewModel::navigateToSettings
                         )
                     }
                 }
@@ -240,7 +244,11 @@ fun Sync360Root() {
         if (receiveScreenState is ReceiveScreenState.IncomingTextOffer ||
             receiveScreenState is ReceiveScreenState.IncomingFileOffer
         ) {
-            navigationViewModel.addScreen(NavScreen.ReceiveScreen)
+            navigationViewModel.navigateToReceive()
         }
+    }
+
+    LaunchedEffect(useTwoPane) {
+        navigationViewModel.setTwoPane(useTwoPane)
     }
 }

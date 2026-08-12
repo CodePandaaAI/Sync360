@@ -18,7 +18,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Sequential file framing, index/size validation, and one final success/completed-count result per batch.
 - Android public Downloads writing with incomplete-entry cleanup.
 - Desktop Downloads writing through temporary `.part` files and collision-safe final names.
-- Best-effort sender cancellation.
+- Operation-scoped sender cancellation that explicitly clears the matching receiver offer or transfer, with timeout fallbacks for lost communication.
 - Batch-wide byte percentage on the sender and receiver.
 - Shared Compose UI with compact navigation and a wider 50/50 Send/Receive scene.
 - Enabled iOS device and Apple-silicon Simulator targets with initial Bonjour, selection, clipboard, storage, and TCP transfer implementations.
@@ -29,20 +29,25 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 - Improve receiver-side failure details and per-file results.
 - Test cancellation and failure at more points in large multi-file batches.
+- Close the narrow Accept/Cancel response race in the shared incoming-operation controller.
 - Add focused protocol and storage tests.
 
 ### Discovery and lifecycle
 
 - Detect network/address changes and repair registration automatically.
 - Add the appropriate Android foreground/background service behavior.
+- Add Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime request, denial handling, and permission-aware network startup.
+- Queue Android 13 legacy NSD resolves and retry already-active failures.
 - Replace the remaining macOS/Linux JmDNS fallback with Bonjour and Avahi after the Windows-native path is validated.
 - Validate Desktop LAN-interface selection on more multi-adapter systems.
+- Add clear Windows Firewall onboarding and decide whether packaging should install an inbound application rule.
+- Retire Windows native callback arenas after a safe lifetime and preserve per-interface results when only one interface reports service removal.
 - Test more routers, hotspots, firewalls, VPNs, and multicast-restricted networks.
 - Improve IPv4/IPv6 host preference and scoped-address URL handling.
 
 ### Security
 
-- Bind accepted offers to file connections with a transfer/session token.
+- Replace correctness-only operation IDs with authenticated session credentials.
 - Authenticate nearby peers deliberately.
 - Add cryptographic integrity verification.
 - Evaluate encryption and replay protection.

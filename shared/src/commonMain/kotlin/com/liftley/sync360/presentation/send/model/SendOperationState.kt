@@ -9,6 +9,10 @@ sealed interface SendOperationState {
         val deviceName: String
     ) : SendOperationState
 
+    data class TextSent(
+        val deviceName: String
+    ) : SendOperationState
+
     data class SendingFileOffer(
         val deviceName: String,
         val fileCount: Int
@@ -20,10 +24,6 @@ sealed interface SendOperationState {
         val fileNumber: Int,
         val totalFiles: Int,
         val progress: FileTransferProgress
-    ) : SendOperationState
-
-    data class TextSent(
-        val deviceName: String
     ) : SendOperationState
 
     data class FilesSent(

@@ -10,6 +10,8 @@ import io.ktor.network.sockets.aSocket
 import io.ktor.network.sockets.openReadChannel
 import io.ktor.network.sockets.openWriteChannel
 import io.ktor.network.sockets.port
+import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readAvailable
 import io.ktor.utils.io.readInt
 import io.ktor.utils.io.readLong
 import io.ktor.utils.io.writeByte
@@ -25,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.NSLock
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalForeignApi::class)
 class IosFileTransferReceiver(
@@ -36,12 +39,7 @@ class IosFileTransferReceiver(
     private val selectorManager = SelectorManager(Dispatchers.Default)
     private val stateLock = NSLock()
     private var serverSocket: ServerSocket? = null
-    private var expectedFileOffer: FileOfferRequest? = null
-    private var onFileSaved: ((completedFileCount: Int) -> Unit)? = null
-    private var onProgress: ((FileTransferProgress) -> Unit)? = null
-    private var onTransferFinished: ((wasSuccessful: Boolean) -> Unit)? = null
-    private var waitingForSenderTimeout: Job? = null
-    private var waitingForSenderGeneration = 0L
+    private var expectedTransfer: ExpectedTransfer? = null
 
     override var port: Int = 0
         private set
@@ -77,59 +75,86 @@ class IosFileTransferReceiver(
         fileOffer: FileOfferRequest,
         onFileSaved: (completedFileCount: Int) -> Unit,
         onProgress: (FileTransferProgress) -> Unit,
-        onTransferFinished: (wasSuccessful: Boolean) -> Unit
+        onTransferFinished: suspend (wasSuccessful: Boolean) -> Unit
     ) {
         locked {
-            expectedFileOffer = fileOffer
-            this.onFileSaved = onFileSaved
-            this.onProgress = onProgress
-            this.onTransferFinished = onTransferFinished
-            startWaitingForSenderTimeout()
+            check(expectedTransfer == null) { "Another file transfer is already expected" }
+
+            val transfer = ExpectedTransfer(
+                offer = fileOffer,
+                onFileSaved = onFileSaved,
+                onProgress = onProgress,
+                onTransferFinished = onTransferFinished
+            )
+            expectedTransfer = transfer
+            startWaitingForSenderTimeout(transfer)
         }
     }
 
-    override fun clearExpectedTransfer() {
-        locked {
-            waitingForSenderTimeout?.cancel()
-            waitingForSenderGeneration++
-            expectedFileOffer = null
-            onFileSaved = null
-            onProgress = null
-            onTransferFinished = null
+    override suspend fun cancelCurrentTransfer(operationId: Uuid) {
+        val cancellation = locked {
+            val transfer = expectedTransfer
+                ?.takeIf { it.offer.operationId == operationId }
+                ?: return
+
+            TransferCancellation(
+                socket = transfer.connectedSocket,
+                completionCallback = clearTransferStateLocked(transfer)
+            )
         }
+
+        runCatching { cancellation.socket?.close() }
+        cancellation.completionCallback?.invoke(false)
     }
 
     private suspend fun receiveTransfer(senderSocket: Socket) {
-        val fileOffer = locked {
-            waitingForSenderTimeout?.cancel()
-            waitingForSenderGeneration++
-            expectedFileOffer
-        }
-
         try {
             val socketInput = senderSocket.openReadChannel()
             val socketOutput = senderSocket.openWriteChannel(autoFlush = false)
             var completedFileCount = 0
+            var connectedTransfer: ExpectedTransfer? = null
+            var claimedTransfer: ExpectedTransfer? = null
 
             try {
-                val acceptedFileOffer = fileOffer
-                    ?: error("No accepted file offer is waiting")
-                val progressTracker = FileTransferProgressTracker(
-                    totalBytes = acceptedFileOffer.totalSizeBytes,
-                    onProgress = { progress ->
-                        val callback = locked { onProgress }
-                        callback?.invoke(progress)
+                val transfer = locked {
+                    val expected = expectedTransfer
+                        ?: error("No accepted file offer is waiting")
+                    check(expected.connectedSocket == null) {
+                        "Another file transfer socket is already connected"
                     }
+                    expected.connectedSocket = senderSocket
+                    expected
+                }
+                connectedTransfer = transfer
+                verifyOperationId(socketInput, transfer.offer.operationId)
+
+                claimedTransfer = locked {
+                    if (
+                        expectedTransfer !== transfer ||
+                        transfer.connectedSocket !== senderSocket
+                    ) {
+                        null
+                    } else {
+                        transfer.waitingForSenderTimeout?.cancel()
+                        transfer.waitingForSenderTimeout = null
+                        transfer.socketWasClaimed = true
+                        transfer
+                    }
+                }
+                val acceptedTransfer = claimedTransfer ?: return
+                val progressTracker = FileTransferProgressTracker(
+                    totalBytes = acceptedTransfer.offer.totalSizeBytes,
+                    onProgress = acceptedTransfer.onProgress
                 )
 
-                acceptedFileOffer.files.forEach { expectedFile ->
+                acceptedTransfer.offer.offeredFiles.forEach { expectedFile ->
                     val receivedFileIndex = withTimeout(
-                        FileTransferConstants.SOCKET_TIMEOUT_MILLIS.toLong()
+                        FileTransferConstants.SOCKET_TIMEOUT_MILLIS.milliseconds
                     ) {
                         socketInput.readInt()
                     }
                     val receivedFileSize = withTimeout(
-                        FileTransferConstants.SOCKET_TIMEOUT_MILLIS.toLong()
+                        FileTransferConstants.SOCKET_TIMEOUT_MILLIS.milliseconds
                     ) {
                         socketInput.readLong()
                     }
@@ -152,16 +177,33 @@ class IosFileTransferReceiver(
                     )
 
                     completedFileCount++
-                    val callback = locked { onFileSaved }
-                    callback?.invoke(completedFileCount)
+                    acceptedTransfer.onFileSaved(completedFileCount)
                 }
 
                 socketOutput.writeByte(1.toByte())
                 socketOutput.writeInt(completedFileCount)
                 socketOutput.flush()
-                finishTransfer(wasSuccessful = true)
+                finishTransfer(
+                    transfer = acceptedTransfer,
+                    wasSuccessful = true
+                )
             } catch (exception: Exception) {
-                println("iOS file transfer failed: ${exception.message}")
+                val failedTransfer = claimedTransfer
+                val transferAtFailure = connectedTransfer
+                if (failedTransfer == null && transferAtFailure != null) {
+                    releaseUnclaimedSocket(transferAtFailure, senderSocket)
+                }
+                if (
+                    locked {
+                        when {
+                            failedTransfer != null -> expectedTransfer === failedTransfer
+                            transferAtFailure != null -> expectedTransfer === transferAtFailure
+                            else -> true
+                        }
+                    }
+                ) {
+                    println("iOS file transfer failed: ${exception.message}")
+                }
 
                 runCatching {
                     socketOutput.writeByte(0.toByte())
@@ -169,43 +211,108 @@ class IosFileTransferReceiver(
                     socketOutput.flush()
                 }
 
-                finishTransfer(wasSuccessful = false)
+                failedTransfer?.let { transfer ->
+                    finishTransfer(
+                        transfer = transfer,
+                        wasSuccessful = false
+                    )
+                }
             }
         } finally {
             senderSocket.close()
         }
     }
 
-    private fun finishTransfer(wasSuccessful: Boolean) {
+    private suspend fun verifyOperationId(
+        input: ByteReadChannel,
+        expectedOperationId: Uuid
+    ) {
+        val bytes = ByteArray(Uuid.SIZE_BYTES)
+
+        withTimeout(FileTransferConstants.SOCKET_TIMEOUT_MILLIS.milliseconds) {
+            var offset = 0
+
+            while (offset < bytes.size) {
+                val bytesRead = input.readAvailable(
+                    buffer = bytes,
+                    offset = offset,
+                    length = bytes.size - offset
+                )
+
+                if (bytesRead == -1) {
+                    error("Connection ended before the operation ID was received")
+                }
+
+                if (bytesRead > 0) {
+                    offset += bytesRead
+                }
+            }
+        }
+
+        check(Uuid.fromByteArray(bytes) == expectedOperationId) {
+            "File transfer operation ID does not match the accepted offer"
+        }
+    }
+
+    private suspend fun finishTransfer(
+        transfer: ExpectedTransfer,
+        wasSuccessful: Boolean
+    ) {
         val completionCallback = locked {
-            val callback = onTransferFinished
-            waitingForSenderTimeout?.cancel()
-            waitingForSenderGeneration++
-            expectedFileOffer = null
-            onFileSaved = null
-            onProgress = null
-            onTransferFinished = null
-            callback
+            clearTransferStateLocked(transfer)
         }
 
         completionCallback?.invoke(wasSuccessful)
     }
 
-    private fun startWaitingForSenderTimeout() {
-        waitingForSenderTimeout?.cancel()
-        waitingForSenderGeneration++
-        val generation = waitingForSenderGeneration
+    private fun clearTransferStateLocked(
+        transfer: ExpectedTransfer
+    ): (suspend (Boolean) -> Unit)? {
+        if (expectedTransfer !== transfer) return null
 
-        waitingForSenderTimeout = receiverScope.launch {
+        expectedTransfer = null
+        transfer.waitingForSenderTimeout?.cancel()
+        transfer.waitingForSenderTimeout = null
+        transfer.connectedSocket = null
+        transfer.socketWasClaimed = false
+        return transfer.onTransferFinished
+    }
+
+    private fun startWaitingForSenderTimeout(transfer: ExpectedTransfer) {
+        transfer.waitingForSenderTimeout = receiverScope.launch {
             delay(
                 FileTransferConstants.WAITING_FOR_FIRST_FILE_TIMEOUT_MILLIS.milliseconds
             )
-            val timeoutIsCurrent = locked {
-                waitingForSenderGeneration == generation &&
-                    expectedFileOffer != null
+            expireWaitingTransfer(transfer)
+        }
+    }
+
+    private suspend fun expireWaitingTransfer(transfer: ExpectedTransfer) {
+        val cancellation = locked {
+            if (expectedTransfer !== transfer || transfer.socketWasClaimed) {
+                return
             }
-            if (timeoutIsCurrent) {
-                finishTransfer(wasSuccessful = false)
+
+            TransferCancellation(
+                socket = transfer.connectedSocket,
+                completionCallback = clearTransferStateLocked(transfer)
+            )
+        }
+        runCatching { cancellation.socket?.close() }
+        cancellation.completionCallback?.invoke(false)
+    }
+
+    private fun releaseUnclaimedSocket(
+        transfer: ExpectedTransfer,
+        socket: Socket
+    ) {
+        locked {
+            if (
+                expectedTransfer === transfer &&
+                !transfer.socketWasClaimed &&
+                transfer.connectedSocket === socket
+            ) {
+                transfer.connectedSocket = null
             }
         }
     }
@@ -218,4 +325,19 @@ class IosFileTransferReceiver(
             stateLock.unlock()
         }
     }
+
+    private class ExpectedTransfer(
+        val offer: FileOfferRequest,
+        val onFileSaved: (completedFileCount: Int) -> Unit,
+        val onProgress: (FileTransferProgress) -> Unit,
+        val onTransferFinished: suspend (wasSuccessful: Boolean) -> Unit,
+        var connectedSocket: Socket? = null,
+        var socketWasClaimed: Boolean = false,
+        var waitingForSenderTimeout: Job? = null
+    )
+
+    private data class TransferCancellation(
+        val socket: Socket?,
+        val completionCallback: (suspend (Boolean) -> Unit)?
+    )
 }

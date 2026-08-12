@@ -2,6 +2,7 @@ package com.liftley.sync360.data.network.tcp
 
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.domain.model.FileTransferProgress
+import kotlin.uuid.Uuid
 
 interface FileTransferReceiver {
     val port: Int
@@ -12,8 +13,8 @@ interface FileTransferReceiver {
         fileOffer: FileOfferRequest,
         onFileSaved: (completedFileCount: Int) -> Unit,
         onProgress: (FileTransferProgress) -> Unit,
-        onTransferFinished: (wasSuccessful: Boolean) -> Unit
+        onTransferFinished: suspend (wasSuccessful: Boolean) -> Unit
     )
 
-    fun clearExpectedTransfer()
+    suspend fun cancelCurrentTransfer(operationId: Uuid)
 }

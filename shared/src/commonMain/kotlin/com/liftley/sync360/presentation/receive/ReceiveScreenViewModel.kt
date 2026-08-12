@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
+import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.domain.repository.ClipboardProvider
 import com.liftley.sync360.domain.repository.DownloadsFolderOpener
@@ -31,7 +32,9 @@ class ReceiveScreenViewModel(
     }
 
     fun makeDecision(decision: UserDecision) {
-        incomingServerRequestsController.makeDecision(decision)
+        viewModelScope.launch {
+            incomingServerRequestsController.makeDecision(decision)
+        }
     }
 
     fun copyReceivedText(text: String) {
@@ -39,7 +42,9 @@ class ReceiveScreenViewModel(
     }
 
     fun clearState() {
-        incomingServerRequestsController.clearState()
+        viewModelScope.launch {
+            incomingServerRequestsController.clearState()
+        }
     }
 
     fun openDownloads() {
@@ -55,15 +60,24 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
         is ClientServerState.FileOffer -> {
             ReceiveScreenState.IncomingFileOffer(
                 senderDeviceName = fileOffer.senderDeviceName,
-                fileCount = fileOffer.files.size,
+                fileCount = fileOffer.offeredFiles.size,
                 totalSizeBytes = fileOffer.totalSizeBytes
+            )
+        }
+
+        is ClientServerState.WaitingForFiles -> {
+            ReceiveScreenState.ReceivingFiles(
+                senderDeviceName = fileOffer.senderDeviceName,
+                fileCount = fileOffer.offeredFiles.size,
+                completedFileCount = 0,
+                progress = FileTransferProgress.waiting(fileOffer.totalSizeBytes)
             )
         }
 
         is ClientServerState.ReceivingFiles -> {
             ReceiveScreenState.ReceivingFiles(
-                senderDeviceName = senderDeviceName,
-                fileCount = fileCount,
+                senderDeviceName = fileOffer.senderDeviceName,
+                fileCount = fileOffer.offeredFiles.size,
                 completedFileCount = completedFileCount,
                 progress = progress
             )
@@ -71,19 +85,25 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
 
         is ClientServerState.TextOffer -> {
             ReceiveScreenState.IncomingTextOffer(
-                senderDeviceName = senderDeviceName,
-                preview = preview,
-                characterCount = characterCount
+                senderDeviceName = textOffer.senderDeviceName,
+                preview = textOffer.preview,
+                characterCount = textOffer.characterCount
             )
         }
 
-        is ClientServerState.ReceivedText -> {
+        is ClientServerState.WaitingForText -> {
+            ReceiveScreenState.WaitingForText(
+                senderDeviceName = textOffer.senderDeviceName
+            )
+        }
+
+        is ClientServerState.TextReceived -> {
             ReceiveScreenState.ReceivedText(
                 text = data
             )
         }
 
-        is ClientServerState.ReceivedFiles -> {
+        is ClientServerState.FilesReceived -> {
             ReceiveScreenState.ReceivedFiles(
                 senderDeviceName = senderDeviceName,
                 fileCount = fileCount

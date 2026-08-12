@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.uuid.Uuid
 
 class SendScreenViewModel(
     private val selectedFileReader: SelectedFileReader,
@@ -35,6 +36,8 @@ class SendScreenViewModel(
     private var latestNearbyDevices: List<NearbyDevice> = emptyList()
     private var activeSendJob: Job? = null
 
+    private var activeSend: ActiveSend? = null
+
     init {
         viewModelScope.launch {
             networkServicesController.nearbyDevices.collect { devices ->
@@ -44,9 +47,6 @@ class SendScreenViewModel(
                     it.copy(
                         nearbyDevices = devices.map { device ->
                             device.toNearbyDeviceUiModel()
-                        },
-                        selectedDeviceId = it.selectedDeviceId?.takeIf { selectedId ->
-                            devices.any { device -> device.id == selectedId }
                         }
                     )
                 }
@@ -84,27 +84,34 @@ class SendScreenViewModel(
     }
 
 
-    fun sendTextToDevice(deviceId: String) {
+    private fun sendTextToDevice(deviceId: String) {
         if (_screenState.value.sendOperationState != SendOperationState.Idle) {
             return
         }
 
-        val device = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
+        val deviceToSendText = latestNearbyDevices.firstOrNull { it.id == deviceId } ?: return
 
         val text = screenState.value.textInput
 
         if (text.isBlank()) return
 
+        val operationId = Uuid.random()
+
+        activeSend = ActiveSend(
+            operationId = operationId,
+            targetDevice = deviceToSendText
+        )
+
         _screenState.update {
             it.copy(
                 sendOperationState = SendOperationState.SendingTextOffer(
-                    deviceName = device.deviceName
+                    deviceName = deviceToSendText.deviceName
                 )
             )
         }
 
-        startSendJob {
-            val result = outgoingRequestsController.sendText(device, text)
+        startSendJob(operationId) {
+            val result = outgoingRequestsController.sendText(deviceToSendText, text, operationId)
             currentCoroutineContext().ensureActive()
 
             result.fold(
@@ -112,7 +119,7 @@ class SendScreenViewModel(
                     _screenState.update {
                         it.copy(
                             sendOperationState = SendOperationState.TextSent(
-                                deviceName = device.deviceName
+                                deviceName = deviceToSendText.deviceName
                             )
                         )
                     }
@@ -121,7 +128,7 @@ class SendScreenViewModel(
                     _screenState.update {
                         it.copy(
                             sendOperationState = SendOperationState.OperationFailed(
-                                reason = error.message ?: "Text not sent"
+                                reason = error.message?.take(300) ?: "Text not sent"
                             )
                         )
                     }
@@ -130,7 +137,7 @@ class SendScreenViewModel(
         }
     }
 
-    fun sendFilesToDevice(deviceId: String) {
+    private fun sendFilesToDevice(deviceId: String) {
         if (_screenState.value.sendOperationState != SendOperationState.Idle) {
             return
         }
@@ -140,6 +147,13 @@ class SendScreenViewModel(
         val files = _screenState.value.files
 
         if (files.isEmpty()) return
+
+        val operationId = Uuid.random()
+
+        activeSend = ActiveSend(
+            operationId = operationId,
+            targetDevice = deviceToSendFiles
+        )
 
         val totalSizeBytes = files.sumOf { file -> file.sizeBytes ?: 0L }
         var currentFileIndex = 0
@@ -155,10 +169,11 @@ class SendScreenViewModel(
             )
         }
 
-        startSendJob {
+        startSendJob(operationId) {
             val result = outgoingRequestsController.sendFiles(
                 deviceToSendFiles = deviceToSendFiles,
                 selectedFiles = files,
+                operationId = operationId,
                 onFileStarted = { fileIndex, file ->
                     currentFileIndex = fileIndex
                     currentFileName = file.displayName
@@ -189,6 +204,7 @@ class SendScreenViewModel(
                     }
                 }
             )
+
             currentCoroutineContext().ensureActive()
 
             result.fold(
@@ -206,7 +222,7 @@ class SendScreenViewModel(
                     _screenState.update {
                         it.copy(
                             sendOperationState = SendOperationState.OperationFailed(
-                                reason = error.message ?: "Files not sent"
+                                reason = error.message?.take(300) ?: "Files not sent"
                             )
                         )
                     }
@@ -216,9 +232,21 @@ class SendScreenViewModel(
     }
 
     fun cancelSend() {
+        val operation = activeSend
+        activeSend = null
+
         activeSendJob?.cancel()
         activeSendJob = null
         outgoingRequestsController.cancelCurrentFileTransfer()
+
+        if (operation != null) {
+            viewModelScope.launch {
+                outgoingRequestsController.sendCancellationRequestToTargetDevice(
+                    targetDevice = operation.targetDevice,
+                    operationId = operation.operationId
+                )
+            }
+        }
 
         _screenState.update {
             it.copy(sendOperationState = SendOperationState.Cancelled)
@@ -237,19 +265,9 @@ class SendScreenViewModel(
         }
     }
 
-    fun onDeviceSelected(deviceId: String) {
-        if (latestNearbyDevices.none { it.id == deviceId }) return
-
-        _screenState.update {
-            it.copy(selectedDeviceId = deviceId)
-        }
-    }
-
-    fun sendToSelectedDevice() {
+    fun sendToDevice(deviceId: String) {
         val state = _screenState.value
-        if (!state.canSend) return
-
-        val deviceId = state.selectedDeviceId ?: return
+        if (!state.isContentReadyToSend) return
 
         when (state.selectedTab) {
             SendTab.Text -> sendTextToDevice(deviceId)
@@ -290,7 +308,10 @@ class SendScreenViewModel(
         }
     }
 
-    private fun startSendJob(block: suspend () -> Unit) {
+    private fun startSendJob(
+        operationId: Uuid,
+        block: suspend () -> Unit
+    ) {
         val sendJob = viewModelScope.launch {
             block()
         }
@@ -300,6 +321,14 @@ class SendScreenViewModel(
             if (activeSendJob === sendJob) {
                 activeSendJob = null
             }
+            if (activeSend?.operationId == operationId) {
+                activeSend = null
+            }
         }
     }
+
+    private data class ActiveSend(
+        val operationId: Uuid,
+        val targetDevice: NearbyDevice
+    )
 }

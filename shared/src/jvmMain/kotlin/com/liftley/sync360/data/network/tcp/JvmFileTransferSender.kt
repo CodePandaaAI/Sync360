@@ -15,11 +15,12 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.atomic.AtomicReference
+import kotlin.uuid.Uuid
 
 class JvmFileTransferSender : FileTransferSender {
     private val activeSocket = AtomicReference<Socket?>(null)
 
-    override fun cancelCurrentTransfer() {
+    override fun cancelCurrentFileTransfer() {
         runCatching {
             activeSocket.getAndSet(null)?.close()
         }
@@ -28,13 +29,12 @@ class JvmFileTransferSender : FileTransferSender {
     override suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
+        operationId: Uuid,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
         onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            if (files.isEmpty()) {
-                return@withContext Result.success(Unit)
-            }
+            require(files.isNotEmpty()) { "No files were selected" }
 
             connectToDevice(deviceToSendFiles).use { socket ->
                 try {
@@ -53,6 +53,8 @@ class JvmFileTransferSender : FileTransferSender {
                         totalBytes = files.sumOf { file -> requireNotNull(file.sizeBytes) },
                         onProgress = onProgress
                     )
+
+                    socketOutput.write(operationId.toByteArray())
 
                     files.forEachIndexed { fileIndex, file ->
                         currentCoroutineContext().ensureActive()

@@ -75,7 +75,7 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 
 - `NetworkServicesController` starts the HTTP server, file receiver, and discovery/registration once for the application lifetime. It also coordinates timed discovery stop, discovery restart, and full connection repair.
 - `OutgoingRequestsController` creates offers, calls the Ktor client, and starts accepted file transfers.
-- `IncomingServerRequestsController` exposes incoming offers and receiver decisions to the HTTP server and Receive UI.
+- `IncomingServerRequestsController` serializes Accept/Decline/Cancel races and uses `ClientServerState` as the source of truth for the active incoming operation. Text follows `TextOffer -> WaitingForText -> TextReceived`; files follow `FileOffer -> WaitingForFiles -> ReceivingFiles -> FilesReceived`. Active states retain their accepted request, so operation type, sender identity, operation ID, and acceptance phase are derived from state instead of duplicated in a second operation model.
 
 ### Discovery
 
@@ -93,6 +93,8 @@ Connection repair waits until both operations are stable, then stops discovery a
 
 Windows calls `DnsServiceBrowse`, `DnsServiceResolve`, `DnsServiceRegister`, and `DnsServiceDeRegister` through the JDK Foreign Function and Memory API. Browse and registration use interface index `0`, which delegates all-interface IPv4/IPv6 handling to Windows. Native registration and deregistration callbacks drive `RegistrationStatus`; browse cancellation drives the final transition back to `DiscoveryStatus.Idle`. Browse callbacks start resolution for added PTR records and remove devices reported with a zero TTL. Resolved TXT properties and IPv4/IPv6 addresses are converted into the same shared `NearbyDevice` model used by Android.
 
+The Windows implementation keeps native request memory alive after terminal callbacks because a callback is still unwinding when Kotlin receives it. Those retired arenas are not yet closed later, so repeated repair cycles can retain small native allocations. Resolved results are keyed by service name and interface, but a TTL-zero browse removal currently clears every interface result for that service name.
+
 The macOS/Linux JmDNS fallback starts on eligible IPv4 and IPv6 addresses from every active, multicast-capable, non-loopback, non-virtual LAN interface. Windows DNS-SD and the fallback still need broader validation with VPN, WSL, Docker, virtual-machine, Ethernet, and Wi-Fi adapters.
 
 ## Control plane: Ktor HTTP
@@ -103,9 +105,10 @@ Ktor carries offers, decisions, metadata, and text:
 POST /sync360/text/offer
 POST /sync360/text/transfer
 POST /sync360/file/offer
+POST /sync360/operation/cancel
 ```
 
-An offer waits up to 55 seconds for the receiver's decision. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents still remain in platform file readers and are not placed in the HTTP request.
+An offer waits up to 50 seconds for the receiver's decision. After acceptance, the controller derives a 30-second payload-preparation timeout from `WaitingForText` or `WaitingForFiles`; leaving either state automatically cancels that timer. A random operation ID correlates the offer, accepted payload, explicit cancellation, and file connection. Cancellation succeeds only when both the operation ID and sender device ID match the active state. The timeouts remain fallbacks for crashes and lost network communication. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents still remain in platform file readers and are not placed in the HTTP request.
 
 ## File data plane: raw TCP
 
@@ -113,6 +116,7 @@ Accepted file bytes use a separate raw TCP connection:
 
 ```text
 one connection for the accepted batch
+  -> operation ID: 16 raw UUID bytes
   -> repeat for each accepted file:
        -> file index: Int
        -> promised file size: Long
@@ -122,7 +126,7 @@ one connection for the accepted batch
   -> completed-file count: Int
 ```
 
-Files remain sequential. The receiver verifies each index and size directly against the matching file in the accepted offer before saving. It increments the completed-file count only after the platform Downloads writer returns successfully. After every file has been processed, the receiver sends one final success flag and completed count. If processing fails, it attempts to send `false` with the number of files that were fully saved.
+Files remain sequential. The receiver first verifies that the socket operation ID matches the accepted offer, then verifies each index and size directly against the matching file before saving. It increments the completed-file count only after the platform Downloads writer returns successfully. After every file has been processed, the receiver sends one final success flag and completed count. If processing fails, it attempts to send `false` with the number of files that were fully saved.
 
 `FileTransferConstants` currently provides:
 
@@ -146,8 +150,11 @@ Previously completed files remain when a later file in the same batch fails.
 - No authentication, encryption, session token, or cryptographic integrity check.
 - No retry, pause/resume, or interrupted-transfer recovery.
 - Foreground/background and automatic network-change lifecycle handling are not complete.
+- Android 17 local-network permission handling is not implemented even though the app targets SDK 37; Android 13 legacy NSD resolves are not serialized or retried after an already-active failure.
+- Accepting and cancelling in the narrow interval before the suspended offer handler is resumed can produce an accepted offer response after receiver state has already returned to idle.
 - Receiver failures do not yet provide rich error details.
 - HTTP and file-transfer senders retry distinct advertised addresses after connection failures; broader address preference and scoped IPv6 validation still need work.
-- Desktop interface selection and firewall behavior need broader validation.
+- Desktop interface selection and firewall behavior need broader validation. Windows inbound transfers require an application allow rule or user-approved firewall prompt.
+- Repeated Windows repair cycles retain completed native callback arenas, and removing a service from one interface can temporarily clear the same service resolved through another interface.
 - Automated transfer coverage is minimal.
 - iOS source targets and implementations are enabled, but physical-device discovery and transfer remain unverified.

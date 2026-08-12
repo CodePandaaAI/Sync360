@@ -17,21 +17,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Text offers, receiver Accept/Decline, text transfer, Copy, and Clear.
 - Android and Desktop multiple-file selection and metadata offers.
 - Raw TCP file transfer using one persistent connection per accepted batch.
-- Sequential file framing with index/size validation and one final batch result containing receiver success and the completed-file count.
+- Operation-bound file framing with operation ID, index, and size validation plus one final batch result containing receiver success and the completed-file count.
 - Android Downloads writing through pending `MediaStore` entries.
 - Desktop Downloads writing through temporary `.part` files and collision-safe final names.
-- Unified send operation states and best-effort cancellation.
+- Unified send operation states and explicit operation-scoped cancellation, with timeout fallbacks for lost communication.
 - Shared transfer buffer/timeout constants, currently using a 512 KiB payload buffer.
 - Compose Desktop startup, platform DI implementations, native file dialog, clipboard, and Downloads actions.
 - Navigation 3 adaptive 50/50 Send/Receive scene for wider windows.
 - Application-lifetime network startup and state-driven connection repair.
 - Enabled iOS device and Apple-silicon Simulator targets with native Bonjour discovery, document selection, clipboard, Files-visible storage, and streamed TCP transfer implementations.
 - Added an iOS-only GitHub Actions workflow for an unsigned Simulator app and optional development-signed iPhone IPA.
-- Prepared version `0.1.0` across Android, Desktop, and iOS; added private Android release signing configuration and a permanent Windows MSI upgrade identity.
+- Prepared version `0.2.0` across Android, Desktop, and iOS; retained private Android release signing configuration and the permanent Windows MSI upgrade identity.
 - Public architecture, development, roadmap, security, privacy, and contribution documentation.
 
 ### Changed
 
+- Made incoming transfer state the source of truth for offer type, operation identity, and acceptance phase; accepted text now shows a waiting state until its matching payload arrives.
 - Replaced the old generated sync implementation with a smaller, manually understood flow.
 - Separated Ktor HTTP offer/control messages from raw TCP file bytes.
 - Reused one TCP connection for the complete accepted multi-file batch instead of opening one connection per file.
@@ -54,5 +55,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - No authentication, encryption, transfer/session token, or cryptographic integrity verification.
 - No speed, ETA, retry, pause/resume, or interrupted-transfer recovery; transfer progress currently shows batch-wide whole-byte percentage.
 - Foreground/background and network-change lifecycle handling are incomplete.
-- Desktop support needs broader operating-system, adapter, firewall, and router validation.
+- The target-SDK-37 Android build does not yet declare or request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission, so LAN discovery and transfer are blocked by default there.
+- Android 13 starts legacy NSD resolves immediately; overlapping discoveries can fail with an already-active resolve and are not currently retried.
+- A narrow Accept/Cancel race can let an offer response report acceptance after the matching receiver state was cancelled.
+- Desktop support needs broader operating-system, adapter, firewall, and router validation. Windows inbound sharing also depends on the user or administrator allowing Sync360 through Windows Firewall.
+- Windows retains completed native callback arenas for safety instead of closing them later, so repeated discovery repairs can slowly retain native memory; a service removal on one interface can also temporarily remove that service's results from other interfaces.
 - Automated transfer coverage is minimal; iOS physical-device discovery and transfer are unverified.

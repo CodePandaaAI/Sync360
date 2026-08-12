@@ -36,16 +36,20 @@ data class TwoPaneScene<T : Any>(
 
     companion object {
         fun firstPane() = metadata {
-            put(FirstPaneKey, true)
+            put(FirstPaneKey, PaneRole.First)
         }
 
         fun secondPane() = metadata {
-            put(SecondPaneKey, true)
+            put(SecondPaneKey, PaneRole.Second)
         }
     }
 
-    object FirstPaneKey : NavMetadataKey<Boolean>
-    object SecondPaneKey : NavMetadataKey<Boolean>
+    object FirstPaneKey : NavMetadataKey<PaneRole>
+    object SecondPaneKey : NavMetadataKey<PaneRole>
+
+    enum class PaneRole {
+        First, Second
+    }
 }
 
 class TwoPaneSceneStrategy<T : Any>(
@@ -75,7 +79,7 @@ class TwoPaneSceneStrategy<T : Any>(
 
         return TwoPaneScene(
             key = firstEntry.contentKey to secondEntry.contentKey,
-            previousEntries = entries.dropLast(1),
+            previousEntries = emptyList(),
             firstEntry = firstEntry,
             secondEntry = secondEntry
         )

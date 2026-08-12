@@ -56,7 +56,7 @@ Windows:
 
 ## Preparing public packages
 
-The first public package version is `0.1.0`.
+The current package version is `0.2.0`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -95,6 +95,10 @@ The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and
 
 For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker, Hyper-V, or virtual-machine adapters. Windows DNS-SD browses and registers with interface index `0`, so Windows selects the applicable interfaces. Confirm discovery and resolution, live removal when a nearby app closes, removal of Windows from the other device after the Desktop app closes, Reload, and full connection repair.
 
+On first network use, allow Sync360 on the intended private network when Windows Firewall prompts. The current MSI does not install its own inbound firewall exception; a denied prompt or administrator policy can block incoming HTTP and file-transfer sockets.
+
+Android currently targets SDK 37 but does not yet declare or request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission. Android 17 LAN testing is therefore expected to fail until permission-aware startup is implemented. On Android 13, also test several discoverable devices appearing close together because the legacy resolver is not yet queued.
+
 macOS and Linux currently retain JmDNS. Test those systems with multiple adapters as well because JmDNS starts separately on each eligible address.
 
 ## If discovery or transfer fails
@@ -104,6 +108,7 @@ macOS and Linux currently retain JmDNS. Test those systems with multiple adapter
 - Try a trusted phone hotspot or another router.
 - Keep both apps open; background/foreground lifecycle support is not complete.
 - Check the OS firewall and local-network permissions.
+- On Windows, confirm an inbound allow rule exists for Sync360 if the first-run firewall prompt was dismissed or denied.
 - Verify that HTTP and file-transfer ports are non-zero in logs.
 - Inspect whether the selected Desktop LAN adapter matches the active network.
 - Remember that some networks block multicast even when ordinary internet access works.

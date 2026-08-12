@@ -6,7 +6,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -22,7 +21,6 @@ import com.liftley.sync360.core.designsystem.icons.Reload
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.model.NearbyDeviceUiModel
 import com.liftley.sync360.presentation.send.model.SendScreenState
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
@@ -30,7 +28,7 @@ import com.liftley.sync360.presentation.send.model.SendScreenState
 fun NearbyDevicesSection(
     screenState: SendScreenState,
     onReloadClick: () -> Unit,
-    onDeviceClick: (NearbyDeviceUiModel) -> Unit
+    onDeviceClick: (String) -> Unit
 ) {
     val reloadEnabled =
         screenState.discoveryStatus == DiscoveryStatus.Idle &&
@@ -85,21 +83,21 @@ fun NearbyDevicesSection(
 
             if (screenState.nearbyDevices.isNotEmpty()) {
                 Column(
-                    modifier = Modifier.selectableGroup(),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     screenState.nearbyDevices.forEach { device ->
                         NearbyDeviceCard(
                             device = device,
-                            selected = screenState.selectedDeviceId == device.id,
-                            onClick = { onDeviceClick(device) }
+                            actionLabel = screenState.deviceActionLabel,
+                            enabled = screenState.isContentReadyToSend,
+                            onClick = { onDeviceClick(device.id) }
                         )
                     }
                 }
             }
 
             if (screenState.nearbyDevices.isEmpty()) {
-                NearbyDeviceEmptyCard(
+                NearbyDeviceScanningCard(
                     status = screenState.discoveryStatus,
                     reloadEnabled = reloadEnabled,
                     onReloadClick = onReloadClick

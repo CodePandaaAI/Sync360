@@ -1,35 +1,63 @@
 package com.liftley.sync360.presentation.navigation
 
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.lifecycle.ViewModel
 
 class NavigationViewModel : ViewModel() {
-    val backstack: SnapshotStateList<NavScreen> = mutableStateListOf(
-        NavScreen.ReceiveScreen,
+
+    private val _backstack = mutableStateListOf<NavScreen>(
         NavScreen.SendScreen
     )
 
-    fun addScreen(screen: NavScreen) {
-        if (checkCurrentTop() == screen) return
+    val backstack: List<NavScreen> = _backstack
 
-        backstack.remove(screen)
-        backstack.add(screen)
+    fun navigateToSend() {
+        _backstack.remove(NavScreen.SettingsScreen)
+        _backstack.remove(NavScreen.ReceiveScreen)
     }
 
-    fun removeLast() {
-        when (checkCurrentTop()) {
-            NavScreen.SettingsScreen -> backstack.removeLast()
-            NavScreen.ReceiveScreen -> addScreen(NavScreen.SendScreen)
-            NavScreen.SendScreen -> Unit
+    fun navigateToReceive() {
+        _backstack.remove(NavScreen.SettingsScreen)
+
+        if (_backstack.lastOrNull() != NavScreen.ReceiveScreen) {
+            _backstack.add(NavScreen.ReceiveScreen)
         }
     }
 
-    fun checkCurrentTop(): NavScreen {
-        return backstack.last()
+    fun navigateToSettings() {
+        if (_backstack.lastOrNull() != NavScreen.SettingsScreen) {
+            _backstack.add(NavScreen.SettingsScreen)
+        }
     }
 
-    fun removeAllExceptAddScreen() {
-        addScreen(NavScreen.SendScreen)
+    fun goBack() {
+        if (_backstack.lastOrNull() != NavScreen.SendScreen) {
+            _backstack.removeLastOrNull()
+        }
+    }
+
+    fun setTwoPane(enabled: Boolean) {
+        val settingsWasOpen =
+            _backstack.lastOrNull() == NavScreen.SettingsScreen
+
+        if (settingsWasOpen) {
+            _backstack.removeLast()
+        }
+
+        if (enabled) {
+            if (NavScreen.ReceiveScreen !in _backstack) {
+                _backstack.add(NavScreen.ReceiveScreen)
+            }
+        } else {
+            _backstack.remove(NavScreen.ReceiveScreen)
+        }
+
+        if (settingsWasOpen) {
+            _backstack.add(NavScreen.SettingsScreen)
+        }
+    }
+
+    fun currentScreen(): NavScreen {
+        return _backstack.last()
     }
 }

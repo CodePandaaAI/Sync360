@@ -27,6 +27,7 @@ import kotlinx.coroutines.withTimeout
 import platform.Foundation.NSLock
 import platform.Foundation.NSInputStream
 import platform.Foundation.NSURL
+import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalForeignApi::class)
 class IosFileTransferSender : FileTransferSender {
@@ -34,7 +35,7 @@ class IosFileTransferSender : FileTransferSender {
     private val stateLock = NSLock()
     private var activeSocket: Socket? = null
 
-    override fun cancelCurrentTransfer() {
+    override fun cancelCurrentFileTransfer() {
         val socket = locked {
             val currentSocket = activeSocket
             activeSocket = null
@@ -46,13 +47,12 @@ class IosFileTransferSender : FileTransferSender {
     override suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,
+        operationId: Uuid,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
         onProgress: (FileTransferProgress) -> Unit
     ): Result<Unit> = withContext(Dispatchers.Default) {
         try {
-            if (files.isEmpty()) {
-                return@withContext Result.success(Unit)
-            }
+            require(files.isNotEmpty()) { "No files were selected" }
 
             val socket = connectToDevice(deviceToSendFiles)
             locked {
@@ -67,6 +67,8 @@ class IosFileTransferSender : FileTransferSender {
                     totalBytes = files.sumOf { file -> requireNotNull(file.sizeBytes) },
                     onProgress = onProgress
                 )
+
+                socketOutput.writeFully(operationId.toByteArray())
 
                 files.forEachIndexed { fileIndex, file ->
                     currentCoroutineContext().ensureActive()

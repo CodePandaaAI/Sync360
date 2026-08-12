@@ -48,12 +48,14 @@ Ktor HTTP is the control plane:
 POST /sync360/text/offer
 POST /sync360/text/transfer
 POST /sync360/file/offer
+POST /sync360/operation/cancel
 ```
 
 Raw TCP is the file data plane:
 
 ```text
 one connection per accepted batch
+  -> accepted operation ID as 16 raw UUID bytes
   -> repeat for each file:
        -> file index
        -> promised byte count
@@ -70,11 +72,13 @@ Current shared transfer constants use a 512 KiB payload buffer, 5-second connect
 - Automatic registration repair after network/address changes.
 - Foreground/background lifecycle support.
 - Broader Desktop adapter, firewall, router, and operating-system validation.
+- Android 17 local-network permission-aware startup and serialized Android 13 legacy NSD resolution.
+- Closing the narrow shared Accept/Cancel response race.
 - Session validation, authentication, encryption, and integrity verification.
 
 ## Important limitations
 
-Sync360 currently uses cleartext local HTTP and raw TCP. It has receiver approval but no authentication, encryption, transfer token, or checksum. Use development builds only on private networks you control.
+Sync360 currently uses cleartext local HTTP and raw TCP. Operation IDs correlate protocol messages and file sockets but do not authenticate a peer. The app has receiver approval but no authentication, encryption, or checksum. The current target-SDK-37 Android build also lacks Android 17's required local-network runtime-permission flow. Windows receiving depends on Windows Firewall allowing the application. Use development builds only on private networks you control.
 
 For detailed and current information, read:
 

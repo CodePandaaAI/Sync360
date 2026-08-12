@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
@@ -15,6 +17,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 
@@ -24,6 +27,7 @@ fun IdleReceiveStateUi(
 ) {
     Box(
         modifier = Modifier
+            .verticalScroll(rememberScrollState())
             .fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
@@ -47,12 +51,14 @@ fun IdleReceiveStateUi(
                 )
             }
             Text(
-                "Nothing to receive right now",
+                "Ask someone to send you something",
+                textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleLarge
             )
             Text(
                 "Keep Sync360 open on nearby devices",
                 style = MaterialTheme.typography.bodyMedium,
+                textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
 
