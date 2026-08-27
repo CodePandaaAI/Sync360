@@ -5,17 +5,8 @@ import com.liftley.sync360.domain.model.FileTransferProgress
 sealed interface ReceiveScreenState {
     data object Idle : ReceiveScreenState
 
-    data class IncomingTextOffer(
-        val senderDeviceName: String,
-        val preview: String,
-        val characterCount: Int
-    ) : ReceiveScreenState
-
-    data class WaitingForText(
-        val senderDeviceName: String
-    ) : ReceiveScreenState
-
     data class ReceivedText(
+        val senderDeviceName: String,
         val text: String
     ) : ReceiveScreenState
 

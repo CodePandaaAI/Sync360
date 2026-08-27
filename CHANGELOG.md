@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-27
+
 ### Added
 
 - Android-first manual rebuild with shared Compose Multiplatform Send and Receive UI.
@@ -14,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Current macOS/Linux DNS-SD/mDNS discovery and registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Separate discovery and registration lifecycle states shared by Android, Desktop, the controller, and UI.
 - Stable per-install device identity and advertised dynamic HTTP/file-transfer ports.
-- Text offers, receiver Accept/Decline, text transfer, Copy, and Clear.
+- One-request direct text delivery with sender name, a 100,000-character limit, Copy, and Clear.
 - Android and Desktop multiple-file selection and metadata offers.
 - Raw TCP file transfer using one persistent connection per accepted batch.
 - Operation-bound file framing with operation ID, index, and size validation plus one final batch result containing receiver success and the completed-file count.
@@ -27,12 +29,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Application-lifetime network startup and state-driven connection repair.
 - Enabled iOS device and Apple-silicon Simulator targets with native Bonjour discovery, document selection, clipboard, Files-visible storage, and streamed TCP transfer implementations.
 - Added an iOS-only GitHub Actions workflow for an unsigned Simulator app and optional development-signed iPhone IPA.
-- Prepared version `0.2.0` across Android, Desktop, and iOS; retained private Android release signing configuration and the permanent Windows MSI upgrade identity.
+- Prepared version `0.3.0` across Android, Desktop, and iOS; retained private Android release signing configuration and the permanent Windows MSI upgrade identity.
 - Public architecture, development, roadmap, security, privacy, and contribution documentation.
 
 ### Changed
 
-- Made incoming transfer state the source of truth for offer type, operation identity, and acceptance phase; accepted text now shows a waiting state until its matching payload arrives.
+- Separated text from file operations: text now delivers directly while idle without an offer, decision, operation ID, waiting state, remote cancellation, or Cancel action.
+- Kept file offers, receiver decisions, operation IDs, cancellation, timeouts, progress, and raw TCP streaming unchanged in purpose.
 - Replaced the old generated sync implementation with a smaller, manually understood flow.
 - Separated Ktor HTTP offer/control messages from raw TCP file bytes.
 - Reused one TCP connection for the complete accepted multi-file batch instead of opening one connection per file.

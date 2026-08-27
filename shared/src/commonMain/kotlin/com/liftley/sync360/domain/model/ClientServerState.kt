@@ -1,22 +1,16 @@
 package com.liftley.sync360.domain.model
 
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
 
 sealed interface ClientServerState {
     data object Idle : ClientServerState
 
-    data class TextOffer(
-        val textOffer: TextOfferRequest
+    data class TextReceived(
+        val senderDeviceName: String,
+        val text: String
     ) : ClientServerState
 
-    data class WaitingForText(
-        val textOffer: TextOfferRequest
-    ) : ClientServerState
-
-    data class TextReceived(val data: String) : ClientServerState
-
-    data class FileOffer(
+    data class IncomingFileOffer(
         val fileOffer: FileOfferRequest
     ) : ClientServerState
 

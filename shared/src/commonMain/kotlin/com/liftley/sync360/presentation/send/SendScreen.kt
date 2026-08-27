@@ -34,7 +34,7 @@ fun SendScreen(
     onTroubleshootClick: () -> Unit
 ) {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
-    val screenState by sendScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val screenState by sendScreenViewModel.sendScreenState.collectAsStateWithLifecycle()
 
     when (screenState.sendOperationState) {
         SendOperationState.Idle -> {
@@ -87,7 +87,8 @@ fun SendScreen(
                             SendTab.Text -> {
                                 TextSendContent(
                                     textInput = screenState.textInput,
-                                    onTextChange = { sendScreenViewModel.onTextChanged(it) },
+                                    isTextTooLong = screenState.isTextTooLong,
+                                    onTextChange = sendScreenViewModel::onTextChanged,
                                     onClearText = { sendScreenViewModel.onTextChanged("") }
                                 )
                             }

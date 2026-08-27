@@ -1,18 +1,19 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
+import com.liftley.sync360.data.network.http.client.TextDeliveryException
 import com.liftley.sync360.data.network.http.dto.CancelRequest
 import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryStatus
 import com.liftley.sync360.data.network.tcp.FileTransferSender
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
+import com.liftley.sync360.domain.model.TextDeliveryLimits
 import kotlin.uuid.Uuid
 
 class OutgoingRequestsController(
@@ -41,30 +42,58 @@ class OutgoingRequestsController(
 
     suspend fun sendText(
         deviceToSendText: NearbyDevice,
-        text: String,
-        operationId: Uuid
-    ): Result<TextTransferResponse> {
+        text: String
+    ): Result<Unit> {
+        if (text.isBlank()) {
+            return Result.failure(
+                TextDeliveryException("Text cannot be empty")
+            )
+        }
+
+        if (text.length > TextDeliveryLimits.MAX_CHARACTER_COUNT) {
+            return Result.failure(
+                TextDeliveryException(
+                    "Text cannot exceed " +
+                            "${TextDeliveryLimits.MAX_CHARACTER_COUNT} characters"
+                )
+            )
+        }
+
         val myDeviceInfo = localDeviceInfoProvider.getLocalDeviceInfo()
 
-        val textOfferRequest = TextOfferRequest(
-            operationId = operationId,
-            senderDeviceId = myDeviceInfo.deviceId,
+        val request = TextDeliveryRequest(
             senderDeviceName = myDeviceInfo.deviceName,
-            preview = text.take(200),
-            characterCount = text.count()
-        )
-
-        val textTransferRequest = TextTransferRequest(
-            operationId = operationId,
-            senderDeviceId = myDeviceInfo.deviceId,
             text = text
         )
 
-        return httpClient.textTransferRequest(
-            deviceToSendText,
-            textOfferRequest,
-            textTransferRequest
-        )
+        val response = httpClient.deliverText(
+            targetDevice = deviceToSendText,
+            request = request
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        return when (response.status) {
+            TextDeliveryStatus.DELIVERED -> {
+                Result.success(Unit)
+            }
+
+            TextDeliveryStatus.RECEIVER_BUSY -> {
+                Result.failure(
+                    TextDeliveryException(
+                        "${deviceToSendText.deviceName} is currently busy"
+                    )
+                )
+            }
+
+            TextDeliveryStatus.TEXT_TOO_LARGE -> {
+                Result.failure(
+                    TextDeliveryException(
+                        "The text exceeds the receiver's character limit"
+                    )
+                )
+            }
+        }
     }
 
     suspend fun sendFiles(

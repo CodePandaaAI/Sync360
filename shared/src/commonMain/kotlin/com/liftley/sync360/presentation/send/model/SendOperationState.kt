@@ -4,8 +4,7 @@ import com.liftley.sync360.domain.model.FileTransferProgress
 
 sealed interface SendOperationState {
     data object Idle : SendOperationState
-
-    data class SendingTextOffer(
+    data class SendingText(
         val deviceName: String
     ) : SendOperationState
 

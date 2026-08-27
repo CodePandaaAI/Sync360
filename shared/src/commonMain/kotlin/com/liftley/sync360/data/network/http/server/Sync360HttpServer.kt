@@ -5,10 +5,7 @@ import com.liftley.sync360.data.network.http.dto.CancelRequest
 import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
-import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
-import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
 import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
@@ -39,42 +36,10 @@ class Sync360HttpServer(
             }
 
             routing {
-                post("/sync360/text/offer") {
-                    val request = call.receive<TextOfferRequest>()
-                    val userDecision = incomingServerRequestsController.awaitTextOfferDecision(request)
+                post("/sync360/text/deliver") {
+                    val textDeliveryRequest = call.receive<TextDeliveryRequest>()
 
-                    if (userDecision == null) {
-                        call.respond(TextOfferResponse.Declined)
-                        return@post
-                    }
-
-                    call.respond(
-                        if (userDecision == UserDecision.ACCEPTED) {
-                            TextOfferResponse.Accepted
-                        } else {
-                            TextOfferResponse.Declined
-                        }
-                    )
-                }
-
-                post("/sync360/text/transfer") {
-                    val request = call.receive<TextTransferRequest>()
-                    val accepted = incomingServerRequestsController.receiveAcceptedText(
-                        operationId = request.operationId,
-                        senderDeviceId = request.senderDeviceId,
-                        text = request.text
-                    )
-
-                    call.respond(
-                        TextTransferResponse(
-                            success = accepted,
-                            message = if (accepted) {
-                                null
-                            } else {
-                                "No matching accepted text offer"
-                            }
-                        )
-                    )
+                    call.respond(incomingServerRequestsController.deliverIncomingText(textDeliveryRequest))
                 }
 
                 post("/sync360/file/offer") {

@@ -31,9 +31,9 @@ class ReceiveScreenViewModel(
         }
     }
 
-    fun makeDecision(decision: UserDecision) {
+    fun respondToFileOffer(decision: UserDecision) {
         viewModelScope.launch {
-            incomingServerRequestsController.makeDecision(decision)
+            incomingServerRequestsController.respondToFileOffer(decision)
         }
     }
 
@@ -57,7 +57,14 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
     return when (this) {
         ClientServerState.Idle -> ReceiveScreenState.Idle
 
-        is ClientServerState.FileOffer -> {
+        is ClientServerState.TextReceived -> {
+            ReceiveScreenState.ReceivedText(
+                senderDeviceName = senderDeviceName,
+                text = text
+            )
+        }
+
+        is ClientServerState.IncomingFileOffer -> {
             ReceiveScreenState.IncomingFileOffer(
                 senderDeviceName = fileOffer.senderDeviceName,
                 fileCount = fileOffer.offeredFiles.size,
@@ -80,26 +87,6 @@ private fun ClientServerState.toReceiveScreenState(): ReceiveScreenState {
                 fileCount = fileOffer.offeredFiles.size,
                 completedFileCount = completedFileCount,
                 progress = progress
-            )
-        }
-
-        is ClientServerState.TextOffer -> {
-            ReceiveScreenState.IncomingTextOffer(
-                senderDeviceName = textOffer.senderDeviceName,
-                preview = textOffer.preview,
-                characterCount = textOffer.characterCount
-            )
-        }
-
-        is ClientServerState.WaitingForText -> {
-            ReceiveScreenState.WaitingForText(
-                senderDeviceName = textOffer.senderDeviceName
-            )
-        }
-
-        is ClientServerState.TextReceived -> {
-            ReceiveScreenState.ReceivedText(
-                text = data
             )
         }
 

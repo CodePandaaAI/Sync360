@@ -16,7 +16,7 @@
   ### Android → Android
 
   <img src="screenshots/hero-demo.gif" alt="Sync360 Android-to-Android text and file transfer demo" width="1080" />
-  <sub>Nearby discovery, receiver approval, and direct Android-to-Android text/file transfer.</sub>
+  <sub>Nearby discovery and direct Android-to-Android text/file transfer.</sub>
 
   ### Desktop → Android
 
@@ -33,7 +33,7 @@ We have all done it: send a file to ourselves, wait for it to upload, open anoth
 Sync360 is for that nearby moment.
 
 ```text
-open app -> find nearby device -> choose what to send -> receiver approves -> send directly
+open app -> find nearby device -> choose text or files -> send directly
 ```
 
 The current app discovers other Sync360 devices on the same local network and transfers content directly between them. The transfer path does not use an account, cloud storage, or a Sync360 backend. It depends on the local network and the two devices involved.
@@ -50,8 +50,8 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 
 - Discover nearby Android devices with Android NSD/mDNS.
 - Advertise dynamic HTTP and file-transfer ports on the local network.
-- Send a text offer and let the receiver accept or decline it.
-- Transfer accepted text and copy it from the Receive screen.
+- Deliver text directly with one HTTP request when the receiver is idle.
+- Enforce a 100,000-character text limit and show the sender name with Copy and Clear actions.
 - Select images, videos, documents, and multiple files.
 - Show file metadata to the receiver before any file bytes are sent.
 - Stream file bytes directly over raw TCP without loading an entire file into memory.
@@ -92,13 +92,14 @@ The current progress UI tracks the exact bytes transferred across the accepted b
 
 Sync360 uses two small networking paths with different jobs:
 
-- **Ktor HTTP is the control plane.** It carries text/file offers, receiver decisions, file metadata, and text payloads.
+- **Ktor HTTP handles direct text delivery and the file control plane.** It carries text payloads, file offers, receiver decisions, and file metadata.
 - **Raw TCP is the file data plane.** It streams the actual file bytes directly between devices.
 
 ```mermaid
 flowchart LR
     A["Sender device"] -->|"Android NSD or platform Desktop DNS-SD"| B["Receiver device"]
-    A -->|"Ktor: offer + decision + metadata"| B
+    A -->|"Ktor: direct text delivery"| B
+    A -->|"Ktor: file offer + decision"| B
     A -->|"Raw TCP: streamed file bytes"| B
     B -->|"Platform Downloads writer"| D["Downloads"]
 ```
@@ -113,14 +114,12 @@ Android and Desktop start the shared network controller from their application e
 SendScreen
   -> SendScreenViewModel
   -> OutgoingRequestsController
-  -> POST /sync360/text/offer
-  -> receiver Accept/Decline
-  -> accepted receiver waits for the matching text payload
-  -> POST /sync360/text/transfer
-  -> ReceiveScreen shows the text
+  -> POST /sync360/text/deliver with sender name and text
+  -> receiver atomically accepts only while idle
+  -> ReceiveScreen shows the sender name and text
 ```
 
-The sender shares a preview and character count first. After acceptance, the receiver remains in a waiting-for-text state until the matching full text arrives. One operation ID ties the offer, accepted payload, and any explicit cancellation to the same sender operation.
+Text uses one request and has no offer, receiver decision, operation ID, waiting state, remote cancellation, or Cancel action. The UI, outgoing controller, and receiver reject text above 100,000 Kotlin `String.length` units. The receiver checks `Idle` and publishes the complete received text atomically under the incoming-operation mutex; otherwise it reports that it is busy.
 
 ### File path
 
@@ -237,9 +236,9 @@ macOS/Linux:
 2. Connect both devices to the same Wi-Fi network or hotspot.
 3. Keep Sync360 open on both devices during the current foreground-only test flow.
 4. On the Send screen, wait for the other device to appear.
-5. Choose Text or Files, select the nearby device, and send an offer.
-6. Accept the offer on the receiving device.
-7. Received files will be written to the platform's Downloads folder.
+5. For text, enter the content and select the nearby device; idle receivers show it immediately.
+6. For files, select the files and nearby device, then accept the offer on the receiver.
+7. Accepted files will be written to the platform's Downloads folder.
 
 Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
 
@@ -251,7 +250,7 @@ Reload is available only after the current discovery window has stopped while se
 
 Sync360 is **not secure for untrusted networks yet**.
 
-The current implementation uses cleartext local HTTP and raw TCP. Operation IDs correlate offers, cancellation, accepted text, and file sockets for correctness, but they are not secret or authenticated. Sync360 does not yet authenticate the sender, encrypt content, or verify file integrity with a cryptographic hash. Receiver approval exists in the UI, but it is not a complete security boundary.
+The current implementation uses cleartext local HTTP and raw TCP. File operation IDs correlate offers, cancellation, and file sockets for correctness, but they are not secret or authenticated. Direct text delivery has no receiver approval. Sync360 does not yet authenticate the sender, encrypt content, or verify file integrity with a cryptographic hash. File receiver approval exists in the UI, but it is not a complete security boundary.
 
 Use the current app only for development and testing on private networks you control. Please report security-sensitive findings according to [SECURITY.md](SECURITY.md), not in a public issue.
 
@@ -278,7 +277,7 @@ Use the current app only for development and testing on private networks you con
 Sync360 is not trying to become a chat app, cloud-sync product, or permanent device manager. The product direction stays focused:
 
 ```text
-find nearby -> approve -> send directly
+find nearby -> send text or approve files -> transfer directly
 ```
 
 ## Why the rebuild is intentionally small
