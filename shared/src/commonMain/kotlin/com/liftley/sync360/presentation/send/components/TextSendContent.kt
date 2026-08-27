@@ -12,10 +12,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.liftley.sync360.domain.model.TextDeliveryLimits
 
 @Composable
 fun TextSendContent(
     textInput: String,
+    isTextTooLong: Boolean,
     onTextChange: (String) -> Unit,
     onClearText: () -> Unit
 ) {
@@ -40,14 +42,20 @@ fun TextSendContent(
             placeholder = { Text("Type or paste text here") },
             minLines = 5,
             maxLines = 5,
+            isError = isTextTooLong,
             shape = MaterialTheme.shapes.large,
             modifier = Modifier.fillMaxWidth()
         )
 
         Text(
-            text = "${textInput.length} characters",
+            text = "${textInput.length} / " +
+                    "${TextDeliveryLimits.MAX_CHARACTER_COUNT} characters",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = if (isTextTooLong) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            }
         )
     }
 }

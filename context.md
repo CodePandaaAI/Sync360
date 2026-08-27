@@ -3,7 +3,7 @@
 Sync360 is an Android-first Kotlin Multiplatform / Compose Multiplatform app for nearby sharing over a local network.
 
 ```text
-open app -> discover nearby device -> choose content -> receiver approves -> send directly
+open app -> discover nearby device -> choose text or files -> send directly
 ```
 
 The old AI-generated sync implementation was removed. The current app is being rebuilt manually so its maintainer can understand and own the complete discovery, request, transfer, and storage path.
@@ -16,7 +16,7 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Windows discovery/registration through the operating system `dnsapi.dll` DNS-SD API on all interfaces.
 - Current macOS/Linux discovery/registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Application-lifetime network startup with separate discovery and registration lifecycle states.
-- Ktor HTTP offers, receiver decisions, metadata, and text payloads.
+- Ktor HTTP direct text delivery plus file offers, receiver decisions, and metadata.
 - Raw TCP streaming for file bytes.
 - Multiple files sent sequentially over one accepted-batch connection.
 - Android file access through `ContentResolver` and Downloads writing through `MediaStore`.
@@ -45,8 +45,7 @@ Compose screen -> ViewModel -> controller/service -> common contract -> platform
 Ktor HTTP is the control plane:
 
 ```text
-POST /sync360/text/offer
-POST /sync360/text/transfer
+POST /sync360/text/deliver
 POST /sync360/file/offer
 POST /sync360/operation/cancel
 ```
@@ -78,7 +77,7 @@ Current shared transfer constants use a 512 KiB payload buffer, 5-second connect
 
 ## Important limitations
 
-Sync360 currently uses cleartext local HTTP and raw TCP. Operation IDs correlate protocol messages and file sockets but do not authenticate a peer. The app has receiver approval but no authentication, encryption, or checksum. The current target-SDK-37 Android build also lacks Android 17's required local-network runtime-permission flow. Windows receiving depends on Windows Firewall allowing the application. Use development builds only on private networks you control.
+Sync360 currently uses cleartext local HTTP and raw TCP. Direct text has no receiver approval or operation ID. File operation IDs correlate protocol messages and sockets but do not authenticate a peer. File offers require receiver approval, but the app has no authentication, encryption, or checksum. The current target-SDK-37 Android build also lacks Android 17's required local-network runtime-permission flow. Windows receiving depends on Windows Firewall allowing the application. Use development builds only on private networks you control.
 
 For detailed and current information, read:
 

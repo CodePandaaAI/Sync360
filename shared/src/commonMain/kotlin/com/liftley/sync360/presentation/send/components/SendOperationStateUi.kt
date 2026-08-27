@@ -38,10 +38,10 @@ fun SendOperationStateUi(
     when (state) {
         SendOperationState.Idle -> Unit
 
-        is SendOperationState.SendingTextOffer -> {
+        is SendOperationState.SendingText -> {
             SendingOperationUi(
-                message = "Waiting for ${state.deviceName} to accept",
-                onCancel = onCancel
+                message = "Sending text to ${state.deviceName}",
+                onCancel = null
             )
         }
 
@@ -101,7 +101,7 @@ private fun SendingOperationUi(
     message: String,
     detail: String? = null,
     transferProgress: FileTransferProgress? = null,
-    onCancel: () -> Unit
+    onCancel: (() -> Unit)?
 ) {
     Column(
         modifier = Modifier
@@ -151,13 +151,15 @@ private fun SendingOperationUi(
 
         Spacer(Modifier.padding(16.dp))
 
-        OutlinedButton(
-            onClick = onCancel,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(48.dp)
-        ) {
-            Text("Cancel")
+        if (onCancel != null) {
+            OutlinedButton(
+                onClick = onCancel,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(48.dp)
+            ) {
+                Text("Cancel")
+            }
         }
     }
 }

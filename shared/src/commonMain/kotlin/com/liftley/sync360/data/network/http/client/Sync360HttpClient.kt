@@ -4,10 +4,8 @@ import com.liftley.sync360.data.network.http.dto.CancelRequest
 import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
-import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextOfferResponse
-import com.liftley.sync360.data.network.http.dto.text.TextTransferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextTransferResponse
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryResponse
 import com.liftley.sync360.domain.model.NearbyDevice
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -17,9 +15,9 @@ import io.ktor.client.network.sockets.SocketTimeoutException
 import io.ktor.client.plugins.HttpRequestTimeoutException
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.timeout
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
-import io.ktor.client.plugins.timeout
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
@@ -37,91 +35,38 @@ class Sync360HttpClient {
         }
     }
 
-    private suspend fun textOfferRequest(
-        deviceToSendOffer: NearbyDevice,
-        textOfferRequest: TextOfferRequest
-    ): Result<TextOfferResponse> {
-        val deviceToSendOfferPort = deviceToSendOffer.port
-
+    suspend fun deliverText(
+        targetDevice: NearbyDevice,
+        request: TextDeliveryRequest
+    ): Result<TextDeliveryResponse> {
         return try {
-            val textOfferResponse = requestUsingReachableAddress(deviceToSendOffer) { host ->
-                val url = "http://${host.asUrlHost()}:$deviceToSendOfferPort/sync360/text/offer"
-                httpClient.post(url) {
-                    contentType(ContentType.Application.Json)
-                    setBody(textOfferRequest)
-                }.body<TextOfferResponse>()
-            }
-
-            when (textOfferResponse) {
-                TextOfferResponse.Accepted -> {
-                    Result.success(TextOfferResponse.Accepted)
-                }
-
-                TextOfferResponse.Declined -> {
-                    Result.failure(TextOfferException("User Declined Request"))
-                }
-            }
-        } catch (e: Exception) {
-            if (e is CancellationException) throw e
-
-            when (e) {
-                is ConnectTimeoutException, is SocketTimeoutException, is HttpRequestTimeoutException -> {
-                    Result.failure(
-                        TextOfferException(
-                            e.message ?: "Device did not respond in time"
-                        )
-                    )
-                }
-
-                else -> Result.failure(e)
-            }
-        }
-    }
-
-    suspend fun textTransferRequest(
-        deviceToSendText: NearbyDevice,
-        textOfferRequest: TextOfferRequest,
-        textTransferRequest: TextTransferRequest
-    ): Result<TextTransferResponse> {
-        textOfferRequest(deviceToSendText, textOfferRequest)
-            .getOrElse { error -> return Result.failure(error) }
-
-        val deviceToSendTextPort = deviceToSendText.port
-        return try {
-            val textTransferResponse = requestUsingReachableAddress(deviceToSendText) { host ->
+            val response = requestUsingReachableAddress(targetDevice) { host ->
                 val url =
-                    "http://${host.asUrlHost()}:$deviceToSendTextPort/sync360/text/transfer"
+                    "http://${host.asUrlHost()}:${targetDevice.port}/sync360/text/deliver"
+
                 httpClient.post(url) {
                     contentType(ContentType.Application.Json)
-                    setBody(textTransferRequest)
-                }.body<TextTransferResponse>()
+                    setBody(request)
+                }.body<TextDeliveryResponse>()
             }
 
-            if (textTransferResponse.success) {
-                Result.success(textTransferResponse)
-            } else {
-                Result.failure(
-                    TextOfferException(
-                        textTransferResponse.message ?: "Receiver rejected the text transfer"
-                    )
-                )
-            }
-        } catch (e: Exception) {
-            when (e) {
-                is CancellationException -> throw e
-
-                is ConnectTimeoutException,
-                is SocketTimeoutException,
-                is HttpRequestTimeoutException -> {
-                    Result.failure(
-                        TextOfferException(
-                            e.message ?: "Device did not respond in time"
-                        )
-                    )
-                }
-
-                else -> Result.failure(e)
-            }
+            Result.success(response)
+        } catch (exception: CancellationException) {
+            throw exception
+        } catch (exception: ConnectTimeoutException) {
+            Result.failure(
+                TextDeliveryException("Could not connect to the device in time")
+            )
+        } catch (exception: SocketTimeoutException) {
+            Result.failure(
+                TextDeliveryException("The device did not respond in time")
+            )
+        } catch (exception: HttpRequestTimeoutException) {
+            Result.failure(
+                TextDeliveryException("The text delivery request timed out")
+            )
+        } catch (exception: Exception) {
+            Result.failure(exception)
         }
     }
 

@@ -59,7 +59,7 @@ fun Sync360Root() {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
 
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
-    val sendScreenState by sendScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val sendScreenState by sendScreenViewModel.sendScreenState.collectAsStateWithLifecycle()
     val currentScreen = navigationViewModel.currentScreen()
 
     val windowSizeClass = currentWindowAdaptiveInfoV2().windowSizeClass
@@ -86,17 +86,16 @@ fun Sync360Root() {
 
     val receiveTitle = when (receiveScreenState) {
         ReceiveScreenState.Idle -> "Sync360"
-        is ReceiveScreenState.IncomingTextOffer -> "Incoming text"
         is ReceiveScreenState.IncomingFileOffer -> "Incoming files"
-        is ReceiveScreenState.WaitingForText -> "Receiving text"
         is ReceiveScreenState.ReceivingFiles -> "Receiving files"
         is ReceiveScreenState.ReceivedText -> "Received text"
         is ReceiveScreenState.ReceivedFiles -> "Files received"
     }
+
     val sendTitle = when (sendScreenState.sendOperationState) {
         SendOperationState.Idle -> "Sync360"
         SendOperationState.Cancelled -> "Sending Cancelled"
-        is SendOperationState.SendingTextOffer -> "Sending Text Offer"
+        is SendOperationState.SendingText -> "Sending Text"
         is SendOperationState.SendingFileOffer -> "Sending File Offer"
         is SendOperationState.SendingFile -> "Sending Files"
         is SendOperationState.TextSent -> "Text Sent"
@@ -241,7 +240,8 @@ fun Sync360Root() {
     }
 
     LaunchedEffect(receiveScreenState) {
-        if (receiveScreenState is ReceiveScreenState.IncomingTextOffer ||
+        if (
+            receiveScreenState is ReceiveScreenState.ReceivedText ||
             receiveScreenState is ReceiveScreenState.IncomingFileOffer
         ) {
             navigationViewModel.navigateToReceive()

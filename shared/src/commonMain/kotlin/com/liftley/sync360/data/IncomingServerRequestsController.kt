@@ -1,9 +1,12 @@
 package com.liftley.sync360.data
 
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.text.TextOfferRequest
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryResponse
+import com.liftley.sync360.data.network.http.dto.text.TextDeliveryStatus
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.model.FileTransferProgress
+import com.liftley.sync360.domain.model.TextDeliveryLimits
 import com.liftley.sync360.domain.model.UserDecision
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -31,13 +34,12 @@ class IncomingServerRequestsController {
 
     private val operationMutex = Mutex()
     private val operationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var pendingUserDecision: CompletableDeferred<UserDecision>? = null
+    private var pendingFileOfferDecision: CompletableDeferred<UserDecision>? = null
 
     init {
         operationScope.launch {
             clientServerState.collectLatest { state ->
                 val operationId = when (state) {
-                    is ClientServerState.WaitingForText -> state.textOffer.operationId
                     is ClientServerState.WaitingForFiles -> state.fileOffer.operationId
                     else -> return@collectLatest
                 }
@@ -48,21 +50,41 @@ class IncomingServerRequestsController {
         }
     }
 
-    internal suspend fun awaitTextOfferDecision(
-        textOffer: TextOfferRequest
-    ): UserDecision? = awaitUserDecision(
-        operationId = textOffer.operationId,
-        offerState = ClientServerState.TextOffer(textOffer)
-    )
+    internal suspend fun deliverIncomingText(
+        request: TextDeliveryRequest
+    ): TextDeliveryResponse {
+        if (request.text.length > TextDeliveryLimits.MAX_CHARACTER_COUNT) {
+            return TextDeliveryResponse(
+                status = TextDeliveryStatus.TEXT_TOO_LARGE
+            )
+        }
+
+        return operationMutex.withLock {
+            if (_clientServerState.value != ClientServerState.Idle) {
+                return@withLock TextDeliveryResponse(
+                    status = TextDeliveryStatus.RECEIVER_BUSY
+                )
+            }
+
+            _clientServerState.value = ClientServerState.TextReceived(
+                senderDeviceName = request.senderDeviceName,
+                text = request.text
+            )
+
+            TextDeliveryResponse(
+                status = TextDeliveryStatus.DELIVERED
+            )
+        }
+    }
 
     internal suspend fun awaitFileOfferDecision(
         fileOffer: FileOfferRequest
-    ): UserDecision? = awaitUserDecision(
+    ): UserDecision? = registerFileOfferAndAwaitDecision(
         operationId = fileOffer.operationId,
-        offerState = ClientServerState.FileOffer(fileOffer)
+        offerState = ClientServerState.IncomingFileOffer(fileOffer)
     )
 
-    private suspend fun awaitUserDecision(
+    private suspend fun registerFileOfferAndAwaitDecision(
         operationId: Uuid,
         offerState: ClientServerState
     ): UserDecision? {
@@ -72,7 +94,7 @@ class IncomingServerRequestsController {
             }
 
             CompletableDeferred<UserDecision>().also { decision ->
-                pendingUserDecision = decision
+                pendingFileOfferDecision = decision
                 _clientServerState.value = offerState
             }
         } ?: return null
@@ -95,20 +117,12 @@ class IncomingServerRequestsController {
         return result ?: UserDecision.DECLINED
     }
 
-    suspend fun makeDecision(decision: UserDecision) {
+    suspend fun respondToFileOffer(decision: UserDecision) {
         val waitingDecision = operationMutex.withLock {
-            val currentDecision = pendingUserDecision ?: return@withLock null
+            val currentDecision = pendingFileOfferDecision ?: return@withLock null
 
             _clientServerState.value = when (val state = _clientServerState.value) {
-                is ClientServerState.TextOffer -> {
-                    if (decision == UserDecision.ACCEPTED) {
-                        ClientServerState.WaitingForText(state.textOffer)
-                    } else {
-                        ClientServerState.Idle
-                    }
-                }
-
-                is ClientServerState.FileOffer -> {
+                is ClientServerState.IncomingFileOffer -> {
                     if (decision == UserDecision.ACCEPTED) {
                         ClientServerState.WaitingForFiles(state.fileOffer)
                     } else {
@@ -119,7 +133,7 @@ class IncomingServerRequestsController {
                 else -> return@withLock null
             }
 
-            pendingUserDecision = null
+            pendingFileOfferDecision = null
             currentDecision
         } ?: return
 
@@ -133,7 +147,7 @@ class IncomingServerRequestsController {
             }
 
             _clientServerState.value = ClientServerState.Idle
-            pendingUserDecision.also { pendingUserDecision = null }
+            pendingFileOfferDecision.also { pendingFileOfferDecision = null }
         }
 
         waitingDecision?.complete(UserDecision.DECLINED)
@@ -150,8 +164,8 @@ class IncomingServerRequestsController {
 
             _clientServerState.value = ClientServerState.Idle
             Cancellation(
-                waitingDecision = pendingUserDecision.also {
-                    pendingUserDecision = null
+                waitingDecision = pendingFileOfferDecision.also {
+                    pendingFileOfferDecision = null
                 }
             )
         } ?: return false
@@ -174,22 +188,6 @@ class IncomingServerRequestsController {
             completedFileCount = 0,
             progress = FileTransferProgress.waiting(state.fileOffer.totalSizeBytes)
         )
-        true
-    }
-
-    suspend fun receiveAcceptedText(
-        operationId: Uuid,
-        senderDeviceId: String,
-        text: String
-    ): Boolean = operationMutex.withLock {
-        val state = _clientServerState.value as? ClientServerState.WaitingForText
-            ?: return@withLock false
-        if (
-            state.textOffer.operationId != operationId ||
-            state.textOffer.senderDeviceId != senderDeviceId
-        ) return@withLock false
-
-        _clientServerState.value = ClientServerState.TextReceived(text)
         true
     }
 
@@ -264,9 +262,7 @@ class IncomingServerRequestsController {
         senderDeviceId: String
     ): Boolean {
         val operation = when (this) {
-            is ClientServerState.TextOffer -> textOffer.operationId to textOffer.senderDeviceId
-            is ClientServerState.WaitingForText -> textOffer.operationId to textOffer.senderDeviceId
-            is ClientServerState.FileOffer -> fileOffer.operationId to fileOffer.senderDeviceId
+            is ClientServerState.IncomingFileOffer -> fileOffer.operationId to fileOffer.senderDeviceId
             is ClientServerState.WaitingForFiles -> fileOffer.operationId to fileOffer.senderDeviceId
             is ClientServerState.ReceivingFiles -> fileOffer.operationId to fileOffer.senderDeviceId
             else -> return false
@@ -278,9 +274,7 @@ class IncomingServerRequestsController {
 
     private fun ClientServerState.matchesExpirableOperation(operationId: Uuid): Boolean {
         val currentOperationId = when (this) {
-            is ClientServerState.TextOffer -> textOffer.operationId
-            is ClientServerState.WaitingForText -> textOffer.operationId
-            is ClientServerState.FileOffer -> fileOffer.operationId
+            is ClientServerState.IncomingFileOffer -> fileOffer.operationId
             is ClientServerState.WaitingForFiles -> fileOffer.operationId
             else -> return false
         }

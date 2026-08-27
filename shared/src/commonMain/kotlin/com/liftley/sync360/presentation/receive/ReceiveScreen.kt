@@ -13,8 +13,6 @@ import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedTextStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivingFilesStateUi
-import com.liftley.sync360.presentation.receive.components.TextOfferStateUi
-import com.liftley.sync360.presentation.receive.components.WaitingForTextStateUi
 import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
 import org.koin.compose.koinInject
 
@@ -35,41 +33,28 @@ fun ReceiveScreen(
                 )
             }
 
-            is ReceiveScreenState.IncomingTextOffer -> {
-                TextOfferStateUi(
-                    state = state,
-                    onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
-                    onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
+            is ReceiveScreenState.ReceivedText -> {
+                ReceivedTextStateUi(
+                    senderDeviceName = state.senderDeviceName,
+                    text = state.text,
+                    onCopyText = {
+                        receiveScreenViewModel.copyReceivedText(state.text)
+                        receiveScreenViewModel.clearState()
+                    },
+                    onClear = receiveScreenViewModel::clearState
                 )
             }
 
             is ReceiveScreenState.IncomingFileOffer -> {
                 FileOfferStateUi(
                     state = state,
-                    onAccept = { receiveScreenViewModel.makeDecision(UserDecision.ACCEPTED) },
-                    onDecline = { receiveScreenViewModel.makeDecision(UserDecision.DECLINED) }
+                    onAccept = { receiveScreenViewModel.respondToFileOffer(UserDecision.ACCEPTED) },
+                    onDecline = { receiveScreenViewModel.respondToFileOffer(UserDecision.DECLINED) }
                 )
-            }
-
-            is ReceiveScreenState.WaitingForText -> {
-                WaitingForTextStateUi(state)
             }
 
             is ReceiveScreenState.ReceivingFiles -> {
                 ReceivingFilesStateUi(state)
-            }
-
-            is ReceiveScreenState.ReceivedText -> {
-                ReceivedTextStateUi(
-                    text = state.text,
-                    onCopyText = {
-                        receiveScreenViewModel.copyReceivedText(state.text)
-                        receiveScreenViewModel.clearState()
-                    },
-                    onClear = {
-                        receiveScreenViewModel.clearState()
-                    }
-                )
             }
 
             is ReceiveScreenState.ReceivedFiles -> {

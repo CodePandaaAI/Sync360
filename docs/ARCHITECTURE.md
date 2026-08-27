@@ -18,9 +18,8 @@ app starts
   -> FileTransferReceiver opens an OS-assigned TCP port
   -> NetworkServices advertises both ports through DNS-SD/mDNS
   -> nearby Sync360 devices are resolved into NearbyDevice
-  -> sender posts a text or file offer through Ktor HTTP
-  -> receiver accepts or declines
-  -> accepted text continues through HTTP
+  -> sender delivers text directly or posts a file offer through Ktor HTTP
+  -> idle receiver publishes the text, or the receiver accepts/declines the file offer
   -> accepted file bytes stream through one raw TCP connection
   -> platform DownloadsWriter saves the files
 ```
@@ -74,8 +73,8 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 ### Controllers
 
 - `NetworkServicesController` starts the HTTP server, file receiver, and discovery/registration once for the application lifetime. It also coordinates timed discovery stop, discovery restart, and full connection repair.
-- `OutgoingRequestsController` creates offers, calls the Ktor client, and starts accepted file transfers.
-- `IncomingServerRequestsController` serializes Accept/Decline/Cancel races and uses `ClientServerState` as the source of truth for the active incoming operation. Text follows `TextOffer -> WaitingForText -> TextReceived`; files follow `FileOffer -> WaitingForFiles -> ReceivingFiles -> FilesReceived`. Active states retain their accepted request, so operation type, sender identity, operation ID, and acceptance phase are derived from state instead of duplicated in a second operation model.
+- `OutgoingRequestsController` validates and delivers text, creates file offers, and starts accepted file transfers.
+- `IncomingServerRequestsController` uses one operation mutex to atomically admit direct text only while idle and to serialize file Accept/Decline/Cancel races. Text follows `Idle -> TextReceived -> Idle`; files follow `Idle -> IncomingFileOffer -> WaitingForFiles -> ReceivingFiles -> FilesReceived`. File states retain their request, so sender identity, operation ID, and acceptance phase remain derived from state.
 
 ### Discovery
 
@@ -99,16 +98,17 @@ The macOS/Linux JmDNS fallback starts on eligible IPv4 and IPv6 addresses from e
 
 ## Control plane: Ktor HTTP
 
-Ktor carries offers, decisions, metadata, and text:
+Ktor carries direct text plus file offers, decisions, and metadata:
 
 ```text
-POST /sync360/text/offer
-POST /sync360/text/transfer
+POST /sync360/text/deliver
 POST /sync360/file/offer
 POST /sync360/operation/cancel
 ```
 
-An offer waits up to 50 seconds for the receiver's decision. After acceptance, the controller derives a 30-second payload-preparation timeout from `WaitingForText` or `WaitingForFiles`; leaving either state automatically cancels that timer. A random operation ID correlates the offer, accepted payload, explicit cancellation, and file connection. Cancellation succeeds only when both the operation ID and sender device ID match the active state. The timeouts remain fallbacks for crashes and lost network communication. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents still remain in platform file readers and are not placed in the HTTP request.
+Text is delivered in one request containing the sender device name and text. It has no offer, decision, operation ID, waiting state, or cancellation route. Text above 100,000 Kotlin `String.length` units is rejected, and the receiver atomically checks `Idle` and publishes `TextReceived` under the operation mutex.
+
+A file offer waits up to 50 seconds for the receiver's decision. After acceptance, the controller derives a 30-second payload-preparation timeout from `WaitingForFiles`. A random operation ID correlates the file offer, explicit cancellation, and file connection. Cancellation succeeds only when both the operation ID and sender device ID match the active file state. The timeouts remain fallbacks for crashes and lost network communication. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents remain in platform file readers and are not placed in the HTTP request.
 
 ## File data plane: raw TCP
 

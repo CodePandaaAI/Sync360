@@ -28,6 +28,7 @@ import com.liftley.sync360.presentation.app.components.Sync360Surface
 
 @Composable
 fun ReceivedTextStateUi(
+    senderDeviceName: String,
     text: String,
     onCopyText: () -> Unit,
     onClear: () -> Unit
@@ -52,7 +53,7 @@ fun ReceivedTextStateUi(
                         modifier = Modifier.fillMaxWidth().padding(16.dp)
                     ) {
                         Text(
-                            "Text",
+                            text = "Text from $senderDeviceName",
                             modifier = Modifier.fillMaxWidth(),
                             textAlign = TextAlign.Center,
                             style = MaterialTheme.typography.titleLarge

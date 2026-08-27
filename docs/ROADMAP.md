@@ -1,6 +1,6 @@
 # Roadmap
 
-Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, request receiver approval, transfer text, and stream multiple files over the local network. Android is the most-tested platform. Desktop-to-Android transfer has initial manual validation, and one Windows 11 Ethernet test confirmed prompt discovery and removal in both directions when the corresponding app opened or closed.
+Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, deliver text directly to an idle receiver, and stream receiver-approved file batches over the local network. Android is the most-tested platform. Desktop-to-Android transfer has initial manual validation, and one Windows 11 Ethernet test confirmed prompt discovery and removal in both directions when the corresponding app opened or closed.
 
 ## Working now
 
@@ -11,7 +11,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - A 60-second discovery window derived from the platform-reported running state.
 - Manual discovery Reload while registration remains active, plus full connection repair when both lifecycle states are stable.
 - Dynamic HTTP and file-transfer ports advertised with device metadata.
-- Text offer, Accept/Decline, transfer, Copy, and Clear.
+- One-request text delivery with sender name, a 100,000-character limit, Copy, and Clear.
 - Android and Desktop multiple-file selection.
 - File metadata offer before any file bytes are sent.
 - One persistent raw TCP connection per accepted file batch.
@@ -73,5 +73,5 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 The product direction remains focused:
 
 ```text
-find nearby -> approve -> send directly
+find nearby -> send text or approve files -> transfer directly
 ```
