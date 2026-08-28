@@ -17,7 +17,7 @@ import java.net.Socket
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.uuid.Uuid
 
-class JvmFileTransferSender : FileTransferSender {
+class JvmFileTransmitter : FileTransmitter {
     private val activeSocket = AtomicReference<Socket?>(null)
 
     override fun cancelCurrentFileTransfer() {

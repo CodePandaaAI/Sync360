@@ -30,7 +30,7 @@ import platform.Foundation.NSURL
 import kotlin.uuid.Uuid
 
 @OptIn(ExperimentalForeignApi::class)
-class IosFileTransferSender : FileTransferSender {
+class IosFileTransmitter : FileTransmitter {
     private val selectorManager = SelectorManager(Dispatchers.Default)
     private val stateLock = NSLock()
     private var activeSocket: Socket? = null

@@ -10,9 +10,9 @@ import com.liftley.sync360.data.file.DownloadsWriter
 import com.liftley.sync360.data.file.SelectedFileReader
 import com.liftley.sync360.data.network.discovery.AndroidNetworkServices
 import com.liftley.sync360.data.network.tcp.AndroidFileTransferReceiver
-import com.liftley.sync360.data.network.tcp.AndroidFileTransferSender
+import com.liftley.sync360.data.network.tcp.AndroidFileTransmitter
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
-import com.liftley.sync360.data.network.tcp.FileTransferSender
+import com.liftley.sync360.data.network.tcp.FileTransmitter
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.repository.ClipboardProvider
@@ -30,8 +30,8 @@ val androidModule = module {
     single<SelectedFileReader> { AndroidSelectedFileReader(androidContext()) }
     single<DownloadsWriter<InputStream>> { AndroidDownloadsWriter(androidContext()) }
 
-    single<FileTransferSender> {
-        AndroidFileTransferSender(
+    single<FileTransmitter> {
+        AndroidFileTransmitter(
             context = androidContext()
         )
     }

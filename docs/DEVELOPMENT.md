@@ -56,7 +56,7 @@ Windows:
 
 ## Preparing public packages
 
-The current package version is `0.4.0`.
+The current package version is `0.4.1`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -89,7 +89,7 @@ The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and
 2. Open Sync360 on both devices and keep it in the foreground during current testing.
 3. Wait for the other device to appear on the Send screen.
 4. Test direct text delivery while idle and busy, the 100,000/100,001 boundaries, sender name, Copy, and Clear.
-5. Test the file receive-code dialog with correct, incorrect, incomplete, and non-numeric input.
+5. Test the file receive-code bottom sheet with correct, incorrect, incomplete, and non-numeric input.
 6. Confirm Send and Receive show the same code, and that a fresh application start creates a new code while navigation and recomposition do not change it.
 7. Test one file, multiple files, receiver-busy behavior, the first-connection timeout, and cancellation.
 8. Confirm completed files appear in Downloads.
@@ -125,7 +125,7 @@ Useful source locations:
 - `JvmNetworkServices` — current macOS/Linux JmDNS registration, discovery, repair cleanup, and IPv4/IPv6 LAN-interface selection.
 - `Sync360HttpServer` / `Sync360HttpClient` — direct text delivery and file control routes.
 - `OutgoingRequestsController` / `IncomingServerRequestsController` — send/receive coordination.
-- platform `FileTransferSender`, `FileTransferReceiver`, and `DownloadsWriter` implementations — file bytes and storage.
+- platform `FileTransmitter`, `FileTransferReceiver`, and `DownloadsWriter` implementations — file bytes and storage.
 
 The Windows backend currently requires a 64-bit Desktop JVM, matching the project's Windows packaging target and the native ABI used by the binding.
 

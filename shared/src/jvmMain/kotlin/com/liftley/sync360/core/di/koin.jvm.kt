@@ -11,9 +11,9 @@ import com.liftley.sync360.data.local.JvmLocalDeviceInfoProvider
 import com.liftley.sync360.data.network.discovery.JvmNetworkServices
 import com.liftley.sync360.data.network.discovery.windows.WindowsNetworkServices
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
-import com.liftley.sync360.data.network.tcp.FileTransferSender
+import com.liftley.sync360.data.network.tcp.FileTransmitter
 import com.liftley.sync360.data.network.tcp.JvmFileTransferReceiver
-import com.liftley.sync360.data.network.tcp.JvmFileTransferSender
+import com.liftley.sync360.data.network.tcp.JvmFileTransmitter
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.repository.ClipboardProvider
@@ -27,7 +27,7 @@ val jvmModule = module {
     single<DownloadsFolderOpener> { JvmDownloadsFolderOpener() }
     single<DownloadsWriter<InputStream>> { JvmDownloadsWriter() }
     single<SelectedFileReader> { JvmSelectedFileReader() }
-    single<FileTransferSender> { JvmFileTransferSender() }
+    single<FileTransmitter> { JvmFileTransmitter() }
     single<FileTransferReceiver> { JvmFileTransferReceiver(get()) }
 
     single<LocalDeviceIdentityStore> { JvmLocalDeviceIdentityStore() }

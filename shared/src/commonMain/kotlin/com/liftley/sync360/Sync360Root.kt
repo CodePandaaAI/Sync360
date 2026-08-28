@@ -171,6 +171,7 @@ fun Sync360Root() {
                         modifier = Modifier
                     )
                 },
+                modifier = Modifier.padding(horizontal = 8.dp),
                 actions = {
                     if (currentScreen != NavScreen.SettingsScreen) {
                         IconButton(

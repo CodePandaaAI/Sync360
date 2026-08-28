@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.liftley.sync360.presentation.app.components.FileReceiveCodeCard
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.components.FileReceiveCodeDialog
+import com.liftley.sync360.presentation.send.components.FileReceiveCodeSheet
 import com.liftley.sync360.presentation.send.components.FilesSendContent
 import com.liftley.sync360.presentation.send.components.NearbyDevicesSection
 import com.liftley.sync360.presentation.send.components.SendOperationStateUi
@@ -49,6 +49,7 @@ fun SendScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 FileReceiveCodeCard(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
                     fileReceiveCode = screenState.fileReceiveCode
                 )
 
@@ -94,8 +95,8 @@ fun SendScreen(
                                 TextSendContent(
                                     textInput = screenState.textInput,
                                     isTextTooLong = screenState.isTextTooLong,
-                                    onTextChange = sendScreenViewModel::onTextChanged,
-                                    onClearText = { sendScreenViewModel.onTextChanged("") }
+                                    onTextChange = sendScreenViewModel::onTextToSendChanged,
+                                    onClearText = { sendScreenViewModel.onTextToSendChanged("") }
                                 )
                             }
 
@@ -133,9 +134,9 @@ fun SendScreen(
     }
 
     screenState.fileReceiveCodePrompt?.let { prompt ->
-        FileReceiveCodeDialog(
+        FileReceiveCodeSheet(
             prompt = prompt,
-            onCodeChange = sendScreenViewModel::onFileReceiveCodeChanged,
+            onCodeChange = sendScreenViewModel::updateReceiveCode,
             onDismiss = sendScreenViewModel::dismissFileReceiveCodePrompt,
             onConfirm = sendScreenViewModel::confirmFileReceiveCode
         )

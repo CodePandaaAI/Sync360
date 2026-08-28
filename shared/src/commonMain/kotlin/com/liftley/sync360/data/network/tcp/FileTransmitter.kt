@@ -5,7 +5,7 @@ import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.domain.model.FileTransferProgress
 import kotlin.uuid.Uuid
 
-interface FileTransferSender {
+interface FileTransmitter {
     suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         files: List<SelectedFile>,

@@ -3,14 +3,12 @@ package com.liftley.sync360.presentation.receive.components
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Icon
-import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -19,7 +17,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
 import com.liftley.sync360.presentation.app.components.FileReceiveCodeCard
 
 @Composable
@@ -37,34 +34,21 @@ fun IdleReceiveStateUi(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Box(
-                Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                LoadingIndicator(modifier = Modifier.size(160.dp))
-                Icon(
-                    imageVector = Emoji_Nature,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = MaterialTheme.colorScheme.onPrimary
-                )
-            }
             Text(
-                "Ask someone to send you something",
+                "Ready to receive",
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.titleLarge
             )
-            Text(
-                "Keep Sync360 open on nearby devices",
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
 
-            FileReceiveCodeCard(fileReceiveCode = fileReceiveCode)
+            Spacer(Modifier)
+
+            FileReceiveCodeCard(
+                modifier = Modifier.padding(16.dp),
+                fileReceiveCode = fileReceiveCode
+            )
 
             TextButton(onClick = onTroubleshootClick) {
                 Text("Troubleshoot")

@@ -14,18 +14,19 @@ import androidx.compose.ui.unit.dp
 
 @Composable
 fun FileReceiveCodeCard(
+    modifier: Modifier,
     fileReceiveCode: String
 ) {
     Sync360Surface(
         containerColor = MaterialTheme.colorScheme.surface
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = modifier,
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                "File receive code",
+                "Your file transfer code",
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -34,8 +35,8 @@ fun FileReceiveCodeCard(
                 style = MaterialTheme.typography.displayMedium
             )
             Text(
-                "Enter this code on the sending device",
-                style = MaterialTheme.typography.bodySmall,
+                "Share this code with the sender",
+                style = MaterialTheme.typography.bodyLarge,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

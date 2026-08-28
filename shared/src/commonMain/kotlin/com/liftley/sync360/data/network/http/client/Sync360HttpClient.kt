@@ -70,7 +70,7 @@ class Sync360HttpClient {
         }
     }
 
-    suspend fun sendFilesToDevice(
+    suspend fun sendFileOfferRequestToDevice(
         deviceToSendFiles: NearbyDevice,
         fileOfferRequest: FileOfferRequest
     ): Result<FileOfferResponse> {

@@ -10,9 +10,9 @@ import com.liftley.sync360.data.local.IosLocalDeviceIdentityStore
 import com.liftley.sync360.data.local.IosLocalDeviceInfoProvider
 import com.liftley.sync360.data.network.discovery.IosNetworkServices
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
-import com.liftley.sync360.data.network.tcp.FileTransferSender
+import com.liftley.sync360.data.network.tcp.FileTransmitter
 import com.liftley.sync360.data.network.tcp.IosFileTransferReceiver
-import com.liftley.sync360.data.network.tcp.IosFileTransferSender
+import com.liftley.sync360.data.network.tcp.IosFileTransmitter
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.repository.ClipboardProvider
@@ -26,7 +26,7 @@ val iosModule = module {
     single<DownloadsFolderOpener> { IosDownloadsFolderOpener(get()) }
     single<SelectedFileReader> { IosSelectedFileReader() }
     single { IosDocumentsStorage() }
-    single<FileTransferSender> { IosFileTransferSender() }
+    single<FileTransmitter> { IosFileTransmitter() }
     single<FileTransferReceiver> { IosFileTransferReceiver(get()) }
 
     single<LocalDeviceIdentityStore> { IosLocalDeviceIdentityStore() }

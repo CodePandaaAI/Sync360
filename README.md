@@ -130,7 +130,7 @@ Platform file picker
   -> sender enters the receiver's temporary four-digit code
   -> POST /sync360/file/offer sends metadata and code
   -> idle receiver checks the code and prepares its TCP receiver immediately
-  -> platform FileTransferSender opens an InputStream
+  -> platform FileTransmitter opens an InputStream
   -> one raw TCP connection streams the accepted file batch
   -> platform DownloadsWriter saves each file
   -> receiver returns final success and completed-file count
@@ -138,7 +138,7 @@ Platform file picker
 
 The receive code is generated in memory when a fresh application session starts. The same code is shown on the Send and Receive screens, so it is available from the default screen without switching tabs. It is not persisted, advertised, or remembered by the sender. It is a convenience check, not authentication or encryption.
 
-This changes the file-offer request and response format. Builds containing this flow are not file-transfer compatible with `0.3.0` or older builds, even though the advertised preview protocol version intentionally remains `1` for now. Use matching builds on both devices.
+The receive-code file-offer format is not file-transfer compatible with `0.3.0` or older builds. Version `0.4.1` does not change the `0.4.0` wire format, so `0.4.0` and `0.4.1` can transfer files with each other. The advertised preview protocol version intentionally remains `1` for now, and discovery does not yet enforce this compatibility boundary.
 
 One TCP socket is opened for the complete accepted batch. It begins with the operation ID as 16 raw UUID bytes; each file then begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the operation ID, index, and size before saving. The sender writes every file sequentially, flushes once after the complete batch, then reads one final success flag and completed-file count from the receiver. The count increases only after the platform Downloads writer successfully returns. The current shared payload buffer is 512 KiB; exact byte counts define file boundaries, so correctness does not depend on `flush()` calls or matching sender and receiver read chunks.
 

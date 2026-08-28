@@ -10,7 +10,7 @@ import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
 import com.liftley.sync360.data.network.http.dto.file.FileOfferStatus
 import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
 import com.liftley.sync360.data.network.http.dto.text.TextDeliveryStatus
-import com.liftley.sync360.data.network.tcp.FileTransferSender
+import com.liftley.sync360.data.network.tcp.FileTransmitter
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
 import com.liftley.sync360.domain.model.FileReceiveCode
 import com.liftley.sync360.domain.model.FileTransferProgress
@@ -22,10 +22,10 @@ import kotlin.uuid.Uuid
 class OutgoingRequestsController(
     private val httpClient: Sync360HttpClient,
     private val localDeviceInfoProvider: LocalDeviceInfoProvider,
-    private val fileTransferSender: FileTransferSender
+    private val fileTransmitter: FileTransmitter
 ) {
     fun cancelCurrentFileTransfer() {
-        fileTransferSender.cancelCurrentFileTransfer()
+        fileTransmitter.cancelCurrentFileTransfer()
     }
 
     suspend fun sendCancellationRequestToTargetDevice(
@@ -155,7 +155,7 @@ class OutgoingRequestsController(
             totalSizeBytes = totalSizeBytes
         )
 
-        val response = httpClient.sendFilesToDevice(
+        val response = httpClient.sendFileOfferRequestToDevice(
             deviceToSendFiles = deviceToSendFiles,
             fileOfferRequest = fileOfferRequest
         ).getOrElse { exception ->
@@ -188,7 +188,7 @@ class OutgoingRequestsController(
             }
         }
 
-        return fileTransferSender.sendFiles(
+        return fileTransmitter.sendFiles(
             deviceToSendFiles = deviceToSendFiles,
             files = selectedFiles,
             operationId = operationId,

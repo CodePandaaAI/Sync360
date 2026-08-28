@@ -92,6 +92,15 @@ class SendScreenViewModel(
         }
     }
 
+    fun sendToDevice(deviceId: String) {
+        val state = _sendScreenState.value
+        if (!state.isContentReadyToSend) return
+
+        when (state.selectedTab) {
+            SendTab.Text -> sendTextToDevice(deviceId)
+            SendTab.Files -> showFileReceiveCodePrompt(deviceId)
+        }
+    }
 
     private fun sendTextToDevice(deviceId: String) {
         if (_sendScreenState.value.sendOperationState != SendOperationState.Idle) {
@@ -144,6 +153,22 @@ class SendScreenViewModel(
                         )
                     }
                 }
+            )
+        }
+    }
+
+    private fun showFileReceiveCodePrompt(deviceId: String) {
+        val targetDevice = latestNearbyDevices.firstOrNull { device ->
+            device.id == deviceId
+        } ?: return
+
+        _sendScreenState.update { state ->
+            state.copy(
+                fileReceiveCodePrompt = FileReceiveCodePrompt(
+                    deviceId = targetDevice.id,
+                    deviceName = targetDevice.deviceName,
+                    fileCount = state.files.size
+                )
             )
         }
     }
@@ -267,7 +292,7 @@ class SendScreenViewModel(
         }
     }
 
-    fun onTextChanged(text: String) {
+    fun onTextToSendChanged(text: String) {
         _sendScreenState.update {
             it.copy(textInput = text)
         }
@@ -282,7 +307,7 @@ class SendScreenViewModel(
         }
     }
 
-    fun onFileReceiveCodeChanged(code: String) {
+    fun updateReceiveCode(code: String) {
         val normalizedCode = code
             .filter { character -> character in '0'..'9' }
             .take(FileReceiveCode.DIGIT_COUNT)
@@ -313,31 +338,6 @@ class SendScreenViewModel(
             deviceId = prompt.deviceId,
             receiveCode = prompt.code
         )
-    }
-
-    fun sendToDevice(deviceId: String) {
-        val state = _sendScreenState.value
-        if (!state.isContentReadyToSend) return
-
-        when (state.selectedTab) {
-            SendTab.Text -> sendTextToDevice(deviceId)
-            SendTab.Files -> showFileReceiveCodePrompt(deviceId)
-        }
-    }
-
-    private fun showFileReceiveCodePrompt(deviceId: String) {
-        val targetDevice = latestNearbyDevices.firstOrNull { device ->
-            device.id == deviceId
-        } ?: return
-
-        _sendScreenState.update { state ->
-            state.copy(
-                fileReceiveCodePrompt = FileReceiveCodePrompt(
-                    deviceId = targetDevice.id,
-                    deviceName = targetDevice.deviceName
-                )
-            )
-        }
     }
 
     fun clearSendOperation() {

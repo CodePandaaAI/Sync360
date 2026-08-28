@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-08-28
+
+### Changed
+
+- Replaced the centered file receive-code alert with a modal bottom sheet that shows the target device, four clear digit slots, and the selected file count.
+- Kept file sending explicit: entering four digits enables the Send button, and the transfer starts only after the sender confirms.
+- Simplified the idle Receive presentation and clarified the temporary file-code wording on Send and Receive.
+- Renamed the outgoing raw file-stream abstraction to `FileTransmitter` and made the HTTP file-offer helper name more explicit. These are internal readability changes and do not change the `0.4.0` wire format.
+- Prepared Android, Desktop, and iOS packages as `0.4.1`; Android and iOS build numbers are `5`. Preview protocol metadata remains version `1`.
+
 ## [0.4.0] - 2026-08-28
 
 ### Changed
@@ -14,7 +24,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Displayed the same session receive code on both the Send and Receive screens so it is visible from the default screen.
 - File offers now include the entered code and receive an immediate accepted, invalid-code, busy, or preparation-failed response.
 - Removed file `UserDecision`, `CompletableDeferred`, incoming-offer state, decision timeout, and Accept/Cancel race while retaining operation IDs, TCP preparation timeout, cancellation, progress, framing, and cleanup.
-- Changed the file-offer wire format, so matching builds are required; preview protocol metadata intentionally remains version `1` for now.
+- Changed the file-offer wire format, making `0.4.0` incompatible with `0.3.0` and older builds; preview protocol metadata intentionally remains version `1` for now.
 
 ### Security
 
