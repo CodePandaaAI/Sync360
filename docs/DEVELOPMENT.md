@@ -56,7 +56,7 @@ Windows:
 
 ## Preparing public packages
 
-The current package version is `0.3.0`.
+The current package version is `0.4.0`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -89,9 +89,11 @@ The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and
 2. Open Sync360 on both devices and keep it in the foreground during current testing.
 3. Wait for the other device to appear on the Send screen.
 4. Test direct text delivery while idle and busy, the 100,000/100,001 boundaries, sender name, Copy, and Clear.
-5. Test file Accept/Decline, one file, multiple files, and cancellation.
-6. Confirm completed files appear in Downloads.
-7. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
+5. Test the file receive-code dialog with correct, incorrect, incomplete, and non-numeric input.
+6. Confirm Send and Receive show the same code, and that a fresh application start creates a new code while navigation and recomposition do not change it.
+7. Test one file, multiple files, receiver-busy behavior, the first-connection timeout, and cancellation.
+8. Confirm completed files appear in Downloads.
+9. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
 
 For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker, Hyper-V, or virtual-machine adapters. Windows DNS-SD browses and registers with interface index `0`, so Windows selects the applicable interfaces. Confirm discovery and resolution, live removal when a nearby app closes, removal of Windows from the other device after the Desktop app closes, Reload, and full connection repair.
 

@@ -10,14 +10,6 @@ sealed interface ClientServerState {
         val text: String
     ) : ClientServerState
 
-    data class IncomingFileOffer(
-        val fileOffer: FileOfferRequest
-    ) : ClientServerState
-
-    data class WaitingForFiles(
-        val fileOffer: FileOfferRequest
-    ) : ClientServerState
-
     data class ReceivingFiles(
         val fileOffer: FileOfferRequest,
         val completedFileCount: Int,
@@ -28,8 +20,4 @@ sealed interface ClientServerState {
         val senderDeviceName: String,
         val fileCount: Int
     ) : ClientServerState
-}
-
-enum class UserDecision {
-    ACCEPTED, DECLINED, CANCELLED
 }

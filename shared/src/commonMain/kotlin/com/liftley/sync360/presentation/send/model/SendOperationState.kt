@@ -12,7 +12,7 @@ sealed interface SendOperationState {
         val deviceName: String
     ) : SendOperationState
 
-    data class SendingFileOffer(
+    data class PreparingFiles(
         val deviceName: String,
         val fileCount: Int
     ) : SendOperationState

@@ -19,7 +19,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.liftley.sync360.presentation.app.components.FileReceiveCodeCard
 import com.liftley.sync360.presentation.app.components.Sync360Surface
+import com.liftley.sync360.presentation.send.components.FileReceiveCodeDialog
 import com.liftley.sync360.presentation.send.components.FilesSendContent
 import com.liftley.sync360.presentation.send.components.NearbyDevicesSection
 import com.liftley.sync360.presentation.send.components.SendOperationStateUi
@@ -46,6 +48,10 @@ fun SendScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                FileReceiveCodeCard(
+                    fileReceiveCode = screenState.fileReceiveCode
+                )
+
                 Sync360Surface(
                     containerColor = MaterialTheme.colorScheme.surface
                 ) {
@@ -124,5 +130,14 @@ fun SendScreen(
                 onCancel = sendScreenViewModel::cancelSend
             )
         }
+    }
+
+    screenState.fileReceiveCodePrompt?.let { prompt ->
+        FileReceiveCodeDialog(
+            prompt = prompt,
+            onCodeChange = sendScreenViewModel::onFileReceiveCodeChanged,
+            onDismiss = sendScreenViewModel::dismissFileReceiveCodePrompt,
+            onConfirm = sendScreenViewModel::confirmFileReceiveCode
+        )
     }
 }

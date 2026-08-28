@@ -16,7 +16,7 @@ The old AI-generated sync implementation was removed. The current app is being r
 - Windows discovery/registration through the operating system `dnsapi.dll` DNS-SD API on all interfaces.
 - Current macOS/Linux discovery/registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Application-lifetime network startup with separate discovery and registration lifecycle states.
-- Ktor HTTP direct text delivery plus file offers, receiver decisions, and metadata.
+- Ktor HTTP direct text delivery plus immediate code-checked file offers and metadata.
 - Raw TCP streaming for file bytes.
 - Multiple files sent sequentially over one accepted-batch connection.
 - Android file access through `ContentResolver` and Downloads writing through `MediaStore`.
@@ -72,12 +72,12 @@ Current shared transfer constants use a 512 KiB payload buffer, 5-second connect
 - Foreground/background lifecycle support.
 - Broader Desktop adapter, firewall, router, and operating-system validation.
 - Android 17 local-network permission-aware startup and serialized Android 13 legacy NSD resolution.
-- Closing the narrow shared Accept/Cancel response race.
+- Validating the temporary file receive-code flow across supported platforms.
 - Session validation, authentication, encryption, and integrity verification.
 
 ## Important limitations
 
-Sync360 currently uses cleartext local HTTP and raw TCP. Direct text has no receiver approval or operation ID. File operation IDs correlate protocol messages and sockets but do not authenticate a peer. File offers require receiver approval, but the app has no authentication, encryption, or checksum. The current target-SDK-37 Android build also lacks Android 17's required local-network runtime-permission flow. Windows receiving depends on Windows Firewall allowing the application. Use development builds only on private networks you control.
+Sync360 currently uses cleartext local HTTP and raw TCP. Direct text has no receiver approval or operation ID. File operation IDs correlate protocol messages and sockets but do not authenticate a peer. A temporary four-digit receive code replaces file Accept/Decline, but it has no attempt throttling and is not authentication, encryption, or a checksum. The new file-offer format is incompatible with `0.3.0` and older builds while preview protocol metadata intentionally remains version `1`, so both devices must run matching builds. The current target-SDK-37 Android build also lacks Android 17's required local-network runtime-permission flow. Windows receiving depends on Windows Firewall allowing the application. Use development builds only on private networks you control.
 
 For detailed and current information, read:
 

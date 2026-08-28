@@ -2,9 +2,23 @@
 
 All notable changes to Sync360 will be documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Semantic versioning will begin when public releases begin.
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versions remain preview releases, so compatibility can change before `1.0.0`.
 
 ## [Unreleased]
+
+## [0.4.0] - 2026-08-28
+
+### Changed
+
+- Replaced the file Accept/Decline screen and suspended HTTP decision with a temporary four-digit receive code generated once for each fresh application session.
+- Displayed the same session receive code on both the Send and Receive screens so it is visible from the default screen.
+- File offers now include the entered code and receive an immediate accepted, invalid-code, busy, or preparation-failed response.
+- Removed file `UserDecision`, `CompletableDeferred`, incoming-offer state, decision timeout, and Accept/Cancel race while retaining operation IDs, TCP preparation timeout, cancellation, progress, framing, and cleanup.
+- Changed the file-offer wire format, so matching builds are required; preview protocol metadata intentionally remains version `1` for now.
+
+### Security
+
+- Documented the receive code as a short-lived convenience against accidental or casual unwanted sends, not authentication; it has no attempt throttling, and local HTTP and raw TCP remain cleartext.
 
 ## [0.3.0] - 2026-08-27
 

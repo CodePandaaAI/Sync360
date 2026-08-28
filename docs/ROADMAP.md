@@ -1,6 +1,6 @@
 # Roadmap
 
-Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, deliver text directly to an idle receiver, and stream receiver-approved file batches over the local network. Android is the most-tested platform. Desktop-to-Android transfer has initial manual validation, and one Windows 11 Ethernet test confirmed prompt discovery and removal in both directions when the corresponding app opened or closed.
+Sync360 is an active Android-first rebuild. The current MVP can discover nearby Sync360 devices, deliver text directly to an idle receiver, and admit file batches through a temporary four-digit receive code before streaming them over the local network. Android is the most-tested platform. Desktop-to-Android transfer has initial manual validation, and one Windows 11 Ethernet test confirmed prompt discovery and removal in both directions when the corresponding app opened or closed.
 
 ## Working now
 
@@ -13,12 +13,14 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Dynamic HTTP and file-transfer ports advertised with device metadata.
 - One-request text delivery with sender name, a 100,000-character limit, Copy, and Clear.
 - Android and Desktop multiple-file selection.
-- File metadata offer before any file bytes are sent.
+- A temporary four-digit file receive code generated for each fresh application session.
+- The same receive code shown on both Send and Receive from one application-session source of truth.
+- Immediate code and metadata checking before any file bytes are sent.
 - One persistent raw TCP connection per accepted file batch.
 - Sequential file framing, index/size validation, and one final success/completed-count result per batch.
 - Android public Downloads writing with incomplete-entry cleanup.
 - Desktop Downloads writing through temporary `.part` files and collision-safe final names.
-- Operation-scoped sender cancellation that explicitly clears the matching receiver offer or transfer, with timeout fallbacks for lost communication.
+- Operation-scoped sender cancellation that explicitly clears the matching active receiver transfer, with timeout fallbacks for lost communication.
 - Batch-wide byte percentage on the sender and receiver.
 - Shared Compose UI with compact navigation and a wider 50/50 Send/Receive scene.
 - Enabled iOS device and Apple-silicon Simulator targets with initial Bonjour, selection, clipboard, storage, and TCP transfer implementations.
@@ -29,7 +31,7 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 - Improve receiver-side failure details and per-file results.
 - Test cancellation and failure at more points in large multi-file batches.
-- Close the narrow Accept/Cancel response race in the shared incoming-operation controller.
+- Validate correct, incorrect, busy, cancelled, and missing-TCP-sender code flows.
 - Add focused protocol and storage tests.
 
 ### Discovery and lifecycle
@@ -73,5 +75,5 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 The product direction remains focused:
 
 ```text
-find nearby -> send text or approve files -> transfer directly
+find nearby -> send text or enter a file receive code -> transfer directly
 ```

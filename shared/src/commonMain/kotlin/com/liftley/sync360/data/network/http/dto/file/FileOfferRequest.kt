@@ -8,6 +8,7 @@ data class FileOfferRequest(
     val operationId: Uuid,
     val senderDeviceId: String,
     val senderDeviceName: String,
+    val receiveCode: String,
     val offeredFiles: List<FileOfferItem>,
     val totalSizeBytes: Long
 )

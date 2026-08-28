@@ -17,7 +17,7 @@ import org.koin.dsl.module
 val appModule = module {
     single<ReceiveScreenViewModel> { ReceiveScreenViewModel(get(), get(), get()) }
     single<SendScreenViewModel> {
-        SendScreenViewModel(get(), get(), get())
+        SendScreenViewModel(get(), get(), get(), get())
     }
     single<NavigationViewModel> {
         NavigationViewModel()

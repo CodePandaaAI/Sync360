@@ -18,8 +18,8 @@ app starts
   -> FileTransferReceiver opens an OS-assigned TCP port
   -> NetworkServices advertises both ports through DNS-SD/mDNS
   -> nearby Sync360 devices are resolved into NearbyDevice
-  -> sender delivers text directly or posts a file offer through Ktor HTTP
-  -> idle receiver publishes the text, or the receiver accepts/declines the file offer
+  -> sender delivers text directly or posts file metadata with a receive code
+  -> idle receiver publishes the text, or checks the code and prepares file reception
   -> accepted file bytes stream through one raw TCP connection
   -> platform DownloadsWriter saves the files
 ```
@@ -65,7 +65,7 @@ Owns the single app `Scaffold`, compact bottom navigation, and one Navigation 3 
 ### ViewModels
 
 - `SendScreenViewModel` owns nearby-device state, selected files/text, send operations, results, and cancellation.
-- `ReceiveScreenViewModel` maps incoming server state to Receive UI and handles Accept, Decline, Copy, Clear, and Open Downloads actions.
+- `ReceiveScreenViewModel` maps incoming server state and the session receive code to Receive UI, and handles Copy, Clear, and Open Downloads actions.
 - `NavigationViewModel` keeps Send and Receive available as top-level entries and selects the active compact destination.
 
 ViewModels launch UI-facing work. They do not implement platform APIs or socket protocols.
@@ -73,8 +73,8 @@ ViewModels launch UI-facing work. They do not implement platform APIs or socket 
 ### Controllers
 
 - `NetworkServicesController` starts the HTTP server, file receiver, and discovery/registration once for the application lifetime. It also coordinates timed discovery stop, discovery restart, and full connection repair.
-- `OutgoingRequestsController` validates and delivers text, creates file offers, and starts accepted file transfers.
-- `IncomingServerRequestsController` uses one operation mutex to atomically admit direct text only while idle and to serialize file Accept/Decline/Cancel races. Text follows `Idle -> TextReceived -> Idle`; files follow `Idle -> IncomingFileOffer -> WaitingForFiles -> ReceivingFiles -> FilesReceived`. File states retain their request, so sender identity, operation ID, and acceptance phase remain derived from state.
+- `OutgoingRequestsController` validates and delivers text, creates code-bearing file offers, and starts accepted file transfers.
+- `IncomingServerRequestsController` generates one in-memory four-digit file receive code for its application session. Under one operation mutex it admits direct text only while idle, or atomically checks the file code, prepares the platform receiver, and publishes `ReceivingFiles`. Text follows `Idle -> TextReceived -> Idle`; files follow `Idle -> ReceivingFiles -> FilesReceived/Idle`.
 
 ### Discovery
 
@@ -98,7 +98,7 @@ The macOS/Linux JmDNS fallback starts on eligible IPv4 and IPv6 addresses from e
 
 ## Control plane: Ktor HTTP
 
-Ktor carries direct text plus file offers, decisions, and metadata:
+Ktor carries direct text plus immediate code-checked file offers and metadata:
 
 ```text
 POST /sync360/text/deliver
@@ -108,7 +108,13 @@ POST /sync360/operation/cancel
 
 Text is delivered in one request containing the sender device name and text. It has no offer, decision, operation ID, waiting state, or cancellation route. Text above 100,000 Kotlin `String.length` units is rejected, and the receiver atomically checks `Idle` and publishes `TextReceived` under the operation mutex.
 
-A file offer waits up to 50 seconds for the receiver's decision. After acceptance, the controller derives a 30-second payload-preparation timeout from `WaitingForFiles`. A random operation ID correlates the file offer, explicit cancellation, and file connection. Cancellation succeeds only when both the operation ID and sender device ID match the active file state. The timeouts remain fallbacks for crashes and lost network communication. The shared flow uses `FileOfferRequest` directly for the accepted metadata; file contents remain in platform file readers and are not placed in the HTTP request.
+A file offer contains the sender-entered four-digit receive code, operation identity, and file metadata. The receiver immediately reports accepted, invalid code, receiver busy, or preparation failed. A correct code is admitted only while `ClientServerState` is `Idle`; code checking, platform receiver preparation, and the `ReceivingFiles` state change happen under the operation mutex before acceptance is returned.
+
+The receive code is generated once when the singleton incoming controller is created for a fresh application session. The Send and Receive ViewModels both read that same controller-owned value and render the same shared code card. It remains only in memory, is not advertised, and is not remembered by the sender. It is a convenience check rather than authentication because it has only 9,000 possible values and is sent over cleartext HTTP.
+
+The added request field and structured response statuses change the file-offer wire format. This implementation is not file-transfer compatible with `0.3.0` or older builds. Protocol metadata intentionally remains version `1` during the current preview stage, so matching application builds are required even though discovery does not yet reject an older peer.
+
+A random operation ID still correlates the accepted file offer, explicit cancellation, and TCP connection. Cancellation succeeds only when both the operation ID and sender device ID match the active file state. Every platform receiver retains its 30-second timeout waiting for the first TCP connection, so an accepted offer cannot leave the receiver busy forever if the sender disappears. File contents remain in platform file readers and are not placed in the HTTP request.
 
 ## File data plane: raw TCP
 
@@ -147,11 +153,10 @@ Previously completed files remain when a later file in the same batch fails.
 
 ## Current limitations
 
-- No authentication, encryption, session token, or cryptographic integrity check.
+- No authentication, encryption, session token, or cryptographic integrity check. The four-digit code has no attempt throttling and must not be treated as a security boundary.
 - No retry, pause/resume, or interrupted-transfer recovery.
 - Foreground/background and automatic network-change lifecycle handling are not complete.
 - Android 17 local-network permission handling is not implemented even though the app targets SDK 37; Android 13 legacy NSD resolves are not serialized or retried after an already-active failure.
-- Accepting and cancelling in the narrow interval before the suspended offer handler is resumed can produce an accepted offer response after receiver state has already returned to idle.
 - Receiver failures do not yet provide rich error details.
 - HTTP and file-transfer senders retry distinct advertised addresses after connection failures; broader address preference and scoped IPv6 validation still need work.
 - Desktop interface selection and firewall behavior need broader validation. Windows inbound transfers require an application allow rule or user-approved firewall prompt.

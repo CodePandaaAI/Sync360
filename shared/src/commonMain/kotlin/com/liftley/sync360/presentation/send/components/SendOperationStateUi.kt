@@ -45,10 +45,10 @@ fun SendOperationStateUi(
             )
         }
 
-        is SendOperationState.SendingFileOffer -> {
+        is SendOperationState.PreparingFiles -> {
             SendingOperationUi(
-                message = "Waiting for ${state.deviceName} to accept " +
-                        fileCountMessage(state.fileCount),
+                message = "Preparing ${fileCountMessage(state.fileCount)} " +
+                    "for ${state.deviceName}",
                 onCancel = onCancel
             )
         }

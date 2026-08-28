@@ -76,17 +76,16 @@ fun Sync360Root() {
                 sendScreenState.registrationStatus == RegistrationStatus.Running
     val repairEnabled =
         sendScreenState.sendOperationState == SendOperationState.Idle &&
-                receiveScreenState == ReceiveScreenState.Idle &&
+                receiveScreenState is ReceiveScreenState.Idle &&
                 discoveryIsStable &&
                 registrationIsStable
 
     val shouldKeepScreenOn =
         sendScreenState.sendOperationState != SendOperationState.Idle ||
-                receiveScreenState != ReceiveScreenState.Idle
+                receiveScreenState !is ReceiveScreenState.Idle
 
     val receiveTitle = when (receiveScreenState) {
-        ReceiveScreenState.Idle -> "Sync360"
-        is ReceiveScreenState.IncomingFileOffer -> "Incoming files"
+        is ReceiveScreenState.Idle -> "Sync360"
         is ReceiveScreenState.ReceivingFiles -> "Receiving files"
         is ReceiveScreenState.ReceivedText -> "Received text"
         is ReceiveScreenState.ReceivedFiles -> "Files received"
@@ -96,7 +95,7 @@ fun Sync360Root() {
         SendOperationState.Idle -> "Sync360"
         SendOperationState.Cancelled -> "Sending Cancelled"
         is SendOperationState.SendingText -> "Sending Text"
-        is SendOperationState.SendingFileOffer -> "Sending File Offer"
+        is SendOperationState.PreparingFiles -> "Preparing Files"
         is SendOperationState.SendingFile -> "Sending Files"
         is SendOperationState.TextSent -> "Text Sent"
         is SendOperationState.FilesSent -> "Files Sent"
@@ -242,7 +241,7 @@ fun Sync360Root() {
     LaunchedEffect(receiveScreenState) {
         if (
             receiveScreenState is ReceiveScreenState.ReceivedText ||
-            receiveScreenState is ReceiveScreenState.IncomingFileOffer
+            receiveScreenState is ReceiveScreenState.ReceivingFiles
         ) {
             navigationViewModel.navigateToReceive()
         }

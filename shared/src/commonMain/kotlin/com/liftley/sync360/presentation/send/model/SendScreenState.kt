@@ -6,9 +6,11 @@ import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.domain.model.TextDeliveryLimits
 
 data class SendScreenState(
+    val fileReceiveCode: String,
     val selectedTab: SendTab = SendTab.Text,
     val textInput: String = "",
     val files: List<SelectedFile> = emptyList(),
+    val fileReceiveCodePrompt: FileReceiveCodePrompt? = null,
     val sendOperationState: SendOperationState = SendOperationState.Idle,
     val nearbyDevices: List<NearbyDeviceUiModel> = emptyList(),
     val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle,
