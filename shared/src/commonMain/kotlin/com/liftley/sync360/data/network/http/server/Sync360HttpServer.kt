@@ -4,10 +4,8 @@ import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.data.network.http.dto.CancelRequest
 import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
-import com.liftley.sync360.data.network.http.dto.file.FileOfferResponse
 import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
 import com.liftley.sync360.data.network.tcp.FileTransferReceiver
-import com.liftley.sync360.domain.model.UserDecision
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
@@ -44,24 +42,11 @@ class Sync360HttpServer(
 
                 post("/sync360/file/offer") {
                     val request = call.receive<FileOfferRequest>()
-                    val userDecision =
-                        incomingServerRequestsController.awaitFileOfferDecision(request)
-
-                    if (userDecision == null) {
-                        call.respond(FileOfferResponse.Declined)
-                        return@post
-                    }
-
-                    if (userDecision != UserDecision.ACCEPTED) {
-                        call.respond(FileOfferResponse.Declined)
-                        return@post
-                    }
-
-                    val prepared = incomingServerRequestsController.prepareAcceptedFileTransfer(
-                        operationId = request.operationId
-                    ) {
+                    val response = incomingServerRequestsController.prepareIncomingFileTransfer(
+                        fileOffer = request
+                    ) { acceptedFileOffer ->
                         fileTransferReceiver.prepareForTransfer(
-                            fileOffer = request,
+                            fileOffer = acceptedFileOffer,
                             onFileSaved = { completedFileCount ->
                                 incomingServerRequestsController.updateCompletedFileCount(
                                     operationId = request.operationId,
@@ -83,13 +68,7 @@ class Sync360HttpServer(
                         )
                     }
 
-                    call.respond(
-                        if (prepared) {
-                            FileOfferResponse.Accepted
-                        } else {
-                            FileOfferResponse.Declined
-                        }
-                    )
+                    call.respond(response)
                 }
 
                 post("/sync360/operation/cancel") {

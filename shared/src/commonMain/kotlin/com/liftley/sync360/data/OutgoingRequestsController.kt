@@ -1,15 +1,18 @@
 package com.liftley.sync360.data
 
+import com.liftley.sync360.data.network.http.client.FileOfferException
 import com.liftley.sync360.data.network.http.client.Sync360HttpClient
 import com.liftley.sync360.data.network.http.client.TextDeliveryException
 import com.liftley.sync360.data.network.http.dto.CancelRequest
 import com.liftley.sync360.data.network.http.dto.CancelResponse
 import com.liftley.sync360.data.network.http.dto.file.FileOfferItem
 import com.liftley.sync360.data.network.http.dto.file.FileOfferRequest
+import com.liftley.sync360.data.network.http.dto.file.FileOfferStatus
 import com.liftley.sync360.data.network.http.dto.text.TextDeliveryRequest
 import com.liftley.sync360.data.network.http.dto.text.TextDeliveryStatus
 import com.liftley.sync360.data.network.tcp.FileTransferSender
 import com.liftley.sync360.domain.local.LocalDeviceInfoProvider
+import com.liftley.sync360.domain.model.FileReceiveCode
 import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
@@ -99,6 +102,7 @@ class OutgoingRequestsController(
     suspend fun sendFiles(
         deviceToSendFiles: NearbyDevice,
         selectedFiles: List<SelectedFile>,
+        receiveCode: String,
         operationId: Uuid,
         onFileStarted: suspend (fileIndex: Int, file: SelectedFile) -> Unit,
         onProgress: (FileTransferProgress) -> Unit
@@ -106,6 +110,12 @@ class OutgoingRequestsController(
         if (selectedFiles.isEmpty()) {
             return Result.failure(
                 IllegalArgumentException("No files were selected")
+            )
+        }
+
+        if (!FileReceiveCode.isValid(receiveCode)) {
+            return Result.failure(
+                FileOfferException("Enter the receiver's four-digit code")
             )
         }
 
@@ -140,23 +150,50 @@ class OutgoingRequestsController(
             operationId = operationId,
             senderDeviceId = myDeviceInfo.deviceId,
             senderDeviceName = myDeviceInfo.deviceName,
+            receiveCode = receiveCode,
             offeredFiles = offeredFiles,
             totalSizeBytes = totalSizeBytes
         )
 
-        httpClient.sendFilesToDevice(deviceToSendFiles, fileOfferRequest).fold(
-            onSuccess = {
-                return fileTransferSender.sendFiles(
-                    deviceToSendFiles = deviceToSendFiles,
-                    files = selectedFiles,
-                    operationId = operationId,
-                    onFileStarted = onFileStarted,
-                    onProgress = onProgress
+        val response = httpClient.sendFilesToDevice(
+            deviceToSendFiles = deviceToSendFiles,
+            fileOfferRequest = fileOfferRequest
+        ).getOrElse { exception ->
+            return Result.failure(exception)
+        }
+
+        when (response.status) {
+            FileOfferStatus.ACCEPTED -> Unit
+
+            FileOfferStatus.INVALID_CODE -> {
+                return Result.failure(
+                    FileOfferException("The receive code is incorrect")
                 )
-            },
-            onFailure = { error ->
-                return Result.failure(error)
             }
+
+            FileOfferStatus.RECEIVER_BUSY -> {
+                return Result.failure(
+                    FileOfferException(
+                        "${deviceToSendFiles.deviceName} is currently busy"
+                    )
+                )
+            }
+
+            FileOfferStatus.PREPARATION_FAILED -> {
+                return Result.failure(
+                    FileOfferException(
+                        "${deviceToSendFiles.deviceName} could not prepare for the file transfer"
+                    )
+                )
+            }
+        }
+
+        return fileTransferSender.sendFiles(
+            deviceToSendFiles = deviceToSendFiles,
+            files = selectedFiles,
+            operationId = operationId,
+            onFileStarted = onFileStarted,
+            onProgress = onProgress
         )
     }
 }

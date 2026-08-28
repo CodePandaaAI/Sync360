@@ -77,7 +77,7 @@ class Sync360HttpClient {
         val deviceToSendOfferPort = deviceToSendFiles.port
 
         return try {
-            val fileOfferResponse = requestUsingReachableAddress(deviceToSendFiles) { host ->
+            val response = requestUsingReachableAddress(deviceToSendFiles) { host ->
                 val url = "http://${host.asUrlHost()}:$deviceToSendOfferPort/sync360/file/offer"
                 httpClient.post(url) {
                     contentType(ContentType.Application.Json)
@@ -85,15 +85,7 @@ class Sync360HttpClient {
                 }.body<FileOfferResponse>()
             }
 
-            when (fileOfferResponse) {
-                FileOfferResponse.Accepted -> {
-                    Result.success(FileOfferResponse.Accepted)
-                }
-
-                FileOfferResponse.Declined -> {
-                    Result.failure(FileOfferException("User Declined Request"))
-                }
-            }
+            Result.success(response)
         } catch (e: Exception) {
             when (e) {
                 is CancellationException -> throw e

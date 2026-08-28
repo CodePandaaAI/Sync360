@@ -47,7 +47,7 @@ Good moments to share publicly:
 
 - two devices discover each other
 - first local HTTP response
-- receiver approval flow
+- temporary file receive-code flow
 - first text send
 - first file send
 - progress UI
@@ -59,7 +59,7 @@ Good moments to share publicly:
 Sync360 is still early, but the useful local flow is real:
 
 ```text
-local discovery -> receiver approval -> direct text or file transfer
+local discovery -> direct text or receive-code-checked file transfer
 ```
 
 Android is the most-tested platform. Desktop/JVM implements the same shared flow and has initial Desktop-to-Android validation. An enabled iOS implementation exists in source and has opened in a cloud simulator, but same-LAN and physical-device transfer remain unverified. Broader operating-system, adapter, firewall, and router testing is still needed. That is the story to tell clearly without presenting the app as finished or secure.

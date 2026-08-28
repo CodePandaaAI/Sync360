@@ -2,15 +2,18 @@ package com.liftley.sync360.presentation.send
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.data.NetworkServicesController
 import com.liftley.sync360.data.OutgoingRequestsController
 import com.liftley.sync360.data.file.SelectedFileReader
+import com.liftley.sync360.domain.model.FileReceiveCode
+import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
-import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.domain.model.TextDeliveryLimits
-import com.liftley.sync360.presentation.send.model.SendScreenState
+import com.liftley.sync360.presentation.send.model.FileReceiveCodePrompt
 import com.liftley.sync360.presentation.send.model.SendOperationState
+import com.liftley.sync360.presentation.send.model.SendScreenState
 import com.liftley.sync360.presentation.send.model.SendTab
 import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
 import kotlinx.coroutines.Dispatchers
@@ -29,9 +32,14 @@ class SendScreenViewModel(
     private val selectedFileReader: SelectedFileReader,
     private val networkServicesController: NetworkServicesController,
     private val outgoingRequestsController: OutgoingRequestsController,
+    incomingServerRequestsController: IncomingServerRequestsController
 ) : ViewModel() {
     private val _sendScreenState: MutableStateFlow<SendScreenState> =
-        MutableStateFlow(SendScreenState())
+        MutableStateFlow(
+            SendScreenState(
+                fileReceiveCode = incomingServerRequestsController.fileReceiveCode
+            )
+        )
     val sendScreenState: StateFlow<SendScreenState> = _sendScreenState.asStateFlow()
 
     private var latestNearbyDevices: List<NearbyDevice> = emptyList()
@@ -140,7 +148,10 @@ class SendScreenViewModel(
         }
     }
 
-    private fun sendFilesToDevice(deviceId: String) {
+    private fun sendFilesToDevice(
+        deviceId: String,
+        receiveCode: String
+    ) {
         if (_sendScreenState.value.sendOperationState != SendOperationState.Idle) {
             return
         }
@@ -165,7 +176,7 @@ class SendScreenViewModel(
 
         _sendScreenState.update {
             it.copy(
-                sendOperationState = SendOperationState.SendingFileOffer(
+                sendOperationState = SendOperationState.PreparingFiles(
                     deviceName = deviceToSendFiles.deviceName,
                     fileCount = files.size
                 )
@@ -176,6 +187,7 @@ class SendScreenViewModel(
             val result = outgoingRequestsController.sendFiles(
                 deviceToSendFiles = deviceToSendFiles,
                 selectedFiles = files,
+                receiveCode = receiveCode,
                 operationId = operationId,
                 onFileStarted = { fileIndex, file ->
                     currentFileIndex = fileIndex
@@ -263,8 +275,44 @@ class SendScreenViewModel(
 
     fun onTabSelected(tab: SendTab) {
         _sendScreenState.update {
-            it.copy(selectedTab = tab)
+            it.copy(
+                selectedTab = tab,
+                fileReceiveCodePrompt = null
+            )
         }
+    }
+
+    fun onFileReceiveCodeChanged(code: String) {
+        val normalizedCode = code
+            .filter { character -> character in '0'..'9' }
+            .take(FileReceiveCode.DIGIT_COUNT)
+
+        _sendScreenState.update { state ->
+            val prompt = state.fileReceiveCodePrompt ?: return@update state
+            state.copy(
+                fileReceiveCodePrompt = prompt.copy(code = normalizedCode)
+            )
+        }
+    }
+
+    fun dismissFileReceiveCodePrompt() {
+        _sendScreenState.update {
+            it.copy(fileReceiveCodePrompt = null)
+        }
+    }
+
+    fun confirmFileReceiveCode() {
+        val prompt = _sendScreenState.value.fileReceiveCodePrompt ?: return
+        if (!FileReceiveCode.isValid(prompt.code)) return
+
+        _sendScreenState.update {
+            it.copy(fileReceiveCodePrompt = null)
+        }
+
+        sendFilesToDevice(
+            deviceId = prompt.deviceId,
+            receiveCode = prompt.code
+        )
     }
 
     fun sendToDevice(deviceId: String) {
@@ -273,7 +321,22 @@ class SendScreenViewModel(
 
         when (state.selectedTab) {
             SendTab.Text -> sendTextToDevice(deviceId)
-            SendTab.Files -> sendFilesToDevice(deviceId)
+            SendTab.Files -> showFileReceiveCodePrompt(deviceId)
+        }
+    }
+
+    private fun showFileReceiveCodePrompt(deviceId: String) {
+        val targetDevice = latestNearbyDevices.firstOrNull { device ->
+            device.id == deviceId
+        } ?: return
+
+        _sendScreenState.update { state ->
+            state.copy(
+                fileReceiveCodePrompt = FileReceiveCodePrompt(
+                    deviceId = targetDevice.id,
+                    deviceName = targetDevice.deviceName
+                )
+            )
         }
     }
 

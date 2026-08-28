@@ -2,7 +2,7 @@
 
 Sync360 is an early local-network sharing app. It is not secure for untrusted networks yet.
 
-The current rebuild implements local discovery, receiver-approved text sharing, and streamed file transfer before adding the final security model. Security work remains required before untrusted-network use.
+The current rebuild implements local discovery, direct text delivery, and code-checked streamed file transfer before adding the final security model. Security work remains required before untrusted-network use.
 
 ## Supported versions
 
@@ -11,6 +11,8 @@ There are no stable supported releases yet.
 | Version | Supported |
 | ------- | --------- |
 | Unreleased / main | Best effort |
+| 0.4.x | Best effort |
+| 0.3.x and older | No |
 
 ## Reporting a vulnerability
 
@@ -40,10 +42,11 @@ General bugs, crashes, UI issues, documentation problems, and non-sensitive arch
 Current implementation:
 
 - Android NSD, Windows system DNS-SD, macOS/Linux JmDNS, and an initial iOS Bonjour implementation exist.
-- Ktor carries text/file offers, receiver decisions, metadata, and accepted text.
+- Ktor carries direct text and code-checked file offers with metadata.
 - Raw TCP streams accepted file batches to platform Downloads storage.
-- File names and promised sizes are validated, but a file socket is not bound to its approved offer with a session token.
+- File names and promised sizes are validated, but a file socket is not authenticated with a secret session token.
 - Sender authentication, encryption, replay protection, and cryptographic integrity verification are not implemented.
+- The temporary four-digit file receive code is not authentication and can be guessed or observed on the cleartext local connection. Attempts are not currently rate-limited.
 
 Use current builds only on private local networks you control. Do not use the current code as a security model for production file transfer.
 

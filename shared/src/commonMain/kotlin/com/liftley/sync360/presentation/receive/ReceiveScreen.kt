@@ -6,9 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.liftley.sync360.domain.model.UserDecision
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.receive.components.FileOfferStateUi
 import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedTextStateUi
@@ -27,8 +25,9 @@ fun ReceiveScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         when (val state = receiveScreenState) {
-            ReceiveScreenState.Idle -> {
+            is ReceiveScreenState.Idle -> {
                 IdleReceiveStateUi(
+                    fileReceiveCode = state.fileReceiveCode,
                     onTroubleshootClick = onTroubleshootClick
                 )
             }
@@ -42,14 +41,6 @@ fun ReceiveScreen(
                         receiveScreenViewModel.clearState()
                     },
                     onClear = receiveScreenViewModel::clearState
-                )
-            }
-
-            is ReceiveScreenState.IncomingFileOffer -> {
-                FileOfferStateUi(
-                    state = state,
-                    onAccept = { receiveScreenViewModel.respondToFileOffer(UserDecision.ACCEPTED) },
-                    onDecline = { receiveScreenViewModel.respondToFileOffer(UserDecision.DECLINED) }
                 )
             }
 

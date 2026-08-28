@@ -53,14 +53,15 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Deliver text directly with one HTTP request when the receiver is idle.
 - Enforce a 100,000-character text limit and show the sender name with Copy and Clear actions.
 - Select images, videos, documents, and multiple files.
-- Show file metadata to the receiver before any file bytes are sent.
+- Generate a temporary four-digit file receive code for each fresh application session and show the same code on both Send and Receive.
+- Check the receive code and file metadata before any file bytes are sent.
 - Stream file bytes directly over raw TCP without loading an entire file into memory.
 - Save received files into public Android Downloads through `MediaStore`, preserving the extension when duplicate names are resolved.
 - Delete the incomplete current file if its receive operation fails or is cancelled.
 - Stream each accepted file batch continuously, then confirm the batch with one final receiver result.
 - Cancel a pending send or active file transfer on a best-effort basis.
 - Show batch-wide byte percentage while files are being sent and received.
-- Show clear offer, transfer, success, failure, and cancelled states on the sender, with incoming, receiving, and received states on the receiver.
+- Show clear preparation, transfer, success, failure, and cancelled states on the sender, with receiving and received states on the receiver.
 - Run the shared Send/Receive UI on Desktop, with an adaptive 50/50 two-pane layout in wider windows.
 - Discover and advertise Windows devices through the operating system DNS-SD API, with JmDNS retained for macOS and Linux, using the same service as Android.
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
@@ -92,14 +93,14 @@ The current progress UI tracks the exact bytes transferred across the accepted b
 
 Sync360 uses two small networking paths with different jobs:
 
-- **Ktor HTTP handles direct text delivery and the file control plane.** It carries text payloads, file offers, receiver decisions, and file metadata.
+- **Ktor HTTP handles direct text delivery and the file control plane.** It carries text payloads and immediate code-checked file offers with metadata.
 - **Raw TCP is the file data plane.** It streams the actual file bytes directly between devices.
 
 ```mermaid
 flowchart LR
     A["Sender device"] -->|"Android NSD or platform Desktop DNS-SD"| B["Receiver device"]
     A -->|"Ktor: direct text delivery"| B
-    A -->|"Ktor: file offer + decision"| B
+    A -->|"Ktor: code-checked file offer"| B
     A -->|"Raw TCP: streamed file bytes"| B
     B -->|"Platform Downloads writer"| D["Downloads"]
 ```
@@ -126,13 +127,18 @@ Text uses one request and has no offer, receiver decision, operation ID, waiting
 ```text
 Platform file picker
   -> SelectedFileReader reads name, size, MIME type, and platform location
-  -> POST /sync360/file/offer sends metadata
-  -> receiver Accept/Decline
+  -> sender enters the receiver's temporary four-digit code
+  -> POST /sync360/file/offer sends metadata and code
+  -> idle receiver checks the code and prepares its TCP receiver immediately
   -> platform FileTransferSender opens an InputStream
   -> one raw TCP connection streams the accepted file batch
   -> platform DownloadsWriter saves each file
   -> receiver returns final success and completed-file count
 ```
+
+The receive code is generated in memory when a fresh application session starts. The same code is shown on the Send and Receive screens, so it is available from the default screen without switching tabs. It is not persisted, advertised, or remembered by the sender. It is a convenience check, not authentication or encryption.
+
+This changes the file-offer request and response format. Builds containing this flow are not file-transfer compatible with `0.3.0` or older builds, even though the advertised preview protocol version intentionally remains `1` for now. Use matching builds on both devices.
 
 One TCP socket is opened for the complete accepted batch. It begins with the operation ID as 16 raw UUID bytes; each file then begins with its index and promised byte count, followed by exactly that many bytes. The receiver checks the operation ID, index, and size before saving. The sender writes every file sequentially, flushes once after the complete batch, then reads one final success flag and completed-file count from the receiver. The count increases only after the platform Downloads writer successfully returns. The current shared payload buffer is 512 KiB; exact byte counts define file boundaries, so correctness does not depend on `flush()` calls or matching sender and receiver read chunks.
 
@@ -237,8 +243,8 @@ macOS/Linux:
 3. Keep Sync360 open on both devices during the current foreground-only test flow.
 4. On the Send screen, wait for the other device to appear.
 5. For text, enter the content and select the nearby device; idle receivers show it immediately.
-6. For files, select the files and nearby device, then accept the offer on the receiver.
-7. Accepted files will be written to the platform's Downloads folder.
+6. For files, read the target device's four-digit code from its Send or Receive screen, select the files and nearby device, then enter that code on the sender.
+7. Code-accepted files will be written to the platform's Downloads folder.
 
 Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
 
@@ -250,7 +256,7 @@ Reload is available only after the current discovery window has stopped while se
 
 Sync360 is **not secure for untrusted networks yet**.
 
-The current implementation uses cleartext local HTTP and raw TCP. File operation IDs correlate offers, cancellation, and file sockets for correctness, but they are not secret or authenticated. Direct text delivery has no receiver approval. Sync360 does not yet authenticate the sender, encrypt content, or verify file integrity with a cryptographic hash. File receiver approval exists in the UI, but it is not a complete security boundary.
+The current implementation uses cleartext local HTTP and raw TCP. File operation IDs correlate offers, cancellation, and file sockets for correctness, but they are not secret or authenticated. Direct text delivery has no receiver approval. The four-digit file receive code reduces accidental or casual unwanted sends, but its small keyspace, cleartext transport, and current lack of attempt throttling do not make it authentication. Sync360 does not yet authenticate the sender, encrypt content, or verify file integrity with a cryptographic hash.
 
 Use the current app only for development and testing on private networks you control. Please report security-sensitive findings according to [SECURITY.md](SECURITY.md), not in a public issue.
 
@@ -261,7 +267,6 @@ Use the current app only for development and testing on private networks you con
 - Improve active-transfer feedback around the current byte percentage.
 - Add integrity verification.
 - Test cancellation and failure reporting across more network-loss and transfer stages.
-- Close the narrow Accept/Cancel timing gap so an offer cannot report acceptance after its receiver state has already been cancelled.
 - Strengthen lifecycle behavior and local-network reliability.
 - Add Android 17 local-network permission handling and serialize Android 13 legacy NSD resolves.
 - Validate Desktop discovery and transfer across more operating systems, network adapters, routers, and firewall configurations.
@@ -277,7 +282,7 @@ Use the current app only for development and testing on private networks you con
 Sync360 is not trying to become a chat app, cloud-sync product, or permanent device manager. The product direction stays focused:
 
 ```text
-find nearby -> send text or approve files -> transfer directly
+find nearby -> send text or enter a file receive code -> transfer directly
 ```
 
 ## Why the rebuild is intentionally small

@@ -20,9 +20,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Emoji_Nature
+import com.liftley.sync360.presentation.app.components.FileReceiveCodeCard
 
 @Composable
 fun IdleReceiveStateUi(
+    fileReceiveCode: String,
     onTroubleshootClick: () -> Unit
 ) {
     Box(
@@ -61,6 +63,8 @@ fun IdleReceiveStateUi(
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+
+            FileReceiveCodeCard(fileReceiveCode = fileReceiveCode)
 
             TextButton(onClick = onTroubleshootClick) {
                 Text("Troubleshoot")
