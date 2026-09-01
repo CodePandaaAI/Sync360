@@ -6,7 +6,7 @@ import com.liftley.sync360.data.IncomingServerRequestsController
 import com.liftley.sync360.domain.model.ClientServerState
 import com.liftley.sync360.domain.repository.ClipboardProvider
 import com.liftley.sync360.domain.repository.DownloadsFolderOpener
-import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
+import com.liftley.sync360.presentation.receive.model.ReceiveState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,12 +18,12 @@ class ReceiveScreenViewModel(
     private val downloadsFolderOpener: DownloadsFolderOpener
 ) : ViewModel() {
 
-    private val _screenState = MutableStateFlow<ReceiveScreenState>(
-        ReceiveScreenState.Idle(
+    private val _screenState = MutableStateFlow<ReceiveState>(
+        ReceiveState.Idle(
             fileReceiveCode = incomingServerRequestsController.fileReceiveCode
         )
     )
-    val screenState: StateFlow<ReceiveScreenState> = _screenState.asStateFlow()
+    val screenState: StateFlow<ReceiveState> = _screenState.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -53,21 +53,21 @@ class ReceiveScreenViewModel(
 
 private fun ClientServerState.toReceiveScreenState(
     fileReceiveCode: String
-): ReceiveScreenState {
+): ReceiveState {
     return when (this) {
         ClientServerState.Idle -> {
-            ReceiveScreenState.Idle(fileReceiveCode = fileReceiveCode)
+            ReceiveState.Idle(fileReceiveCode = fileReceiveCode)
         }
 
         is ClientServerState.TextReceived -> {
-            ReceiveScreenState.ReceivedText(
+            ReceiveState.ReceivedText(
                 senderDeviceName = senderDeviceName,
                 text = text
             )
         }
 
         is ClientServerState.ReceivingFiles -> {
-            ReceiveScreenState.ReceivingFiles(
+            ReceiveState.ReceivingFiles(
                 senderDeviceName = fileOffer.senderDeviceName,
                 fileCount = fileOffer.offeredFiles.size,
                 completedFileCount = completedFileCount,
@@ -76,7 +76,7 @@ private fun ClientServerState.toReceiveScreenState(
         }
 
         is ClientServerState.FilesReceived -> {
-            ReceiveScreenState.ReceivedFiles(
+            ReceiveState.ReceivedFiles(
                 senderDeviceName = senderDeviceName,
                 fileCount = fileCount
             )

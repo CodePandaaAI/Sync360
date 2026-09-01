@@ -24,11 +24,11 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
+import com.liftley.sync360.presentation.receive.model.ReceiveState
 
 @Composable
 fun ReceivedFilesStateUi(
-    state: ReceiveScreenState.ReceivedFiles,
+    state: ReceiveState.ReceivedFiles,
     onOpenDownloads: () -> Unit,
     onDone: () -> Unit
 ) {

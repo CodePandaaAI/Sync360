@@ -11,7 +11,7 @@ import com.liftley.sync360.presentation.receive.components.IdleReceiveStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedFilesStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivedTextStateUi
 import com.liftley.sync360.presentation.receive.components.ReceivingFilesStateUi
-import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
+import com.liftley.sync360.presentation.receive.model.ReceiveState
 import org.koin.compose.koinInject
 
 @Composable
@@ -25,14 +25,14 @@ fun ReceiveScreen(
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) {
         when (val state = receiveScreenState) {
-            is ReceiveScreenState.Idle -> {
+            is ReceiveState.Idle -> {
                 IdleReceiveStateUi(
                     fileReceiveCode = state.fileReceiveCode,
                     onTroubleshootClick = onTroubleshootClick
                 )
             }
 
-            is ReceiveScreenState.ReceivedText -> {
+            is ReceiveState.ReceivedText -> {
                 ReceivedTextStateUi(
                     senderDeviceName = state.senderDeviceName,
                     text = state.text,
@@ -44,11 +44,11 @@ fun ReceiveScreen(
                 )
             }
 
-            is ReceiveScreenState.ReceivingFiles -> {
+            is ReceiveState.ReceivingFiles -> {
                 ReceivingFilesStateUi(state)
             }
 
-            is ReceiveScreenState.ReceivedFiles -> {
+            is ReceiveState.ReceivedFiles -> {
                 ReceivedFilesStateUi(
                     state = state,
                     onOpenDownloads = receiveScreenViewModel::openDownloads,

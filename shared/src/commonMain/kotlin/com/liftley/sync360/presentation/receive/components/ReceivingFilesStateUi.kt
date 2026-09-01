@@ -16,11 +16,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.presentation.app.components.FileTransferProgressUi
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.receive.model.ReceiveScreenState
+import com.liftley.sync360.presentation.receive.model.ReceiveState
 
 @Composable
 fun ReceivingFilesStateUi(
-    state: ReceiveScreenState.ReceivingFiles
+    state: ReceiveState.ReceivingFiles
 ) {
     Column(
         modifier = Modifier

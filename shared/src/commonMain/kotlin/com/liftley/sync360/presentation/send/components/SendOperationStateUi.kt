@@ -27,25 +27,25 @@ import com.liftley.sync360.core.designsystem.icons.Send
 import com.liftley.sync360.domain.model.FileTransferProgress
 import com.liftley.sync360.presentation.app.components.FileTransferProgressUi
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import com.liftley.sync360.presentation.send.model.SendOperationState
+import com.liftley.sync360.presentation.send.model.SendState
 
 @Composable
 fun SendOperationStateUi(
-    state: SendOperationState,
+    state: SendState,
     onDone: () -> Unit,
     onCancel: () -> Unit
 ) {
     when (state) {
-        SendOperationState.Idle -> Unit
+        SendState.Idle -> Unit
 
-        is SendOperationState.SendingText -> {
+        is SendState.SendingText -> {
             SendingOperationUi(
                 message = "Sending text to ${state.deviceName}",
                 onCancel = null
             )
         }
 
-        is SendOperationState.PreparingFiles -> {
+        is SendState.PreparingFiles -> {
             SendingOperationUi(
                 message = "Preparing ${fileCountMessage(state.fileCount)} " +
                     "for ${state.deviceName}",
@@ -53,7 +53,7 @@ fun SendOperationStateUi(
             )
         }
 
-        is SendOperationState.SendingFile -> {
+        is SendState.SendingFile -> {
             SendingOperationUi(
                 message = "Sending to ${state.deviceName}",
                 detail = "${state.fileNumber} / ${state.totalFiles}: ${state.fileName}",
@@ -62,7 +62,7 @@ fun SendOperationStateUi(
             )
         }
 
-        is SendOperationState.TextSent -> {
+        is SendState.TextSent -> {
             SendResultUi(
                 message = "Sent successfully to ${state.deviceName}",
                 wasSuccessful = true,
@@ -70,7 +70,7 @@ fun SendOperationStateUi(
             )
         }
 
-        is SendOperationState.FilesSent -> {
+        is SendState.FilesSent -> {
             SendResultUi(
                 message = "${fileCountMessage(state.fileCount)} sent to ${state.deviceName}",
                 wasSuccessful = true,
@@ -78,7 +78,7 @@ fun SendOperationStateUi(
             )
         }
 
-        SendOperationState.Cancelled -> {
+        SendState.Cancelled -> {
             SendResultUi(
                 message = "The active send was stopped",
                 wasSuccessful = false,
@@ -86,7 +86,7 @@ fun SendOperationStateUi(
             )
         }
 
-        is SendOperationState.OperationFailed -> {
+        is SendState.Failed -> {
             SendResultUi(
                 message = state.reason,
                 wasSuccessful = false,

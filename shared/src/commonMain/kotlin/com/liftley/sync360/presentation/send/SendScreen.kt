@@ -26,7 +26,7 @@ import com.liftley.sync360.presentation.send.components.FilesSendContent
 import com.liftley.sync360.presentation.send.components.NearbyDevicesSection
 import com.liftley.sync360.presentation.send.components.SendOperationStateUi
 import com.liftley.sync360.presentation.send.components.TextSendContent
-import com.liftley.sync360.presentation.send.model.SendOperationState
+import com.liftley.sync360.presentation.send.model.SendState
 import com.liftley.sync360.presentation.send.model.SendTab
 import org.koin.compose.koinInject
 
@@ -38,8 +38,8 @@ fun SendScreen(
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
     val screenState by sendScreenViewModel.sendScreenState.collectAsStateWithLifecycle()
 
-    when (screenState.sendOperationState) {
-        SendOperationState.Idle -> {
+    when (screenState.sendState) {
+        SendState.Idle -> {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -126,7 +126,7 @@ fun SendScreen(
 
         else -> {
             SendOperationStateUi(
-                state = screenState.sendOperationState,
+                state = screenState.sendState,
                 onDone = sendScreenViewModel::clearSendOperation,
                 onCancel = sendScreenViewModel::cancelSend
             )

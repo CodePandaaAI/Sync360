@@ -2,20 +2,20 @@ package com.liftley.sync360.presentation.send.model
 
 import com.liftley.sync360.domain.model.FileTransferProgress
 
-sealed interface SendOperationState {
-    data object Idle : SendOperationState
+sealed interface SendState {
+    data object Idle : SendState
     data class SendingText(
         val deviceName: String
-    ) : SendOperationState
+    ) : SendState
 
     data class TextSent(
         val deviceName: String
-    ) : SendOperationState
+    ) : SendState
 
     data class PreparingFiles(
         val deviceName: String,
         val fileCount: Int
-    ) : SendOperationState
+    ) : SendState
 
     data class SendingFile(
         val deviceName: String,
@@ -23,16 +23,16 @@ sealed interface SendOperationState {
         val fileNumber: Int,
         val totalFiles: Int,
         val progress: FileTransferProgress
-    ) : SendOperationState
+    ) : SendState
 
     data class FilesSent(
         val deviceName: String,
         val fileCount: Int
-    ) : SendOperationState
+    ) : SendState
 
-    data object Cancelled : SendOperationState
+    data object Cancelled : SendState
 
-    data class OperationFailed(
+    data class Failed(
         val reason: String
-    ) : SendOperationState
+    ) : SendState
 }

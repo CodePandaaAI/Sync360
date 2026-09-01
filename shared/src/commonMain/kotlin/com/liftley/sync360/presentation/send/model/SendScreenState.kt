@@ -11,7 +11,7 @@ data class SendScreenState(
     val textInput: String = "",
     val files: List<SelectedFile> = emptyList(),
     val fileReceiveCodePrompt: FileReceiveCodePrompt? = null,
-    val sendOperationState: SendOperationState = SendOperationState.Idle,
+    val sendState: SendState = SendState.Idle,
     val nearbyDevices: List<NearbyDeviceUiModel> = emptyList(),
     val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle,
     val registrationStatus: RegistrationStatus = RegistrationStatus.Idle

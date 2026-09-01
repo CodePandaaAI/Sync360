@@ -12,7 +12,7 @@ import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.domain.model.TextDeliveryLimits
 import com.liftley.sync360.presentation.send.model.FileReceiveCodePrompt
-import com.liftley.sync360.presentation.send.model.SendOperationState
+import com.liftley.sync360.presentation.send.model.SendState
 import com.liftley.sync360.presentation.send.model.SendScreenState
 import com.liftley.sync360.presentation.send.model.SendTab
 import com.liftley.sync360.presentation.send.model.toNearbyDeviceUiModel
@@ -103,7 +103,7 @@ class SendScreenViewModel(
     }
 
     private fun sendTextToDevice(deviceId: String) {
-        if (_sendScreenState.value.sendOperationState != SendOperationState.Idle) {
+        if (_sendScreenState.value.sendState != SendState.Idle) {
             return
         }
 
@@ -120,7 +120,7 @@ class SendScreenViewModel(
 
         _sendScreenState.update {
             it.copy(
-                sendOperationState = SendOperationState.SendingText(
+                sendState = SendState.SendingText(
                     deviceName = deviceToSendText.deviceName
                 )
             )
@@ -138,7 +138,7 @@ class SendScreenViewModel(
                 onSuccess = {
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.TextSent(
+                            sendState = SendState.TextSent(
                                 deviceName = deviceToSendText.deviceName
                             )
                         )
@@ -147,7 +147,7 @@ class SendScreenViewModel(
                 onFailure = { error ->
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.OperationFailed(
+                            sendState = SendState.Failed(
                                 reason = error.message?.take(300) ?: "Text not sent"
                             )
                         )
@@ -177,7 +177,7 @@ class SendScreenViewModel(
         deviceId: String,
         receiveCode: String
     ) {
-        if (_sendScreenState.value.sendOperationState != SendOperationState.Idle) {
+        if (_sendScreenState.value.sendState != SendState.Idle) {
             return
         }
 
@@ -201,7 +201,7 @@ class SendScreenViewModel(
 
         _sendScreenState.update {
             it.copy(
-                sendOperationState = SendOperationState.PreparingFiles(
+                sendState = SendState.PreparingFiles(
                     deviceName = deviceToSendFiles.deviceName,
                     fileCount = files.size
                 )
@@ -219,7 +219,7 @@ class SendScreenViewModel(
                     currentFileName = file.displayName
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.SendingFile(
+                            sendState = SendState.SendingFile(
                                 deviceName = deviceToSendFiles.deviceName,
                                 fileName = file.displayName,
                                 fileNumber = currentFileIndex + 1,
@@ -233,7 +233,7 @@ class SendScreenViewModel(
                     latestProgress = progress
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.SendingFile(
+                            sendState = SendState.SendingFile(
                                 deviceName = deviceToSendFiles.deviceName,
                                 fileName = currentFileName,
                                 fileNumber = currentFileIndex + 1,
@@ -251,7 +251,7 @@ class SendScreenViewModel(
                 onSuccess = {
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.FilesSent(
+                            sendState = SendState.FilesSent(
                                 deviceName = deviceToSendFiles.deviceName,
                                 fileCount = files.size
                             )
@@ -261,7 +261,7 @@ class SendScreenViewModel(
                 onFailure = { error ->
                     _sendScreenState.update {
                         it.copy(
-                            sendOperationState = SendOperationState.OperationFailed(
+                            sendState = SendState.Failed(
                                 reason = error.message?.take(300) ?: "Files not sent"
                             )
                         )
@@ -288,7 +288,7 @@ class SendScreenViewModel(
         }
 
         _sendScreenState.update {
-            it.copy(sendOperationState = SendOperationState.Cancelled)
+            it.copy(sendState = SendState.Cancelled)
         }
     }
 
@@ -342,7 +342,7 @@ class SendScreenViewModel(
 
     fun clearSendOperation() {
         _sendScreenState.update {
-            it.copy(sendOperationState = SendOperationState.Idle)
+            it.copy(sendState = SendState.Idle)
         }
     }
 
