@@ -18,6 +18,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.domain.model.FileReceiveCode
@@ -80,21 +82,28 @@ fun FileReceiveCodeSheet(
             // "Cancel" link buried under the keyboard.
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
+                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "Confirm ${prompt.deviceName}",
+                        text = "Sending to ${prompt.deviceName}",
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.headlineSmall
                     )
                     Text(
                         text = "Enter the code shown on that device",
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss, colors = IconButtonDefaults.iconButtonColors(
+                        MaterialTheme.colorScheme.surfaceContainer
+                    )
+                ) {
                     Icon(
                         imageVector = Close,
                         contentDescription = "Cancel"

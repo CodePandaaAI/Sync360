@@ -41,7 +41,6 @@ guide/
 
 # Project-local agent skills/tooling
 .agents/
-_CODEX_CONTEXT_DO_NOT_DELETE/
 recover.py
 skills-main/
 skills-lock.json
