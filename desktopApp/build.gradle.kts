@@ -37,7 +37,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Sync360"
-            packageVersion = "0.4.1"
+            packageVersion = "0.4.2"
             appResourcesRootDir.set(
                 project.layout.projectDirectory.dir("packaging/app-resources")
             )

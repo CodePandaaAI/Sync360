@@ -1,6 +1,8 @@
 package com.liftley.sync360.presentation.send.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -11,13 +13,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
-import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,6 +31,10 @@ import coil3.compose.AsyncImage
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.presentation.app.components.Sync360Surface
+import org.jetbrains.compose.resources.painterResource
+import sync360.shared.generated.resources.Res
+import sync360.shared.generated.resources.camera_icon
+import sync360.shared.generated.resources.document_icon
 
 private val ImageFileExtensions = setOf(
     "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp"
@@ -186,15 +189,95 @@ private fun FilePickerActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (onPickMedia != null) {
-            Button(onClick = onPickMedia, modifier = Modifier.weight(1f)) {
-                Text("Select Media", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Sync360Surface(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                    onPickMedia()
+                }
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Image(
+                        painterResource(Res.drawable.camera_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Text(
+                        "Select Media",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "JPG, PNG, MP4",
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-            OutlinedButton(onClick = onPickFiles, modifier = Modifier.weight(1f)) {
-                Text("Select docs", maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Sync360Surface(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                    onPickFiles()
+                }
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Image(
+                        painterResource(Res.drawable.document_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp)
+                    )
+                    Text("Select docs", maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
+                    Text(
+                        "PDF, DOCX",
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         } else {
-            FilledTonalButton(onClick = onPickFiles, modifier = Modifier.fillMaxWidth()) {
-                Text(if (hasSelectedFiles) "Add more files" else "Select files")
+            Sync360Surface(
+                containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                    onPickFiles()
+                }
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Image(
+                        painterResource(Res.drawable.document_icon),
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp)
+                    )
+
+                    Text(
+                        if (hasSelectedFiles) "Add more files" else "Select files",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "PDF, DOCX",
+                        maxLines = 1,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
     }
@@ -202,7 +285,8 @@ private fun FilePickerActions(
 
 private fun SelectedFile.isImageFile(): Boolean {
     if (mimeType?.startsWith("image/") == true) return true
-    return displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase() in ImageFileExtensions
+    return displayName.substringAfterLast('.', missingDelimiterValue = "")
+        .lowercase() in ImageFileExtensions
 }
 
 private fun fileTypeLabel(file: SelectedFile): String {

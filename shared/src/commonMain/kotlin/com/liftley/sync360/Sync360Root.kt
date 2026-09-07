@@ -1,6 +1,9 @@
 package com.liftley.sync360
 
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -13,6 +16,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationRail
+import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -21,7 +26,6 @@ import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.keepScreenOn
@@ -39,8 +43,6 @@ import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.navigation.NavScreen
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
-import com.liftley.sync360.presentation.navigation.TwoPaneScene
-import com.liftley.sync360.presentation.navigation.TwoPaneSceneStrategy
 import com.liftley.sync360.presentation.receive.ReceiveScreen
 import com.liftley.sync360.presentation.receive.ReceiveScreenViewModel
 import com.liftley.sync360.presentation.receive.model.ReceiveState
@@ -63,10 +65,9 @@ fun Sync360Root() {
     val currentScreen = navigationViewModel.currentScreen()
 
     val windowSizeClass = currentWindowAdaptiveInfoV2().windowSizeClass
-    val useTwoPane = windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
-    val twoPaneStrategy = remember(windowSizeClass) {
-        TwoPaneSceneStrategy<NavScreen>(windowSizeClass)
-    }
+
+    val useNavigationRail =
+        windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
 
     val discoveryIsStable =
         sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
@@ -75,14 +76,16 @@ fun Sync360Root() {
         sendScreenState.registrationStatus == RegistrationStatus.Idle ||
                 sendScreenState.registrationStatus == RegistrationStatus.Running
     val repairEnabled =
-        sendScreenState.sendState == SendState.Idle &&
+        sendScreenState.sendState is SendState.Idle &&
                 receiveScreenState is ReceiveState.Idle &&
                 discoveryIsStable &&
                 registrationIsStable
 
     val shouldKeepScreenOn =
-        sendScreenState.sendState != SendState.Idle ||
-                receiveScreenState !is ReceiveState.Idle
+        sendScreenState.sendState !is SendState.Idle || receiveScreenState !is ReceiveState.Idle
+
+    val isReceivingFiles = receiveScreenState is ReceiveState.ReceivingFiles
+    val receivedText = receiveScreenState as? ReceiveState.ReceivedText
 
     val receiveTitle = when (receiveScreenState) {
         is ReceiveState.Idle -> "Sync360"
@@ -104,7 +107,7 @@ fun Sync360Root() {
 
     Scaffold(
         bottomBar = {
-            if (!useTwoPane && currentScreen != NavScreen.SettingsScreen) {
+            if (!useNavigationRail) {
                 NavigationBar(
                     modifier = Modifier
                         // 1. Fetch system bar insets dynamically to protect the Android gesture area
@@ -118,7 +121,7 @@ fun Sync360Root() {
                     windowInsets = WindowInsets(0, 0, 0, 0)
                 ) {
                     NavigationBarItem(
-                        onClick = navigationViewModel::navigateToReceive,
+                        onClick = { navigationViewModel.navigateTo(NavScreen.ReceiveScreen) },
                         selected = navigationViewModel.currentScreen() ==
                                 NavScreen.ReceiveScreen,
                         label = { Text("Receive") },
@@ -130,13 +133,26 @@ fun Sync360Root() {
                         }
                     )
                     NavigationBarItem(
-                        onClick = navigationViewModel::navigateToSend,
+                        onClick = { navigationViewModel.navigateTo(NavScreen.SendScreen) },
                         selected = navigationViewModel.currentScreen() ==
                                 NavScreen.SendScreen,
                         label = { Text("Send") },
                         icon = {
                             Icon(
                                 imageVector = Send,
+                                contentDescription = null
+                            )
+                        }
+                    )
+
+                    NavigationBarItem(
+                        onClick = { navigationViewModel.navigateTo(NavScreen.SettingsScreen) },
+                        selected = navigationViewModel.currentScreen() ==
+                                NavScreen.SettingsScreen,
+                        label = { Text("Settings") },
+                        icon = {
+                            Icon(
+                                imageVector = Settings,
                                 contentDescription = null
                             )
                         }
@@ -172,19 +188,6 @@ fun Sync360Root() {
                     )
                 },
                 modifier = Modifier.padding(horizontal = 8.dp),
-                actions = {
-                    if (currentScreen != NavScreen.SettingsScreen) {
-                        IconButton(
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
-                            onClick = navigationViewModel::navigateToSettings
-                        ) {
-                            Icon(
-                                imageVector = Settings,
-                                contentDescription = "Open settings"
-                            )
-                        }
-                    }
-                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surfaceContainer
                 )
@@ -193,62 +196,111 @@ fun Sync360Root() {
         modifier = Modifier
             .fillMaxSize()
             .then(
-            if (shouldKeepScreenOn) Modifier.keepScreenOn()
-            else Modifier
-        ),
+                if (shouldKeepScreenOn) Modifier.keepScreenOn()
+                else Modifier
+            ),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
     ) { innerPadding ->
-        NavDisplay(
-            backStack = navigationViewModel.backstack,
-            modifier = Modifier.padding(innerPadding),
-            onBack = navigationViewModel::goBack,
-            sceneStrategies = listOf(twoPaneStrategy)
-        ) { screen ->
-            when (screen) {
-                is NavScreen.SendScreen -> {
-                    NavEntry(
-                        key = screen,
-                        metadata = TwoPaneScene.firstPane()
-                    ) {
-                        SendScreen(
-                            onTroubleshootClick = navigationViewModel::navigateToSettings
-                        )
-                    }
-                }
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .consumeWindowInsets(innerPadding)
+        ) {
+            if (useNavigationRail) {
+                NavigationRail(
+                    modifier = Modifier.fillMaxHeight(),
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                    // Scaffold has already supplied the system-bar padding.
+                    windowInsets = WindowInsets(0, 0, 0, 0)
+                ) {
+                    NavigationRailItem(
+                        selected = currentScreen == NavScreen.ReceiveScreen,
+                        onClick = { navigationViewModel.navigateTo(NavScreen.ReceiveScreen) },
+                        icon = {
+                            Icon(
+                                imageVector = Download,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text("Receive") }
+                    )
 
-                is NavScreen.ReceiveScreen -> {
-                    NavEntry(
-                        key = screen,
-                        metadata = TwoPaneScene.secondPane()
-                    ) {
-                        ReceiveScreen(
-                            onTroubleshootClick = navigationViewModel::navigateToSettings
-                        )
-                    }
-                }
+                    NavigationRailItem(
+                        selected = currentScreen == NavScreen.SendScreen,
+                        onClick = { navigationViewModel.navigateTo(NavScreen.SendScreen) },
+                        icon = {
+                            Icon(
+                                imageVector = Send,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text("Send") }
+                    )
 
-                is NavScreen.SettingsScreen -> {
-                    NavEntry(key = screen) {
-                        SettingsScreen(
-                            repairEnabled = repairEnabled,
-                            onRepairClick = sendScreenViewModel::repairNetworkServices
-                        )
+                    NavigationRailItem(
+                        selected = currentScreen == NavScreen.SettingsScreen,
+                        onClick = { navigationViewModel.navigateTo(NavScreen.SettingsScreen) },
+                        icon = {
+                            Icon(
+                                imageVector = Settings,
+                                contentDescription = null
+                            )
+                        },
+                        label = { Text("Settings") }
+                    )
+                }
+            }
+
+            NavDisplay(
+                backStack = navigationViewModel.backstack,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                onBack = navigationViewModel::goBack
+            ) { screen ->
+                when (screen) {
+                    NavScreen.SendScreen -> {
+                        NavEntry(key = screen) {
+                            SendScreen(
+                                onTroubleshootClick =
+                                    { navigationViewModel.navigateTo(NavScreen.SettingsScreen) }
+                            )
+                        }
+                    }
+
+                    NavScreen.ReceiveScreen -> {
+                        NavEntry(key = screen) {
+                            ReceiveScreen(
+                                onTroubleshootClick =
+                                    { navigationViewModel.navigateTo(NavScreen.SettingsScreen) }
+                            )
+                        }
+                    }
+
+                    NavScreen.SettingsScreen -> {
+                        NavEntry(key = screen) {
+                            SettingsScreen(
+                                repairEnabled = repairEnabled,
+                                onRepairClick =
+                                    sendScreenViewModel::repairNetworkServices
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    LaunchedEffect(receiveScreenState) {
-        if (
-            receiveScreenState is ReceiveState.ReceivedText ||
-            receiveScreenState is ReceiveState.ReceivingFiles
-        ) {
-            navigationViewModel.navigateToReceive()
+    LaunchedEffect(isReceivingFiles) {
+        if (isReceivingFiles) {
+            navigationViewModel.navigateTo(NavScreen.ReceiveScreen)
         }
     }
 
-    LaunchedEffect(useTwoPane) {
-        navigationViewModel.setTwoPane(useTwoPane)
+    LaunchedEffect(receivedText) {
+        if (receivedText != null) {
+            navigationViewModel.navigateTo(NavScreen.ReceiveScreen)
+        }
     }
 }
