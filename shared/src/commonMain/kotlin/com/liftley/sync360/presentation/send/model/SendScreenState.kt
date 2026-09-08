@@ -13,6 +13,8 @@ data class SendScreenState(
     val fileReceiveCodePrompt: FileReceiveCodePrompt? = null,
     val sendState: SendState = SendState.Idle,
     val nearbyDevices: List<NearbyDeviceUiModel> = emptyList(),
+    val isDiscoveryEnabled: Boolean = true,
+    val discoveryErrorMessage: String? = null,
     val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle,
     val registrationStatus: RegistrationStatus = RegistrationStatus.Idle
 ) {

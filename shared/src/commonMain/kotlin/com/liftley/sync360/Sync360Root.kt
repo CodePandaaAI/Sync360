@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
@@ -35,12 +33,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
-import com.liftley.sync360.core.designsystem.icons.Back
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
-import com.liftley.sync360.core.designsystem.icons.Settings
-import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.navigation.NavScreen
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
 import com.liftley.sync360.presentation.receive.ReceiveScreen
@@ -49,7 +43,6 @@ import com.liftley.sync360.presentation.receive.model.ReceiveState
 import com.liftley.sync360.presentation.send.SendScreen
 import com.liftley.sync360.presentation.send.SendScreenViewModel
 import com.liftley.sync360.presentation.send.model.SendState
-import com.liftley.sync360.presentation.settings.SettingsScreen
 import org.koin.compose.koinInject
 
 @Preview(showBackground = true)
@@ -68,18 +61,6 @@ fun Sync360Root() {
 
     val useNavigationRail =
         windowSizeClass.isWidthAtLeastBreakpoint(WIDTH_DP_MEDIUM_LOWER_BOUND)
-
-    val discoveryIsStable =
-        sendScreenState.discoveryStatus == DiscoveryStatus.Idle ||
-                sendScreenState.discoveryStatus == DiscoveryStatus.Running
-    val registrationIsStable =
-        sendScreenState.registrationStatus == RegistrationStatus.Idle ||
-                sendScreenState.registrationStatus == RegistrationStatus.Running
-    val repairEnabled =
-        sendScreenState.sendState is SendState.Idle &&
-                receiveScreenState is ReceiveState.Idle &&
-                discoveryIsStable &&
-                registrationIsStable
 
     val shouldKeepScreenOn =
         sendScreenState.sendState !is SendState.Idle || receiveScreenState !is ReceiveState.Idle
@@ -145,43 +126,16 @@ fun Sync360Root() {
                         }
                     )
 
-                    NavigationBarItem(
-                        onClick = { navigationViewModel.navigateTo(NavScreen.SettingsScreen) },
-                        selected = navigationViewModel.currentScreen() ==
-                                NavScreen.SettingsScreen,
-                        label = { Text("Settings") },
-                        icon = {
-                            Icon(
-                                imageVector = Settings,
-                                contentDescription = null
-                            )
-                        }
-                    )
                 }
             }
         },
         topBar = {
             CenterAlignedTopAppBar(
-                navigationIcon = {
-                    if (currentScreen == NavScreen.SettingsScreen) {
-                        IconButton(
-                            modifier = Modifier,
-                            colors = IconButtonDefaults.iconButtonColors(containerColor = MaterialTheme.colorScheme.surface),
-                            onClick = navigationViewModel::goBack
-                        ) {
-                            Icon(
-                                imageVector = Back,
-                                contentDescription = "Close settings"
-                            )
-                        }
-                    }
-                },
                 title = {
                     Text(
                         text = when (currentScreen) {
                             NavScreen.SendScreen -> sendTitle
                             NavScreen.ReceiveScreen -> receiveTitle
-                            NavScreen.SettingsScreen -> "Settings"
                         },
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier
@@ -238,17 +192,6 @@ fun Sync360Root() {
                         label = { Text("Send") }
                     )
 
-                    NavigationRailItem(
-                        selected = currentScreen == NavScreen.SettingsScreen,
-                        onClick = { navigationViewModel.navigateTo(NavScreen.SettingsScreen) },
-                        icon = {
-                            Icon(
-                                imageVector = Settings,
-                                contentDescription = null
-                            )
-                        },
-                        label = { Text("Settings") }
-                    )
                 }
             }
 
@@ -262,29 +205,13 @@ fun Sync360Root() {
                 when (screen) {
                     NavScreen.SendScreen -> {
                         NavEntry(key = screen) {
-                            SendScreen(
-                                onTroubleshootClick =
-                                    { navigationViewModel.navigateTo(NavScreen.SettingsScreen) }
-                            )
+                            SendScreen()
                         }
                     }
 
                     NavScreen.ReceiveScreen -> {
                         NavEntry(key = screen) {
-                            ReceiveScreen(
-                                onTroubleshootClick =
-                                    { navigationViewModel.navigateTo(NavScreen.SettingsScreen) }
-                            )
-                        }
-                    }
-
-                    NavScreen.SettingsScreen -> {
-                        NavEntry(key = screen) {
-                            SettingsScreen(
-                                repairEnabled = repairEnabled,
-                                onRepairClick =
-                                    sendScreenViewModel::repairNetworkServices
-                            )
+                            ReceiveScreen()
                         }
                     }
                 }

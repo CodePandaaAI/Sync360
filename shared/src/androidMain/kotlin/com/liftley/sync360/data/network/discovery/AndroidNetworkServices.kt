@@ -1,476 +1,355 @@
 package com.liftley.sync360.data.network.discovery
 
 import android.content.Context
+import android.net.Network
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.util.Log
+import androidx.annotation.RequiresApi
 import com.liftley.sync360.domain.local.LocalDeviceIdentityStore
 import com.liftley.sync360.domain.model.DiscoveryStatus
 import com.liftley.sync360.domain.model.NearbyDevice
 import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.domain.service.NetworkServices
 import com.liftley.sync360.domain.toNearbyDeviceAndroidImpl
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.update
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import kotlinx.coroutines.withContext
 
 class AndroidNetworkServices(
     context: Context,
-    androidLocalDeviceIdentityStore: LocalDeviceIdentityStore
+    identityStore: LocalDeviceIdentityStore
 ) : NetworkServices {
+    private val nsdManager = requireNotNull(context.getSystemService(NsdManager::class.java))
+    private val mainExecutor = context.mainExecutor
+    private val deviceUuid = identityStore.getOrCreateDeviceUuid()
+    private val _nearbyDevices = MutableStateFlow<List<NearbyDevice>>(emptyList())
+    override val nearbyDevices = _nearbyDevices.asStateFlow()
+    private val _discoveryServiceStatus = MutableStateFlow(DiscoveryStatus.Idle)
+    override val discoveryServiceStatus = _discoveryServiceStatus.asStateFlow()
+    private val _registrationServiceStatus = MutableStateFlow(RegistrationStatus.Idle)
+    override val registrationServiceStatus = _registrationServiceStatus.asStateFlow()
+    private var activeDiscoverySession: NearbyDeviceScan? = null
+    private var registrationListener: NsdManager.RegistrationListener? = null
 
-    init {
-        Log.d("Android Network Services", "Created!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+    // Android 13 supports only one legacy resolution at a time. An old request
+    // retains its slot until its callback, but cannot updateResolvedDevice into a new session.
+    private val pendingResolutions = ArrayDeque<Pair<NearbyDeviceScan, NsdServiceInfo>>()
+    private var isResolvingService = false
+
+    override suspend fun startDiscoveryAndAdvertising(httpServerPort: Int, fileTransferPort: Int) {
+        withContext(Dispatchers.Main.immediate) {
+            if (discoveryServiceStatus.value == DiscoveryStatus.Idle) startDeviceScan()
+
+            if (registrationServiceStatus.value == RegistrationStatus.Idle) {
+                advertiseThisDevice(httpServerPort, fileTransferPort)
+            }
+        }
     }
 
-    private val _nearbyDevices: MutableStateFlow<List<NearbyDevice>> = MutableStateFlow(emptyList())
+    override suspend fun stopDiscoveryAndAdvertising() {
+        withContext(Dispatchers.Main.immediate) {
 
-    override val nearbyDevices: StateFlow<List<NearbyDevice>> = _nearbyDevices.asStateFlow()
+            activeDiscoverySession?.stop()
 
-    private val _discoveryServiceStatus: MutableStateFlow<DiscoveryStatus> =
-        MutableStateFlow(DiscoveryStatus.Idle)
-    override val discoveryServiceStatus: StateFlow<DiscoveryStatus> =
-        _discoveryServiceStatus.asStateFlow()
-
-    private val _registrationServiceStatus: MutableStateFlow<RegistrationStatus> =
-        MutableStateFlow(RegistrationStatus.Idle)
-
-    override val registrationServiceStatus: StateFlow<RegistrationStatus> =
-        _registrationServiceStatus.asStateFlow()
-
-    val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
-
-    val executor: ExecutorService = Executors.newSingleThreadExecutor()
-
-    val serviceType = "_sync360._tcp."
-
-    val deviceUuid = androidLocalDeviceIdentityStore.getOrCreateDeviceUuid()
-
-    val serviceInfoCallbacks: MutableSet<NsdManager.ServiceInfoCallback> =
-        ConcurrentHashMap.newKeySet()
-
-    @Volatile
-    private var pendingRepair: PendingRepair? = null
-
-    val discoveryListener = object : NsdManager.DiscoveryListener {
-        override fun onDiscoveryStarted(serviceType: String?) {
-            _discoveryServiceStatus.value = DiscoveryStatus.Running
-            Log.d("AndroidNetworkServices", "onDiscoveryStarted: $serviceType")
-        }
-
-        override fun onDiscoveryStopped(serviceType: String?) {
-            _discoveryServiceStatus.value = DiscoveryStatus.Idle
-            _nearbyDevices.value = emptyList()
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                clearAndStopResolvingServices()
+            val listener = registrationListener
+            if (listener != null && registrationServiceStatus.value == RegistrationStatus.Running) {
+                _registrationServiceStatus.value = RegistrationStatus.Stopping
+                runCatching { nsdManager.unregisterService(listener) }.onFailure {
+                    _registrationServiceStatus.value = RegistrationStatus.Running
+                    logFailure("Unregister", it)
+                }
             }
+        }
+    }
 
-            continuePendingRepairIfReady()
-            Log.d("AndroidNetworkServices", "onDiscoveryStopped: $serviceType")
+    private fun startDeviceScan() {
+        val session = NearbyDeviceScan()
+        activeDiscoverySession = session
+        _discoveryServiceStatus.value = DiscoveryStatus.Starting
+        runCatching {
+            nsdManager.discoverServices(
+                SERVICE_TYPE, NsdManager.PROTOCOL_DNS_SD, null as Network?, mainExecutor, session
+            )
+        }.onFailure {
+            activeDiscoverySession = null
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            logFailure("Discover", it)
+        }
+    }
+
+    private inner class NearbyDeviceScan : NsdManager.DiscoveryListener {
+        private var isBrowseStopped = false
+        private val discoveredServices = mutableMapOf<String, NsdServiceInfo>()
+        private val resolvedDevices = mutableMapOf<String, NearbyDevice>()
+        private val serviceInfoCallbacks = mutableMapOf<String, NsdManager.ServiceInfoCallback>()
+        private val callbacksBeingRemoved = mutableSetOf<NsdManager.ServiceInfoCallback>()
+
+        private fun isActiveSession() = activeDiscoverySession === this &&
+                (discoveryServiceStatus.value == DiscoveryStatus.Starting ||
+                        discoveryServiceStatus.value == DiscoveryStatus.Running)
+
+        override fun onDiscoveryStarted(serviceType: String) {
+            if (activeDiscoverySession === this) _discoveryServiceStatus.value =
+                DiscoveryStatus.Running
         }
 
-        @Suppress("NewApi", "DEPRECATION")
-        override fun onServiceFound(foundDiscoveryServiceInfo: NsdServiceInfo?) {
-            if (!discoveryIsActive()) return
+        override fun onDiscoveryStopped(serviceType: String) {
+            if (activeDiscoverySession !== this) return
+            isBrowseStopped = true
+            finishSessionCleanup()
+        }
 
-            Log.d("AndroidNetworkServices", "onServiceFound: $foundDiscoveryServiceInfo")
-            foundDiscoveryServiceInfo?.let {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
+            if (activeDiscoverySession !== this) return
+            logStatus("Start discovery", errorCode)
+            _discoveryServiceStatus.value = DiscoveryStatus.Stopping
+            isBrowseStopped = true
+            clearNearbyDevices()
+            stopTrackingServices()
+            finishSessionCleanup()
+        }
 
-                    val serviceInfoCallbackListener = object : NsdManager.ServiceInfoCallback {
-                        var resolvedNearbyDeviceInfo: NearbyDevice? = null
+        override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
+            if (activeDiscoverySession !== this) return
+            logStatus("Stop discovery", errorCode)
+            _discoveryServiceStatus.value = DiscoveryStatus.CleanupFailed
+        }
 
-                        override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
-                            serviceInfoCallbacks.remove(this)
-                            Log.d(
-                                "AndroidNetworkServices",
-                                "onServiceInfoCallbackRegistrationFailed: $errorCode"
-                            )
-                        }
-
-                        override fun onServiceInfoCallbackUnregistered() {
-                            serviceInfoCallbacks.remove(this)
-                            Log.d("AndroidNetworkServices", "onServiceInfoCallbackUnregistered")
-                            resolvedNearbyDeviceInfo = null
-                        }
-
-                        override fun onServiceLost() {
-                            Log.d("AndroidNetworkServices", "onServiceLost on Resolve")
-                            _nearbyDevices.update { currentList ->
-                                Log.d(
-                                    "AndroidNetworkServices",
-                                    "onServiceLost previous list: $currentList"
-                                )
-
-                                val listWithoutLostDevice =
-                                    currentList.filterNot { it.id == resolvedNearbyDeviceInfo?.id }
-                                Log.d(
-                                    "AndroidNetworkServices",
-                                    "onServiceLost current list: $listWithoutLostDevice"
-                                )
-                                listWithoutLostDevice
-                            }
-
-                            if (serviceInfoCallbacks.remove(this)) {
-                                nsdManager.unregisterServiceInfoCallback(this)
-                            }
-                        }
-
-                        override fun onServiceUpdated(updatedResolvedDeviceInfo: NsdServiceInfo) {
-                            if (!discoveryIsActive()) return
-
-                            Log.d(
-                                "AndroidNetworkServices",
-                                "onServiceUpdated: $updatedResolvedDeviceInfo"
-                            )
-                            val newDevice = updatedResolvedDeviceInfo.toNearbyDeviceAndroidImpl()
-                            if (newDevice == null) {
-                                serviceInfoCallbacks.remove(this)
-                                nsdManager.unregisterServiceInfoCallback(this)
-                                return
-                            }
-
-                            resolvedNearbyDeviceInfo = newDevice
-
-                            if (newDevice.id == deviceUuid) return
-
-                            _nearbyDevices.update { currentList ->
-                                val withoutOldDeviceId =
-                                    currentList.filterNot { device -> device.id == newDevice.id }
-
-                                val newList = withoutOldDeviceId + newDevice
-                                newList
-                            }
-                        }
-                    }
-
-                    serviceInfoCallbacks += serviceInfoCallbackListener
-                    runCatching {
-                        nsdManager.registerServiceInfoCallback(
-                            foundDiscoveryServiceInfo,
-                            executor,
-                            serviceInfoCallbackListener
+        override fun onServiceFound(info: NsdServiceInfo) {
+            if (!isActiveSession()) return
+            val serviceKey = serviceKey(info)
+            if (serviceKey in discoveredServices) return
+            discoveredServices[serviceKey] = info
+            if (Build.VERSION.SDK_INT >= 34) {
+                if (serviceInfoCallbacks.containsKey(serviceKey)) return
+                val callback = object : NsdManager.ServiceInfoCallback {
+                    override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+                        if (serviceInfoCallbacks[serviceKey] === this) serviceInfoCallbacks.remove(
+                            serviceKey
                         )
-                    }.onFailure { exception ->
-                        serviceInfoCallbacks.remove(serviceInfoCallbackListener)
-                        Log.d(
-                            "AndroidNetworkServices",
-                            "registerServiceInfoCallback failed",
-                            exception
+                        callbacksBeingRemoved.remove(this)
+                        val latestService = discoveredServices.remove(serviceKey)
+                        if (isActiveSession() && latestService != null && latestService !== info) {
+                            onServiceFound(latestService)
+                        }
+                        logStatus("Track service", errorCode)
+                        finishSessionCleanup()
+                    }
+
+                    override fun onServiceUpdated(serviceInfo: NsdServiceInfo) {
+                        if (serviceInfoCallbacks[serviceKey] === this && this !in callbacksBeingRemoved) {
+                            updateResolvedDevice(info, serviceInfo)
+                        }
+                    }
+
+                    override fun onServiceLost() {
+                        if (!isActiveSession() || serviceInfoCallbacks[serviceKey] !== this) return
+                        resolvedDevices.remove(serviceKey)
+                        publishNearbyDevices()
+                    }
+
+                    override fun onServiceInfoCallbackUnregistered() {
+                        if (serviceInfoCallbacks[serviceKey] === this) serviceInfoCallbacks.remove(
+                            serviceKey
                         )
-                    }
-                } else {
-                    val resolveListener = object : NsdManager.ResolveListener {
-                        override fun onResolveFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
-                            Log.d(
-                                "AndroidNetworkServices",
-                                "onResolveFailed: $serviceInfo, $errorCode"
-                            )
-                        }
-
-                        override fun onServiceResolved(resolvedDeviceInfo: NsdServiceInfo?) {
-                            if (!discoveryIsActive()) return
-
-                            Log.d(
-                                "AndroidNetworkServices",
-                                "onServiceResolved: $resolvedDeviceInfo"
-                            )
-
-                            val newDevice =
-                                resolvedDeviceInfo?.toNearbyDeviceAndroidImpl() ?: return
-
-                            if (newDevice.id == deviceUuid) return
-
-                            _nearbyDevices.update { currentList ->
-                                currentList.filterNot { device -> device.id == newDevice.id } + newDevice
-                            }
+                        callbacksBeingRemoved.remove(this)
+                        finishSessionCleanup()
+                        // A service can return before its old callback finishes stopping.
+                        if (isActiveSession()) {
+                            discoveredServices.remove(serviceKey)
+                                ?.let { latestService -> onServiceFound(latestService) }
                         }
                     }
-                    nsdManager.resolveService(
-                        foundDiscoveryServiceInfo,
-                        resolveListener
-                    )
+                }
+                serviceInfoCallbacks[serviceKey] = callback
+                runCatching { nsdManager.registerServiceInfoCallback(info, mainExecutor, callback) }
+                    .onFailure {
+                        serviceInfoCallbacks.remove(serviceKey)
+                        discoveredServices.remove(serviceKey)
+                        logFailure("Track service", it)
+                    }
+            } else {
+                pendingResolutions.addLast(this to info)
+                resolveNextService()
+            }
+        }
+
+        override fun onServiceLost(info: NsdServiceInfo) {
+            if (!isActiveSession()) return
+            val serviceKey = serviceKey(info)
+            discoveredServices.remove(serviceKey)
+            resolvedDevices.remove(serviceKey)
+            publishNearbyDevices()
+            if (Build.VERSION.SDK_INT >= 34) serviceInfoCallbacks[serviceKey]?.let(::stopTrackingService)
+        }
+
+        fun isCurrentService(info: NsdServiceInfo): Boolean {
+            return isActiveSession() && discoveredServices[serviceKey(info)] === info
+        }
+
+        fun updateResolvedDevice(discoveredService: NsdServiceInfo, info: NsdServiceInfo) {
+            if (!isCurrentService(discoveredService)) return
+            val serviceKey = serviceKey(discoveredService)
+            val device = info.toNearbyDeviceAndroidImpl() ?: return
+            if (device.id == deviceUuid) return
+            resolvedDevices[serviceKey] = device
+            publishNearbyDevices()
+        }
+
+        private fun publishNearbyDevices() {
+            _nearbyDevices.value = resolvedDevices.values.groupBy { it.id }.values.map { matches ->
+                matches.first()
+                    .copy(hostAddresses = matches.flatMap { it.hostAddresses }.distinct())
+            }
+        }
+
+        fun stop() {
+            if (discoveryServiceStatus.value != DiscoveryStatus.Running &&
+                discoveryServiceStatus.value != DiscoveryStatus.CleanupFailed
+            ) return
+            _discoveryServiceStatus.value = DiscoveryStatus.Stopping
+            clearNearbyDevices()
+            stopTrackingServices()
+            if (isBrowseStopped) {
+                finishSessionCleanup()
+            } else {
+                runCatching { nsdManager.stopServiceDiscovery(this) }.onFailure {
+                    _discoveryServiceStatus.value = DiscoveryStatus.CleanupFailed
+                    logFailure("Stop discovery", it)
                 }
             }
         }
 
-        override fun onServiceLost(lostServiceInfo: NsdServiceInfo?) {
-            Log.d("AndroidNetworkServices", "onServiceLost on Discovery: $lostServiceInfo")
-            _nearbyDevices.update { currentList ->
+        private fun clearNearbyDevices() {
+            discoveredServices.clear()
+            resolvedDevices.clear()
+            pendingResolutions.clear()
+            _nearbyDevices.value = emptyList()
+        }
 
-                val withoutOldDevice =
-                    currentList.filterNot { device -> device.serviceName == lostServiceInfo?.serviceName }
-                withoutOldDevice
+        private fun stopTrackingServices() {
+            if (Build.VERSION.SDK_INT >= 34) serviceInfoCallbacks.values.toList()
+                .forEach(::stopTrackingService)
+        }
+
+        @RequiresApi(34)
+        private fun stopTrackingService(callback: NsdManager.ServiceInfoCallback) {
+            if (!callbacksBeingRemoved.add(callback)) return
+            runCatching { nsdManager.unregisterServiceInfoCallback(callback) }.onFailure {
+                callbacksBeingRemoved.remove(callback)
+                // Keep ownership if cleanup failed. Never pretend it was released.
+                logFailure("Stop service tracking", it)
             }
         }
 
-        override fun onStartDiscoveryFailed(serviceType: String?, errorCode: Int) {
-            _discoveryServiceStatus.value = DiscoveryStatus.Idle
-            _nearbyDevices.value = emptyList()
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "onStartDiscoveryFailed: $serviceType, $errorCode")
-        }
-
-        override fun onStopDiscoveryFailed(serviceType: String?, errorCode: Int) {
-            Log.d("AndroidNetworkServices", "onStopDiscoveryFailed: $serviceType, $errorCode")
-            _discoveryServiceStatus.value = DiscoveryStatus.Running
-            cancelPendingRepair()
-        }
-    }
-
-    val registrationListener = object : NsdManager.RegistrationListener {
-        override fun onServiceRegistered(serviceInfo: NsdServiceInfo?) {
-            _registrationServiceStatus.value = RegistrationStatus.Running
-            Log.d("AndroidNetworkServices", "onServiceRegistered: $serviceInfo")
-        }
-
-        override fun onRegistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
-            _registrationServiceStatus.value = RegistrationStatus.Idle
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "onRegistrationFailed: $serviceInfo, $errorCode")
-        }
-
-        override fun onServiceUnregistered(serviceInfo: NsdServiceInfo?) {
-            _registrationServiceStatus.value = RegistrationStatus.Idle
-            continuePendingRepairIfReady()
-            Log.d("AndroidNetworkServices", "onServiceUnregistered: $serviceInfo")
-        }
-
-        override fun onUnregistrationFailed(serviceInfo: NsdServiceInfo?, errorCode: Int) {
-            _registrationServiceStatus.value = RegistrationStatus.Running
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "onUnregistrationFailed: $serviceInfo, $errorCode")
+        private fun finishSessionCleanup() {
+            if (activeDiscoverySession !== this || !isBrowseStopped) return
+            if (serviceInfoCallbacks.isEmpty()) {
+                activeDiscoverySession = null
+                _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            } else if (callbacksBeingRemoved.isEmpty()) {
+                // No cleanup request is in flight. Allow an explicit retry,
+                // but never start another session over callbacks that still belong to this session.
+                _discoveryServiceStatus.value = DiscoveryStatus.CleanupFailed
+            }
         }
     }
 
-    override suspend fun startNetworkServices(httpServerPort: Int, fileTransferPort: Int) {
-        startDiscoveryService()
-        startRegistrationService(httpServerPort, fileTransferPort)
+    // Android 13 has no ServiceInfoCallback API; keep the legacy fallback here.
+    @Suppress("DEPRECATION")
+    private fun resolveNextService() {
+        if (isResolvingService) return
+        var request = pendingResolutions.removeFirstOrNull()
+        while (request != null && !request.first.isCurrentService(request.second)) {
+            request = pendingResolutions.removeFirstOrNull()
+        }
+        val (session, info) = request ?: return
+        isResolvingService = true
+        val listener = object : NsdManager.ResolveListener {
+            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
+                logStatus("Resolve", errorCode)
+                isResolvingService = false
+                resolveNextService()
+            }
+
+            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
+                session.updateResolvedDevice(info, serviceInfo)
+                isResolvingService = false
+                resolveNextService()
+            }
+        }
+        runCatching { nsdManager.resolveService(info, mainExecutor, listener) }.onFailure {
+            isResolvingService = false
+            logFailure("Resolve", it)
+            resolveNextService()
+        }
     }
 
-    private fun startDiscoveryService() {
-        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) {
-            Log.d(
-                "AndroidNetworkServices",
-                "startDiscoveryService ignored because status=${discoveryServiceStatus.value}"
-            )
-            return
+    private fun advertiseThisDevice(httpServerPort: Int, fileTransferPort: Int) {
+        val listener = object : NsdManager.RegistrationListener {
+            override fun onServiceRegistered(info: NsdServiceInfo) {
+                if (registrationListener === this) _registrationServiceStatus.value =
+                    RegistrationStatus.Running
+            }
+
+            override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                if (registrationListener !== this) return
+                registrationListener = null
+                _registrationServiceStatus.value = RegistrationStatus.Idle
+                logStatus("Register", errorCode)
+            }
+
+            override fun onServiceUnregistered(info: NsdServiceInfo) {
+                if (registrationListener !== this) return
+                registrationListener = null
+                _registrationServiceStatus.value = RegistrationStatus.Idle
+            }
+
+            override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                if (registrationListener !== this) return
+                _registrationServiceStatus.value = RegistrationStatus.Running
+                logStatus("Unregister", errorCode)
+            }
         }
-
-        Log.d("AndroidNetworkServices", "startDiscoveryService: Starting discovery")
-        _discoveryServiceStatus.value = DiscoveryStatus.Starting
-
-        runCatching {
-            nsdManager.discoverServices(
-                serviceType,
-                NsdManager.PROTOCOL_DNS_SD,
-                discoveryListener
-            )
-        }.onFailure { exception ->
-            _discoveryServiceStatus.value = DiscoveryStatus.Idle
-            _nearbyDevices.value = emptyList()
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "startDiscoveryService failed", exception)
-        }
-    }
-
-    private fun startRegistrationService(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
-        if (registrationServiceStatus.value != RegistrationStatus.Idle) {
-            Log.d(
-                "AndroidNetworkServices",
-                "startRegistrationService ignored because status=${registrationServiceStatus.value}"
-            )
-            return
-        }
-
+        registrationListener = listener
         _registrationServiceStatus.value = RegistrationStatus.Starting
-        Log.d("AndroidNetworkServices", "startRegistrationService: Starting registration")
-
-        val rawManufacturer = Build.MANUFACTURER.trim()
-        val rawModel = Build.MODEL.trim()
-
-        // Capitalize the first letter of the manufacturer safely
-        val manufacturer = rawManufacturer.replaceFirstChar {
-            if (it.isLowerCase()) it.titlecase() else it.toString()
-        }
-
-        // Avoid names like "Google Google Pixel 6" if the model already contains the brand
-        val cleanDeviceName = if (rawModel.startsWith(rawManufacturer, ignoreCase = true)) {
-            rawModel
-        } else {
-            "$manufacturer $rawModel"
-        }
-
-        val serviceInfo = runCatching {
-            NsdServiceInfo().apply {
-                serviceType = "_sync360._tcp."
+        runCatching {
+            val manufacturer = Build.MANUFACTURER.trim().replaceFirstChar { it.titlecase() }
+            val model = Build.MODEL.trim()
+            val name = if (model.startsWith(
+                    manufacturer,
+                    ignoreCase = true
+                )
+            ) model else "$manufacturer $model"
+            val info = NsdServiceInfo().apply {
+                serviceType = SERVICE_TYPE
                 serviceName = "${Build.MODEL} Sync360"
                 port = httpServerPort
-
                 setAttribute("deviceUuid", deviceUuid)
-                setAttribute("deviceName", cleanDeviceName)
+                setAttribute("deviceName", name)
                 setAttribute("deviceType", "Android")
                 setAttribute("protocolVersion", "1")
-
-                setAttribute(
-                    "fileTransferPort",
-                    fileTransferPort.toString()
-                )
+                setAttribute("fileTransferPort", fileTransferPort.toString())
             }
-        }.getOrElse { exception ->
+            nsdManager.registerService(info, NsdManager.PROTOCOL_DNS_SD, mainExecutor, listener)
+        }.onFailure {
+            registrationListener = null
             _registrationServiceStatus.value = RegistrationStatus.Idle
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "Could not create registration service", exception)
-            return
-        }
-
-        runCatching {
-            nsdManager.registerService(
-                serviceInfo,
-                NsdManager.PROTOCOL_DNS_SD,
-                registrationListener
-            )
-        }.onFailure { exception ->
-            _registrationServiceStatus.value = RegistrationStatus.Idle
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "startRegistrationService failed", exception)
+            logFailure("Register", it)
         }
     }
 
-    override suspend fun repairNetworkServices(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
-        val discoveryIsStable =
-            discoveryServiceStatus.value == DiscoveryStatus.Idle ||
-                    discoveryServiceStatus.value == DiscoveryStatus.Running
-        val registrationIsStable =
-            registrationServiceStatus.value == RegistrationStatus.Idle ||
-                    registrationServiceStatus.value == RegistrationStatus.Running
+    private fun serviceKey(info: NsdServiceInfo) = "${info.serviceName}|${info.network}"
+    private fun logStatus(action: String, status: Int) =
+        Log.w("AndroidNetworkServices", "$action failed: $status")
 
-        if (!discoveryIsStable || !registrationIsStable) return
+    private fun logFailure(action: String, error: Throwable) =
+        Log.w("AndroidNetworkServices", "$action failed", error)
 
-        pendingRepair = PendingRepair(httpServerPort, fileTransferPort)
-
-        if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
-            stopDiscoveryServices()
-        }
-        if (pendingRepair == null) return
-
-        if (registrationServiceStatus.value == RegistrationStatus.Running) {
-            stopRegistrationService()
-        }
-        if (pendingRepair == null) return
-
-        continuePendingRepairIfReady()
+    private companion object {
+        const val SERVICE_TYPE = "_sync360._tcp."
     }
-
-    override fun stopDiscoveryServices() {
-        if (discoveryServiceStatus.value != DiscoveryStatus.Running) {
-            Log.d(
-                "AndroidNetworkServices",
-                "stopDiscoveryServices ignored because status=${discoveryServiceStatus.value}"
-            )
-            return
-        }
-
-        _discoveryServiceStatus.value = DiscoveryStatus.Stopping
-        Log.d("AndroidNetworkServices", "stopDiscoveryServices: Stopping Discovery Services")
-
-        runCatching {
-            nsdManager.stopServiceDiscovery(discoveryListener)
-        }.onFailure { exception ->
-            _discoveryServiceStatus.value = DiscoveryStatus.Running
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "stopDiscoveryServices failed", exception)
-        }
-    }
-
-    private fun stopRegistrationService() {
-        if (registrationServiceStatus.value != RegistrationStatus.Running) {
-            Log.d(
-                "AndroidNetworkServices",
-                "stopRegistrationService ignored because status=${registrationServiceStatus.value}"
-            )
-            return
-        }
-
-        _registrationServiceStatus.value = RegistrationStatus.Stopping
-        Log.d("AndroidNetworkServices", "stopRegistrationService: Stopping Registration Service")
-
-        runCatching {
-            nsdManager.unregisterService(registrationListener)
-        }.onFailure { exception ->
-            _registrationServiceStatus.value = RegistrationStatus.Running
-            cancelPendingRepair()
-            Log.d("AndroidNetworkServices", "stopRegistrationService failed", exception)
-        }
-    }
-
-    override fun restartDiscoveryServices() {
-        if (
-            discoveryServiceStatus.value != DiscoveryStatus.Idle ||
-            registrationServiceStatus.value != RegistrationStatus.Running
-        ) {
-            Log.d(
-                "AndroidNetworkServices",
-                "restartDiscoveryServices ignored because discovery=${discoveryServiceStatus.value}, " +
-                        "registration=${registrationServiceStatus.value}"
-            )
-            return
-        }
-
-        _nearbyDevices.value = emptyList()
-        startDiscoveryService()
-    }
-
-    @Synchronized
-    private fun continuePendingRepairIfReady() {
-        val repair = pendingRepair ?: return
-        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-        if (registrationServiceStatus.value != RegistrationStatus.Idle) return
-
-        pendingRepair = null
-        _nearbyDevices.value = emptyList()
-        startDiscoveryService()
-        startRegistrationService(
-            httpServerPort = repair.httpServerPort,
-            fileTransferPort = repair.fileTransferPort
-        )
-    }
-
-    private fun cancelPendingRepair() {
-        pendingRepair = null
-    }
-
-    private fun discoveryIsActive(): Boolean {
-        return discoveryServiceStatus.value == DiscoveryStatus.Starting ||
-                discoveryServiceStatus.value == DiscoveryStatus.Running
-    }
-
-    @Suppress("NewApi")
-    private fun clearAndStopResolvingServices() {
-        val callbacks = serviceInfoCallbacks.toList()
-        serviceInfoCallbacks.clear()
-
-        callbacks.forEach { callback ->
-            runCatching {
-                nsdManager.unregisterServiceInfoCallback(callback)
-            }
-        }
-    }
-
-    private data class PendingRepair(
-        val httpServerPort: Int,
-        val fileTransferPort: Int
-    )
 }

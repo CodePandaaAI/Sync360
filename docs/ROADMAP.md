@@ -8,8 +8,8 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 - Windows DNS-SD/mDNS discovery and registration through the operating system `dnsapi.dll` API on all interfaces.
 - Current macOS/Linux DNS-SD/mDNS discovery and registration through JmDNS on eligible IPv4 and IPv6 LAN addresses.
 - Application-lifetime network startup with separate discovery and registration lifecycle states.
-- A 60-second discovery window derived from the platform-reported running state.
-- Manual discovery Reload while registration remains active, plus full connection repair when both lifecycle states are stable.
+- Continuous discovery while enabled, with Android visibility controlling its lifetime (device validation pending).
+- Explicit Start/Stop for browsing and advertising, a cancellable Android background grace period, and callback-driven discovery-session refresh.
 - Dynamic HTTP and file-transfer ports advertised with device metadata.
 - One-request text delivery with sender name, a 100,000-character limit, Copy, and Clear.
 - Android and Desktop multiple-file selection.
@@ -27,6 +27,8 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 ## Next
 
+Upcoming preview versions prioritize code review, quality, failure handling, and validation of the core sharing experience on the path to a stable 1.0. Further native discovery work is under consideration; scope and timing are not confirmed.
+
 ### Transfer feedback and reliability
 
 - Improve receiver-side failure details and per-file results.
@@ -36,11 +38,11 @@ Sync360 is an active Android-first rebuild. The current MVP can discover nearby 
 
 ### Discovery and lifecycle
 
-- Detect network/address changes and repair registration automatically.
+- Revisit automatic Android network-change recovery later; for now, users can Stop and Start discovery. Implement Desktop wake/network recovery.
 - Add the appropriate Android foreground/background service behavior.
 - Add Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime request, denial handling, and permission-aware network startup.
-- Queue Android 13 legacy NSD resolves and retry already-active failures.
-- Replace the remaining macOS/Linux JmDNS fallback with Bonjour and Avahi after the Windows-native path is validated.
+- Validate queued Android 13 legacy NSD resolves and decide whether failed resolutions need bounded retries.
+- Consider replacing the remaining macOS/Linux JmDNS fallback with Bonjour and Avahi; implementation scope and timing are not confirmed.
 - Validate Desktop LAN-interface selection on more multi-adapter systems.
 - Add clear Windows Firewall onboarding and decide whether packaging should install an inbound application rule.
 - Retire Windows native callback arenas after a safe lifetime and preserve per-interface results when only one interface reports service removal.

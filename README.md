@@ -67,7 +67,6 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
 - Copy received text and open the Downloads folder on Desktop.
-- Open connection troubleshooting from Send, Receive, or the top app bar, then manually restart local discovery and service advertising without resetting the app or removing received files.
 - Provide enabled iOS device and simulator targets with native Bonjour discovery, file selection, clipboard, Files-visible storage, and streamed TCP transfer implementations.
 
 ### Still needs work
@@ -107,7 +106,7 @@ flowchart LR
 
 Android uses `NsdManager`. Windows uses the built-in `dnsapi.dll` DNS-SD API on all interfaces through Java's Foreign Function and Memory API. macOS and Linux currently retain JmDNS. Every implementation advertises the `_sync360._tcp.` DNS-SD service with a stable per-install device ID, device details, protocol version, an OS-assigned HTTP port, and a separate OS-assigned file-transfer port.
 
-Android and Desktop start the shared network controller from their application entry points after Koin is ready. Discovery and registration have separate lifecycle states, and the 60-second discovery window begins only after discovery reports `Running`. A normal Reload restarts only discovery while registration remains active; connection repair stops and recreates both operations after their current platform callbacks reach stable states.
+Android discovery follows app visibility, with a cancellable two-second grace period after the process lifecycle reports backgrounding. Returning quickly keeps the same session. Discovery stays active while the app is visible, with no 60-second expiry. Desktop remains available while running, including when minimized. Start discovery / Stop discovery control browsing and advertising on both; a manual Stop stays off until Start or a fresh process launch. Discovery cleanup does not cancel an existing transfer or block a peer that already knows the listening address. These lifecycle changes still require device validation.
 
 ### Text path
 
@@ -248,9 +247,9 @@ macOS/Linux:
 
 Some routers enable client isolation and block local device-to-device traffic. If discovery or transfer does not work, try another trusted Wi-Fi network or a phone hotspot.
 
-If devices still cannot discover this device or fail to connect after a network change, open **Settings** from the top app bar or select **Troubleshoot** on Send or Receive, then use **Repair connection**. Repair restarts local discovery and advertises Sync360 again; it does not reset the app or remove received files.
+If devices disappear after a network change, use **Stop**, wait for discovery to stop, then **Start discovery** in the Nearby devices section on Send.
 
-Reload is available only after the current discovery window has stopped while service registration is still running. Repair is enabled only while sending, receiving, discovery, and registration are in states where restarting them is safe.
+Stop discovery requests cleanup of browsing and advertising. Start discovery enables them again. Start/Stop lives in the Nearby devices section, with Try again shown when discovery fails. Android does not monitor network changes; use Stop discovery and Start discovery if devices disappear after changing networks.
 
 ## Security warning
 
@@ -268,7 +267,7 @@ Use the current app only for development and testing on private networks you con
 - Add integrity verification.
 - Test cancellation and failure reporting across more network-loss and transfer stages.
 - Strengthen lifecycle behavior and local-network reliability.
-- Add Android 17 local-network permission handling and serialize Android 13 legacy NSD resolves.
+- Add Android 17 local-network permission handling and validate queued Android 13 legacy NSD resolution.
 - Validate Desktop discovery and transfer across more operating systems, network adapters, routers, and firewall configurations.
 - Design session validation, authentication, and encryption deliberately.
 

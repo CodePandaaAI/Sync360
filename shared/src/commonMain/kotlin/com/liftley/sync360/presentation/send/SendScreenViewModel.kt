@@ -49,6 +49,17 @@ class SendScreenViewModel(
 
     init {
         viewModelScope.launch {
+            networkServicesController.isDiscoveryEnabled.collect { enabled ->
+                _sendScreenState.update { it.copy(isDiscoveryEnabled = enabled) }
+            }
+        }
+        viewModelScope.launch {
+            networkServicesController.discoveryErrorMessage.collect { error ->
+                _sendScreenState.update { it.copy(discoveryErrorMessage = error) }
+            }
+        }
+
+        viewModelScope.launch {
             networkServicesController.nearbyDevices.collect { devices ->
                 latestNearbyDevices = devices
 
@@ -80,16 +91,12 @@ class SendScreenViewModel(
     }
 
 
-    fun restartDiscoveryServices() {
-        viewModelScope.launch {
-            networkServicesController.restartDiscoveryServices()
-        }
+    fun setDiscoveryEnabled(enabled: Boolean) {
+        networkServicesController.setDiscoveryEnabled(enabled)
     }
 
-    fun repairNetworkServices() {
-        viewModelScope.launch {
-            networkServicesController.repairNetworkServices()
-        }
+    fun retryDiscovery() {
+        networkServicesController.setDiscoveryEnabled(sendScreenState.value.isDiscoveryEnabled)
     }
 
     fun sendToDevice(deviceId: String) {

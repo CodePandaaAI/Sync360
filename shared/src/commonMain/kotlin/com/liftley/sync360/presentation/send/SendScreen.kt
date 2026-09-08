@@ -12,7 +12,6 @@ import androidx.compose.material3.ButtonGroupDefaults
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -31,9 +30,7 @@ import org.koin.compose.koinInject
 
 @OptIn(ExperimentalMaterial3ExpressiveApi::class)
 @Composable
-fun SendScreen(
-    onTroubleshootClick: () -> Unit
-) {
+fun SendScreen() {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
     val screenState by sendScreenViewModel.sendScreenState.collectAsStateWithLifecycle()
 
@@ -108,13 +105,11 @@ fun SendScreen(
 
                 NearbyDevicesSection(
                     screenState = screenState,
-                    onReloadClick = sendScreenViewModel::restartDiscoveryServices,
+                    onDiscoveryEnabledChange = sendScreenViewModel::setDiscoveryEnabled,
+                    onRetryDiscovery = sendScreenViewModel::retryDiscovery,
                     onDeviceClick = sendScreenViewModel::sendToDevice
                 )
 
-                TextButton(onClick = onTroubleshootClick) {
-                    Text("Troubleshoot")
-                }
             }
         }
 

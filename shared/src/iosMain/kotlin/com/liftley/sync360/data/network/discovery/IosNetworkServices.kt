@@ -86,9 +86,8 @@ class IosNetworkServices(
     private val serviceDetailsByKey = mutableMapOf<String, ServiceDetails>()
     private val resolveRefsByKey = mutableMapOf<String, DNSServiceRef>()
     private val addressRefsByKey = mutableMapOf<String, DNSServiceRef>()
-    private var pendingRepair: PendingRepair? = null
 
-    override suspend fun startNetworkServices(
+    override suspend fun startDiscoveryAndAdvertising(
         httpServerPort: Int,
         fileTransferPort: Int
     ) {
@@ -98,42 +97,13 @@ class IosNetworkServices(
         }
     }
 
-    override suspend fun repairNetworkServices(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun stopDiscoveryAndAdvertising() {
         locked {
-            if (!servicesAreStable()) return@locked
-
-            pendingRepair = PendingRepair(httpServerPort, fileTransferPort)
             if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
                 stopDiscoveryService()
             }
             if (registrationServiceStatus.value == RegistrationStatus.Running) {
                 stopRegistrationService()
-            }
-            continuePendingRepairIfReady()
-        }
-    }
-
-    override fun restartDiscoveryServices() {
-        locked {
-            if (
-                discoveryServiceStatus.value != DiscoveryStatus.Idle ||
-                registrationServiceStatus.value != RegistrationStatus.Running
-            ) {
-                return@locked
-            }
-
-            clearDiscoveredServices()
-            startDiscoveryService()
-        }
-    }
-
-    override fun stopDiscoveryServices() {
-        locked {
-            if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
-                stopDiscoveryService()
             }
         }
     }
@@ -161,7 +131,6 @@ class IosNetworkServices(
                 serviceRef?.let { DNSServiceRefDeallocate(it) }
                 _discoveryServiceStatus.value = DiscoveryStatus.Idle
                 clearDiscoveredServices()
-                cancelPendingRepair()
                 return
             }
 
@@ -172,7 +141,6 @@ class IosNetworkServices(
                 DNSServiceRefDeallocate(serviceRef)
                 _discoveryServiceStatus.value = DiscoveryStatus.Idle
                 clearDiscoveredServices()
-                cancelPendingRepair()
                 return
             }
         }
@@ -188,7 +156,6 @@ class IosNetworkServices(
         clearDiscoveredServices()
 
         _discoveryServiceStatus.value = DiscoveryStatus.Idle
-        continuePendingRepairIfReady()
     }
 
     private fun startRegistrationService(
@@ -251,7 +218,6 @@ class IosNetworkServices(
                 if (registerResult != kDNSServiceErr_NoError || serviceRef == null) {
                     serviceRef?.let { DNSServiceRefDeallocate(it) }
                     _registrationServiceStatus.value = RegistrationStatus.Idle
-                    cancelPendingRepair()
                     return
                 }
 
@@ -261,11 +227,9 @@ class IosNetworkServices(
                     registrationRef = null
                     DNSServiceRefDeallocate(serviceRef)
                     _registrationServiceStatus.value = RegistrationStatus.Idle
-                    cancelPendingRepair()
                 }
             } catch (exception: Throwable) {
                 _registrationServiceStatus.value = RegistrationStatus.Idle
-                cancelPendingRepair()
                 println("Could not register iOS Bonjour service: ${exception.message}")
             } finally {
                 TXTRecordDeallocate(txtRecord.ptr)
@@ -280,7 +244,6 @@ class IosNetworkServices(
         registrationRef = null
 
         _registrationServiceStatus.value = RegistrationStatus.Idle
-        continuePendingRepairIfReady()
     }
 
     private fun handleRegistrationResult(errorCode: Int) {
@@ -293,7 +256,6 @@ class IosNetworkServices(
                 registrationRef?.let { DNSServiceRefDeallocate(it) }
                 registrationRef = null
                 _registrationServiceStatus.value = RegistrationStatus.Idle
-                cancelPendingRepair()
             }
         }
     }
@@ -314,7 +276,6 @@ class IosNetworkServices(
                 browseRef = null
                 clearDiscoveredServices()
                 _discoveryServiceStatus.value = DiscoveryStatus.Idle
-                cancelPendingRepair()
                 return@locked
             }
 
@@ -563,34 +524,6 @@ class IosNetworkServices(
         _nearbyDevices.value = emptyList()
     }
 
-    private fun continuePendingRepairIfReady() {
-        val repair = pendingRepair ?: return
-        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-        if (registrationServiceStatus.value != RegistrationStatus.Idle) return
-
-        pendingRepair = null
-        clearDiscoveredServices()
-        startDiscoveryService()
-        startRegistrationService(
-            httpServerPort = repair.httpServerPort,
-            fileTransferPort = repair.fileTransferPort
-        )
-    }
-
-    private fun cancelPendingRepair() {
-        pendingRepair = null
-    }
-
-    private fun servicesAreStable(): Boolean {
-        val discoveryStable =
-            discoveryServiceStatus.value == DiscoveryStatus.Idle ||
-                discoveryServiceStatus.value == DiscoveryStatus.Running
-        val registrationStable =
-            registrationServiceStatus.value == RegistrationStatus.Idle ||
-                registrationServiceStatus.value == RegistrationStatus.Running
-        return discoveryStable && registrationStable
-    }
-
     private fun discoveryIsActive(): Boolean {
         return discoveryServiceStatus.value == DiscoveryStatus.Starting ||
             discoveryServiceStatus.value == DiscoveryStatus.Running
@@ -661,10 +594,6 @@ class IosNetworkServices(
         }
     }
 
-    private data class PendingRepair(
-        val httpServerPort: Int,
-        val fileTransferPort: Int
-    )
 
     private data class ServiceDetails(
         val serviceName: String,

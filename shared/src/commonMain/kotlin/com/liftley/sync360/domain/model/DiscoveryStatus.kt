@@ -4,5 +4,7 @@ enum class DiscoveryStatus {
     Idle,
     Starting,
     Running,
-    Stopping
+    Stopping,
+    /** Cleanup failed; resources are still owned and must be stopped before reuse. */
+    CleanupFailed
 }
