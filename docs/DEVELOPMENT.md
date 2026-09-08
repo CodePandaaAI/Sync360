@@ -56,7 +56,7 @@ Windows:
 
 ## Preparing public packages
 
-The current package version is `0.4.2`.
+The current package version is `0.5.0`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
