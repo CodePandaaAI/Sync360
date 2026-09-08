@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Remove the separate discovery repair command, its Settings screen, and Troubleshoot shortcuts; use Start/Stop or failure retry in Nearby devices.
+
+- Tie Android nearby discovery to app visibility, with a cancellable two-second background grace period after the process lifecycle delay.
+- Remove the 60-second scan expiry and add Start discovery / Stop discovery controls for browsing and advertising. Manual Stop survives background/foreground transitions within the same process.
+- Centralize discovery-session start/stop coordination while preserving transfer listeners and content state. Desktop discovery remains active when minimized.
+- Give Android scans separate callback ownership, wait for service-info callback cleanup, and queue Android 13 legacy resolution.
+- Keep failed discovery cleanup retryable and ignore resolutions for services lost and found again.
+- Replace Reload and the top-bar discovery action with Start/Stop and failure retry in the Nearby devices section.
+- Present nearby devices in compact rows with a header Stop action and a centered Start discovery state when off.
+- Shorten discovery messages and make lifecycle, callback, and platform-operation names more descriptive.
+
+These changes have not yet been built or validated on devices.
+
 ## [0.4.1] - 2026-08-28
 
 ### Changed

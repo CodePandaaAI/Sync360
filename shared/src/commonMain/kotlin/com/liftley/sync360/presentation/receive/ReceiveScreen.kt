@@ -15,9 +15,7 @@ import com.liftley.sync360.presentation.receive.model.ReceiveState
 import org.koin.compose.koinInject
 
 @Composable
-fun ReceiveScreen(
-    onTroubleshootClick: () -> Unit
-) {
+fun ReceiveScreen() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
     Sync360Surface(
@@ -27,8 +25,7 @@ fun ReceiveScreen(
         when (val state = receiveScreenState) {
             is ReceiveState.Idle -> {
                 IdleReceiveStateUi(
-                    fileReceiveCode = state.fileReceiveCode,
-                    onTroubleshootClick = onTroubleshootClick
+                    fileReceiveCode = state.fileReceiveCode
                 )
             }
 

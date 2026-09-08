@@ -13,8 +13,8 @@ class Sync360Application : Application() {
             androidContext(applicationContext)
         }
 
-        koinApplication.koin
-            .get<NetworkServicesController>()
-            .startNetworkServices()
+        val networkServices = koinApplication.koin.get<NetworkServicesController>()
+        networkServices.startNetworkServices(discoveryAllowedAtStartup = false)
+        AndroidNearbyDiscoveryObserver(networkServices).observeAppVisibility()
     }
 }

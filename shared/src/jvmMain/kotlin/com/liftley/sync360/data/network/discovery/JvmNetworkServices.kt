@@ -41,7 +41,7 @@ class JvmNetworkServices(
     private val listenerByAddress = mutableMapOf<InetAddress, ServiceListener>()
     private val resolvedDevicesByServiceKey = ConcurrentHashMap<String, NearbyDevice>()
 
-    override suspend fun startNetworkServices(
+    override suspend fun startDiscoveryAndAdvertising(
         httpServerPort: Int,
         fileTransferPort: Int
     ) {
@@ -79,81 +79,19 @@ class JvmNetworkServices(
             }
             _discoveryServiceStatus.value = DiscoveryStatus.Running
         } catch (exception: Exception) {
-            withContext(Dispatchers.IO) {
-                closeAllInstances()
-            }
-            _registrationServiceStatus.value = RegistrationStatus.Idle
-            _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            val closed = withContext(Dispatchers.IO) { closeAllInstances() }
+            _registrationServiceStatus.value = if (closed) RegistrationStatus.Idle else RegistrationStatus.Running
+            _discoveryServiceStatus.value = if (closed) DiscoveryStatus.Idle else DiscoveryStatus.CleanupFailed
             exception.printStackTrace()
         }
     }
 
-    override suspend fun repairNetworkServices(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
-        val discoveryIsStable =
-            discoveryServiceStatus.value == DiscoveryStatus.Idle ||
-                discoveryServiceStatus.value == DiscoveryStatus.Running
-        val registrationIsStable =
-            registrationServiceStatus.value == RegistrationStatus.Idle ||
-                registrationServiceStatus.value == RegistrationStatus.Running
-
-        if (!discoveryIsStable || !registrationIsStable) return
-
-        if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
-            _discoveryServiceStatus.value = DiscoveryStatus.Stopping
-        }
-        if (registrationServiceStatus.value == RegistrationStatus.Running) {
-            _registrationServiceStatus.value = RegistrationStatus.Stopping
-        }
-
-        val allInstancesClosed = withContext(Dispatchers.IO) {
-            closeAllInstances()
-        }
-
-        _discoveryServiceStatus.value = DiscoveryStatus.Idle
-        _registrationServiceStatus.value = RegistrationStatus.Idle
-
-        if (!allInstancesClosed) return
-
-        startNetworkServices(httpServerPort, fileTransferPort)
-    }
-
-    override fun restartDiscoveryServices() {
-        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-        if (registrationServiceStatus.value != RegistrationStatus.Running) return
-        if (jmDnsByAddress.isEmpty()) return
-
-        _discoveryServiceStatus.value = DiscoveryStatus.Starting
-        _nearbyDevices.value = emptyList()
-        resolvedDevicesByServiceKey.clear()
-
-        try {
-            addDiscoveryListeners()
-            _discoveryServiceStatus.value = DiscoveryStatus.Running
-        } catch (exception: Exception) {
-            closeAllInstancesAfterFailure(exception)
-        }
-    }
-
-    override fun stopDiscoveryServices() {
-        if (discoveryServiceStatus.value != DiscoveryStatus.Running) return
-
+    override suspend fun stopDiscoveryAndAdvertising() {
         _discoveryServiceStatus.value = DiscoveryStatus.Stopping
-
-        try {
-            synchronized(this) {
-                listenerByAddress.forEach { (address, listener) ->
-                    jmDnsByAddress[address]?.removeServiceListener(SERVICE_TYPE, listener)
-                }
-                resolvedDevicesByServiceKey.clear()
-                _nearbyDevices.value = emptyList()
-            }
-            _discoveryServiceStatus.value = DiscoveryStatus.Idle
-        } catch (exception: Exception) {
-            closeAllInstancesAfterFailure(exception)
-        }
+        _registrationServiceStatus.value = RegistrationStatus.Stopping
+        val closed = withContext(Dispatchers.IO) { closeAllInstances() }
+        _discoveryServiceStatus.value = if (closed) DiscoveryStatus.Idle else DiscoveryStatus.CleanupFailed
+        _registrationServiceStatus.value = if (closed) RegistrationStatus.Idle else RegistrationStatus.Running
     }
 
     private fun startOnLanInterfaces(
@@ -299,14 +237,6 @@ class JvmNetworkServices(
         _nearbyDevices.value = emptyList()
 
         return jmDnsByAddress.isEmpty()
-    }
-
-    private fun closeAllInstancesAfterFailure(exception: Exception) {
-        _registrationServiceStatus.value = RegistrationStatus.Stopping
-        closeAllInstances()
-        _registrationServiceStatus.value = RegistrationStatus.Idle
-        _discoveryServiceStatus.value = DiscoveryStatus.Idle
-        exception.printStackTrace()
     }
 
     @Synchronized

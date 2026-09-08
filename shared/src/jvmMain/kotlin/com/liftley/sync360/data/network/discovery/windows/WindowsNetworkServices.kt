@@ -46,9 +46,8 @@ class WindowsNetworkServices(
     // Keep native request memory alive after terminal callbacks because the
     // Windows callback is still unwinding when Kotlin receives it.
     private val retiredNativeArenas = mutableListOf<Arena>()
-    private var pendingRepair: PendingRepair? = null
 
-    override suspend fun startNetworkServices(
+    override suspend fun startDiscoveryAndAdvertising(
         httpServerPort: Int,
         fileTransferPort: Int
     ) {
@@ -58,54 +57,24 @@ class WindowsNetworkServices(
         }
     }
 
-    override suspend fun repairNetworkServices(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun stopDiscoveryAndAdvertising() {
         synchronized(this) {
-            val discoveryIsStable =
-                discoveryServiceStatus.value == DiscoveryStatus.Idle ||
-                    discoveryServiceStatus.value == DiscoveryStatus.Running
-            val registrationIsStable =
-                registrationServiceStatus.value == RegistrationStatus.Idle ||
-                    registrationServiceStatus.value == RegistrationStatus.Running
-
-            if (!discoveryIsStable || !registrationIsStable) return
-
-            pendingRepair = PendingRepair(httpServerPort, fileTransferPort)
-
             if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
                 stopDiscoveryServices()
             }
-            if (pendingRepair == null) return
-
             if (registrationServiceStatus.value == RegistrationStatus.Running) {
                 stopRegistrationService()
             }
-            if (pendingRepair == null) return
-
-            continuePendingRepairIfReady()
         }
     }
 
-    override fun restartDiscoveryServices() {
-        synchronized(this) {
-            if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-            if (registrationServiceStatus.value != RegistrationStatus.Running) return
-
-            clearResolvedDevices()
-            startDiscoveryService()
-        }
-    }
-
-    override fun stopDiscoveryServices() {
+    private fun stopDiscoveryServices() {
         synchronized(this) {
             if (discoveryServiceStatus.value != DiscoveryStatus.Running) return
 
             val operation = browseOperation ?: run {
                 _discoveryServiceStatus.value = DiscoveryStatus.Idle
                 clearResolvedDevices()
-                continuePendingRepairIfReady()
                 return
             }
 
@@ -122,7 +91,6 @@ class WindowsNetworkServices(
 
             if (result != ERROR_SUCCESS) {
                 _discoveryServiceStatus.value = DiscoveryStatus.Running
-                cancelPendingRepair()
                 logStatus("DnsServiceBrowseCancel", result)
             }
         }
@@ -167,7 +135,6 @@ class WindowsNetworkServices(
             operation.arena.close()
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
             clearResolvedDevices()
-            cancelPendingRepair()
             logStatus("DnsServiceBrowse", result)
         }
     }
@@ -193,7 +160,6 @@ class WindowsNetworkServices(
             browseOperation = null
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
             clearResolvedDevices()
-            continuePendingRepairIfReady()
             return
         }
 
@@ -204,7 +170,6 @@ class WindowsNetworkServices(
             _discoveryServiceStatus.value = DiscoveryStatus.Idle
             clearResolvedDevices()
             cancelResolveOperations()
-            cancelPendingRepair()
             logStatus("Windows DNS-SD browse callback", status)
             return
         }
@@ -411,7 +376,6 @@ class WindowsNetworkServices(
 
         if (serviceInstance.isNullPointer()) {
             _registrationServiceStatus.value = RegistrationStatus.Idle
-            cancelPendingRepair()
             return
         }
 
@@ -448,7 +412,6 @@ class WindowsNetworkServices(
         if (result != DNS_REQUEST_PENDING) {
             releaseRegistrationOperation(retireArena = false)
             _registrationServiceStatus.value = RegistrationStatus.Idle
-            cancelPendingRepair()
             logStatus("DnsServiceRegister", result)
         }
     }
@@ -481,7 +444,6 @@ class WindowsNetworkServices(
                     } else {
                         releaseRegistrationOperation(retireArena = true)
                         _registrationServiceStatus.value = RegistrationStatus.Idle
-                        cancelPendingRepair()
                         logStatus("Windows DNS-SD registration callback", status)
                     }
                 }
@@ -490,11 +452,9 @@ class WindowsNetworkServices(
                     if (status == ERROR_SUCCESS || status == ERROR_CANCELLED) {
                         releaseRegistrationOperation(retireArena = true)
                         _registrationServiceStatus.value = RegistrationStatus.Idle
-                        continuePendingRepairIfReady()
                     } else {
                         operation.action = RegistrationAction.Registering
                         _registrationServiceStatus.value = RegistrationStatus.Running
-                        cancelPendingRepair()
                         logStatus("Windows DNS-SD deregistration callback", status)
                     }
                 }
@@ -512,7 +472,6 @@ class WindowsNetworkServices(
 
         val operation = registrationOperation ?: run {
             _registrationServiceStatus.value = RegistrationStatus.Idle
-            continuePendingRepairIfReady()
             return
         }
 
@@ -529,7 +488,6 @@ class WindowsNetworkServices(
         if (result != DNS_REQUEST_PENDING) {
             operation.action = RegistrationAction.Registering
             _registrationServiceStatus.value = RegistrationStatus.Running
-            cancelPendingRepair()
             logStatus("DnsServiceDeRegister", result)
         }
     }
@@ -741,24 +699,6 @@ class WindowsNetworkServices(
         retiredNativeArenas += arena
     }
 
-    private fun continuePendingRepairIfReady() {
-        val repair = pendingRepair ?: return
-        if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
-        if (registrationServiceStatus.value != RegistrationStatus.Idle) return
-
-        pendingRepair = null
-        clearResolvedDevices()
-        startDiscoveryService()
-        startRegistrationService(
-            httpServerPort = repair.httpServerPort,
-            fileTransferPort = repair.fileTransferPort
-        )
-    }
-
-    private fun cancelPendingRepair() {
-        pendingRepair = null
-    }
-
     private fun freeDnsRecords(records: MemorySegment) {
         if (!records.isNullPointer()) {
             dnsApi.freeRecordList(records)
@@ -838,10 +778,6 @@ class WindowsNetworkServices(
         Deregistering
     }
 
-    private data class PendingRepair(
-        val httpServerPort: Int,
-        val fileTransferPort: Int
-    )
 
     private companion object {
         val NATIVE_CALLBACK_TYPE: MethodType = MethodType.methodType(

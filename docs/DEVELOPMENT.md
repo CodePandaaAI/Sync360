@@ -56,7 +56,7 @@ Windows:
 
 ## Preparing public packages
 
-The current package version is `0.4.1`.
+The current package version is `0.4.2`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -95,7 +95,7 @@ The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and
 8. Confirm completed files appear in Downloads.
 9. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
 
-For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker, Hyper-V, or virtual-machine adapters. Windows DNS-SD browses and registers with interface index `0`, so Windows selects the applicable interfaces. Confirm discovery and resolution, live removal when a nearby app closes, removal of Windows from the other device after the Desktop app closes, Reload, and full connection repair.
+For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker, Hyper-V, or virtual-machine adapters. Windows DNS-SD browses and registers with interface index `0`, so Windows selects the applicable interfaces. Confirm discovery and resolution, live removal when a nearby app closes, removal of Windows from the other device after the Desktop app closes, manual Stop/Start.
 
 On first network use, allow Sync360 on the intended private network when Windows Firewall prompts. The current MSI does not install its own inbound firewall exception; a denied prompt or administrator policy can block incoming HTTP and file-transfer sockets.
 
@@ -103,12 +103,25 @@ Android currently targets SDK 37 but does not yet declare or request Android 17'
 
 macOS and Linux currently retain JmDNS. Test those systems with multiple adapters as well because JmDNS starts separately on each eligible address.
 
+## Discovery lifecycle validation (not yet run)
+
+- Keep Android visible beyond 60 seconds: scanning and advertising must remain active.
+- Background/return every second several times: no teardown inside the grace period; rotate and open/return from the system file picker as well.
+- Leave Android hidden beyond the lifecycle delay plus two-second grace: browsing, tracking callbacks and registration stop. Return and check both directions of discovery.
+- Return while stop callbacks are still arriving: only one replacement session starts, after cleanup. Old results must not appear in it.
+- Tap Stop discovery while starting, scanning, and transferring. Discovery stops, existing transfer resources remain untouched, and selected/received content remains. Background/return must not undo manual Stop. Start enables it again.
+- Switch LANs while visible, then use Stop discovery and Start discovery to find peers again. There is no app-level network monitoring or automatic refresh. Check local-only Wi-Fi without Internet, Ethernet, and hotspot discovery.
+- Check Android 13 with multiple peers and with a resolve completing after backgrounding.
+- Minimize Desktop: discovery stays active. Check repeated manual Stop/Start on each Desktop backend.
+- Force a service-info callback cleanup failure: show Try again in the Nearby devices section, retain callback ownership, and finish cleanup before restarting.
+- Observe platform startup/stop failures: no unbounded automatic retry and no synthetic successful cleanup. Android 17 local-network permission work remains outstanding.
+
 ## If discovery or transfer fails
 
 - Confirm both devices are on the same local network.
 - Check whether the router enables client isolation.
 - Try a trusted phone hotspot or another router.
-- Keep both apps open; background/foreground lifecycle support is not complete.
+- Keep both Android apps visible during transfers. Android discovery stops after a background grace period and resumes on return unless manually stopped; this does not guarantee background transfer execution.
 - Check the OS firewall and local-network permissions.
 - On Windows, confirm an inbound allow rule exists for Sync360 if the first-run firewall prompt was dismissed or denied.
 - Verify that HTTP and file-transfer ports are non-zero in logs.
@@ -118,11 +131,11 @@ macOS and Linux currently retain JmDNS. Test those systems with multiple adapter
 Useful source locations:
 
 - Android `Sync360Application` and Desktop `main` — one-time application network startup after Koin initialization.
-- `NetworkServicesController` — startup order, state-derived discovery window, restart, and repair coordination.
-- `AndroidNetworkServices` — callback-driven Android NSD registration, discovery, resolution, and repair.
+- `NetworkServicesController` — listener startup and discovery start/stop coordination.
+- `AndroidNetworkServices` — callback-driven Android NSD registration, discovery, resolution, and cleanup.
 - `WindowsNetworkServices` — Windows DNS-SD registration, discovery, resolution, cancellation, and shared-state mapping.
 - `WindowsDnsSdApi` — focused JDK Foreign Function and Memory bindings for `dnsapi.dll`.
-- `JvmNetworkServices` — current macOS/Linux JmDNS registration, discovery, repair cleanup, and IPv4/IPv6 LAN-interface selection.
+- `JvmNetworkServices` — current macOS/Linux JmDNS registration, discovery, discovery cleanup, and IPv4/IPv6 LAN-interface selection.
 - `Sync360HttpServer` / `Sync360HttpClient` — direct text delivery and file control routes.
 - `OutgoingRequestsController` / `IncomingServerRequestsController` — send/receive coordination.
 - platform `FileTransmitter`, `FileTransferReceiver`, and `DownloadsWriter` implementations — file bytes and storage.
