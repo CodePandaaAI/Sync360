@@ -1,6 +1,5 @@
 package com.liftley.sync360.presentation.send.components
 
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -31,10 +30,6 @@ import coil3.compose.AsyncImage
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.presentation.app.components.Sync360Surface
-import org.jetbrains.compose.resources.painterResource
-import sync360.shared.generated.resources.Res
-import sync360.shared.generated.resources.camera_icon
-import sync360.shared.generated.resources.document_icon
 
 private val ImageFileExtensions = setOf(
     "avif", "bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "webp"
@@ -190,8 +185,8 @@ private fun FilePickerActions(
     ) {
         if (onPickMedia != null) {
             Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
                     onPickMedia()
                 }
             ) {
@@ -200,29 +195,24 @@ private fun FilePickerActions(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Image(
-                        painterResource(Res.drawable.camera_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp)
-                    )
                     Text(
                         "Select Media",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
                     Text(
-                        "JPG, PNG, MP4",
+                        "Photos · Videos",
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
             Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
                     onPickFiles()
                 }
             ) {
@@ -231,25 +221,23 @@ private fun FilePickerActions(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Image(
-                        painterResource(Res.drawable.document_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp)
+                    Text("Select docs", maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
-                    Text("Select docs", maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.onSurface)
                     Text(
-                        "PDF, DOCX",
+                        "Pdf · Docs · Excel",
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                         overflow = TextOverflow.Ellipsis
                     )
                 }
             }
         } else {
             Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.large).clickable {
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
                     onPickFiles()
                 }
             ) {
@@ -258,23 +246,17 @@ private fun FilePickerActions(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Image(
-                        painterResource(Res.drawable.document_icon),
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp)
-                    )
-
                     Text(
                         if (hasSelectedFiles) "Add more files" else "Select files",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.onSecondaryContainer
                     )
                     Text(
-                        "PDF, DOCX",
+                        "Pdf · Docs · Excel",
                         maxLines = 1,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
                         overflow = TextOverflow.Ellipsis
                     )
                 }

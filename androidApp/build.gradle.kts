@@ -36,8 +36,8 @@ android {
         applicationId = "com.liftley.sync360"
         minSdk = libs.versions.android.minSdk.get().toInt()
         targetSdk = libs.versions.android.targetSdk.get().toInt()
-        versionCode = 7
-        versionName = "0.5.0"
+        versionCode = 8
+        versionName = "0.5.1"
     }
 
     buildFeatures {

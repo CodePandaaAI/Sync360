@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-09-09
+
+### Changed
+
+- Group the Nearby devices header, device rows, and bottom surface with coordinated corners and tighter spacing.
+- Restyle discovery errors with a neutral surface, a small error-colored Wi-Fi badge, centered text, and an outlined retry action.
+- Use extra-large default corners for shared surfaces.
+- Simplify file-picker actions with text labels, media/document descriptions, and primary/secondary container colors; remove the camera and document illustrations.
+- Configure the Desktop Hot Reload `hotRun` JavaExec task to use Java 23.
+- Prepare Android, Desktop, and iOS version metadata as `0.5.1`; Android and iOS build numbers are `8`.
+- Correct outdated navigation and Android legacy-resolution documentation. Discovery lifecycle and transfer protocol behavior are unchanged by this patch.
+
+Release preparation only: new package builds and device validation have not been recorded in this task.
+
+## [0.5.0]
+
 ### Changed
 
 - Remove the separate discovery repair command, its Settings screen, and Troubleshoot shortcuts; use Start/Stop or failure retry in Nearby devices.
@@ -19,7 +35,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Present nearby devices in compact rows with a header Stop action and a centered Start discovery state when off.
 - Shorten discovery messages and make lifecycle, callback, and platform-operation names more descriptive.
 
-These changes have not yet been built or validated on devices.
+Build and device-validation results were not recorded during the original 0.5.0 preparation.
 
 ## [0.4.1] - 2026-08-28
 

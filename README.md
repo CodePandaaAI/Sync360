@@ -62,7 +62,7 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Cancel a pending send or active file transfer on a best-effort basis.
 - Show batch-wide byte percentage while files are being sent and received.
 - Show clear preparation, transfer, success, failure, and cancelled states on the sender, with receiving and received states on the receiver.
-- Run the shared Send/Receive UI on Desktop, with an adaptive 50/50 two-pane layout in wider windows.
+- Run the shared Send/Receive UI on Desktop, with one screen at a time and a left navigation rail in wider windows.
 - Discover and advertise Windows devices through the operating system DNS-SD API, with JmDNS retained for macOS and Linux, using the same service as Android.
 - Select multiple Desktop files with the native file dialog and send them through the same offer and TCP protocol.
 - Save received Desktop files safely into Downloads through a temporary `.part` file, then move completed files into place without overwriting an existing name.
@@ -183,7 +183,7 @@ The project remains Android-first, but Desktop and iOS reuse the shared UI, View
 - JmDNS 3.6.3 for current macOS/Linux DNS-SD/mDNS
 - Java `Socket` / `ServerSocket` for file bytes
 - Android `ContentResolver` and `MediaStore`
-- Navigation 3 with a Material-adaptive 50/50 two-pane Scene on wider windows
+- Navigation 3 with one visible screen, compact bottom navigation, and a left rail on wider windows
 - Gradle 9.3.1 wrapper
 
 ## Getting started

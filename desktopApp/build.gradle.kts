@@ -37,7 +37,7 @@ compose.desktop {
         nativeDistributions {
             targetFormats(TargetFormat.Dmg, TargetFormat.Msi, TargetFormat.Deb)
             packageName = "Sync360"
-            packageVersion = "0.5.0"
+            packageVersion = "0.5.1"
             appResourcesRootDir.set(
                 project.layout.projectDirectory.dir("packaging/app-resources")
             )
@@ -56,5 +56,15 @@ compose.desktop {
                 iconFile.set(project.file("src/main/resources/icons/icon.png"))
             }
         }
+    }
+}
+
+// Force the Compose Hot Reload runner to use Java 23
+tasks.matching { it.name == "hotRun" }.configureEach {
+    if (this is JavaExec) {
+        val toolchains = project.extensions.getByType<JavaToolchainService>()
+        javaLauncher.set(toolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(23))
+        })
     }
 }

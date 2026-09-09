@@ -60,13 +60,13 @@ shared/src/iosMain/
 
 ### `Sync360Root`
 
-Owns the single app `Scaffold`, compact bottom navigation, and one Navigation 3 `NavDisplay`. A small `TwoPaneSceneStrategy` renders Send and Receive in a fixed 50/50 split when the Material adaptive window size reaches the medium-width breakpoint. Compact windows use Navigation 3's normal single-pane fallback.
+Owns the single app `Scaffold` and one Navigation 3 `NavDisplay`. Compact windows use bottom navigation; wider windows use a left navigation rail. Both show one screen at a time.
 
 ### ViewModels
 
 - `SendScreenViewModel` owns nearby-device state, selected files/text, send operations, results, and cancellation.
 - `ReceiveScreenViewModel` maps incoming server state and the session receive code to Receive UI, and handles Copy, Clear, and Open Downloads actions.
-- `NavigationViewModel` keeps Send and Receive available as top-level entries and selects the active compact destination.
+- `NavigationViewModel` keeps Send and Receive available as top-level entries and selects the active destination.
 
 ViewModels launch UI-facing work. They do not implement platform APIs or socket protocols.
 
