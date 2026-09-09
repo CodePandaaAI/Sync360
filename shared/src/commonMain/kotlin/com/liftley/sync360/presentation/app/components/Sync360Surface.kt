@@ -12,7 +12,7 @@ import androidx.compose.ui.graphics.Color
 fun Sync360Surface(
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surface,
-    shape: CornerBasedShape = MaterialTheme.shapes.large,
+    shape: CornerBasedShape = MaterialTheme.shapes.extraLarge,
     content: @Composable (() -> Unit)
 ) {
     Surface(

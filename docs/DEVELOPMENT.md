@@ -54,9 +54,11 @@ Windows:
 ./gradlew.bat :desktopApp:run
 ```
 
+The Desktop `hotRun` task is configured to use a Java 23 toolchain when it is a `JavaExec` task, matching the project JVM requirement. This is development-runner configuration, not a packaged runtime change.
+
 ## Preparing public packages
 
-The current package version is `0.5.0`.
+The current package version is `0.5.1`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -93,13 +95,13 @@ The Windows `upgradeUuid` must remain unchanged for the lifetime of Sync360, and
 6. Confirm Send and Receive show the same code, and that a fresh application start creates a new code while navigation and recomposition do not change it.
 7. Test one file, multiple files, receiver-busy behavior, the first-connection timeout, and cancellation.
 8. Confirm completed files appear in Downloads.
-9. Resize the Desktop window and verify compact single-pane navigation and the wider 50/50 Send/Receive layout.
+9. Resize the Desktop window and verify that compact bottom navigation switches to a left navigation rail on wider windows, with one screen visible at a time.
 
 For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker, Hyper-V, or virtual-machine adapters. Windows DNS-SD browses and registers with interface index `0`, so Windows selects the applicable interfaces. Confirm discovery and resolution, live removal when a nearby app closes, removal of Windows from the other device after the Desktop app closes, manual Stop/Start.
 
 On first network use, allow Sync360 on the intended private network when Windows Firewall prompts. The current MSI does not install its own inbound firewall exception; a denied prompt or administrator policy can block incoming HTTP and file-transfer sockets.
 
-Android currently targets SDK 37 but does not yet declare or request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission. Android 17 LAN testing is therefore expected to fail until permission-aware startup is implemented. On Android 13, also test several discoverable devices appearing close together because the legacy resolver is not yet queued.
+Android currently targets SDK 37 but does not yet declare or request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission. Android 17 LAN testing is therefore expected to fail until permission-aware startup is implemented. On Android 13, also test several discoverable devices appearing close together to validate the queued legacy resolver.
 
 macOS and Linux currently retain JmDNS. Test those systems with multiple adapters as well because JmDNS starts separately on each eligible address.
 
@@ -153,3 +155,9 @@ Avoid large speculative abstractions, networking inside composables, platform AP
 Automated coverage is still minimal. Add focused tests for pure Kotlin logic where practical. For discovery, socket, storage, or lifecycle changes, include the exact devices, operating systems, network setup, scenarios, and results in the pull request.
 
 There is no stable release yet. Treat current builds as development software.
+
+## 0.5.1 UI validation
+
+Before publishing the final packages, check the grouped Nearby devices header, rows, and footer with zero, one, and multiple devices. Check discovery off, scanning, and failure/retry states; light and dark themes; compact and wide windows; and the intentionally limited empty-state text at larger font sizes. Check media/document selection and adding more files. The shared default surface shape changed, so inspect other screens that use its default corners too.
+
+Build and device validation for 0.5.1 have not been recorded in this preparation task.
