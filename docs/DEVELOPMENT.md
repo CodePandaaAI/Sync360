@@ -58,7 +58,7 @@ The Desktop `hotRun` task is configured to use a Java 23 toolchain when it is a 
 
 ## Preparing public packages
 
-The current package version is `0.5.1`.
+The current package version is `0.5.2`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -156,8 +156,8 @@ Automated coverage is still minimal. Add focused tests for pure Kotlin logic whe
 
 There is no stable release yet. Treat current builds as development software.
 
-## 0.5.1 UI validation
+## 0.5.2 UI validation
 
 Before publishing the final packages, check the grouped Nearby devices header, rows, and footer with zero, one, and multiple devices. Check discovery off, scanning, and failure/retry states; light and dark themes; compact and wide windows; and the intentionally limited empty-state text at larger font sizes. Check media/document selection and adding more files. The shared default surface shape changed, so inspect other screens that use its default corners too.
 
-Build and device validation for 0.5.1 have not been recorded in this preparation task.
+Build and device validation for 0.5.2 have not been recorded in this preparation task.

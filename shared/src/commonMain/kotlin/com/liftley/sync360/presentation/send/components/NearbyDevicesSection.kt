@@ -132,12 +132,12 @@ fun NearbyDevicesSection(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Sync360Surface(containerColor = MaterialTheme.colorScheme.primaryContainer) {
+                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                         Icon(
                             Wifi,
                             contentDescription = null,
                             modifier = Modifier.padding(16.dp).size(24.dp),
-                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                     Text(
@@ -226,7 +226,7 @@ private fun NearbyDeviceRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.primaryContainer) {
+            Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer) {
                 Icon(
                     imageVector = when (device.deviceType) {
                         "Android" -> Android
@@ -235,7 +235,7 @@ private fun NearbyDeviceRow(
                     },
                     contentDescription = null,
                     modifier = Modifier.padding(16.dp).size(24.dp),
-                    tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    tint = MaterialTheme.colorScheme.primary
                 )
             }
             Column(

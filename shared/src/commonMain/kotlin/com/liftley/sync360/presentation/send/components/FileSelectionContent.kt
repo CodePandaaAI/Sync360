@@ -1,18 +1,17 @@
 package com.liftley.sync360.presentation.send.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -186,11 +185,11 @@ private fun FilePickerActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (onPickMedia != null) {
-            Button(
-                modifier = Modifier.weight(1f),
+            OutlinedButton(
+                modifier = Modifier.weight(1f).height(48.dp),
                 onClick = {
                     onPickMedia()
-                }
+                },
             ) {
                 Text(
                     "Select Media",
@@ -200,7 +199,7 @@ private fun FilePickerActions(
             }
 
             OutlinedButton(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).height(48.dp),
                 onClick = {
                     onPickFiles()
                 }
@@ -211,24 +210,16 @@ private fun FilePickerActions(
                 )
             }
         } else {
-            Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
-                    onPickFiles()
-                }
+            OutlinedButton(
+                modifier = Modifier.weight(1f).height(48.dp),
+                onClick = { onPickFiles() },
             ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(
-                        if (hasSelectedFiles) "Add more files" else "Select files",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                }
+                Text(
+                    if (hasSelectedFiles) "Add more files" else "Select files",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }

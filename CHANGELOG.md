@@ -6,10 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-09-19
+
 ### Changed
 
 - Replace the olive-green theme with a blue-violet palette across light and dark modes, and use the Sync360 palette consistently on Android instead of substituting system dynamic colors.
-- Adjust discovery and file-selection foreground colors to preserve clear contrast with the updated surfaces and containers.
+- Refine discovery and file-selection colors so primary icons remain crisp on neutral surfaces in both light and dark themes.
+- Use consistent outlined, fixed-height file-picker actions across Android, iOS, and Desktop.
+- Prepare Android, Desktop, and iOS version metadata as `0.5.2`; Android and iOS build numbers are `9`.
+
+Release preparation only: new package builds and device validation have not been recorded in this task.
 
 ## [0.5.1] - 2026-09-09
 
