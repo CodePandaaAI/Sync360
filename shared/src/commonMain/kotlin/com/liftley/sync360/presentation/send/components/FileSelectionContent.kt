@@ -226,7 +226,7 @@ private fun FilePickerActions(
                         if (hasSelectedFiles) "Add more files" else "Select files",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }

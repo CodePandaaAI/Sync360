@@ -11,7 +11,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         setContent {
-            Sync360Theme(dynamicColor = true) {
+            Sync360Theme {
                 Sync360Root()
             }
         }

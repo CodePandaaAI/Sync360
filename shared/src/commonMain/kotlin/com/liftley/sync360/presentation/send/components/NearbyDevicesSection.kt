@@ -137,7 +137,7 @@ fun NearbyDevicesSection(
                             Wifi,
                             contentDescription = null,
                             modifier = Modifier.padding(16.dp).size(24.dp),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
                         )
                     }
                     Text(

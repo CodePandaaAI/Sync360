@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Replace the olive-green theme with a blue-violet palette across light and dark modes, and use the Sync360 palette consistently on Android instead of substituting system dynamic colors.
+- Adjust discovery and file-selection foreground colors to preserve clear contrast with the updated surfaces and containers.
+
 ## [0.5.1] - 2026-09-09
 
 ### Changed
