@@ -1,51 +1,50 @@
 package com.liftley.sync360.presentation.send.components
 
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.liftley.sync360.core.designsystem.icons.Close
 import com.liftley.sync360.domain.model.FileReceiveCode
 import com.liftley.sync360.presentation.send.model.FileReceiveCodePrompt
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 @Composable
 fun FileReceiveCodeSheet(
     prompt: FileReceiveCodePrompt,
@@ -57,6 +56,21 @@ fun FileReceiveCodeSheet(
     val keyboardController = LocalSoftwareKeyboardController.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val isCodeValid = FileReceiveCode.isValid(prompt.code)
+
+    // Big, bold, widely tracked digits. Tabular numerals keep the width
+    // stable so the caret doesn't jitter as you type.
+    val codeStyle = MaterialTheme.typography.displayLarge.copy(
+        fontWeight = FontWeight.Bold,
+        textAlign = TextAlign.Center,
+        fontFeatureSettings = "tnum"
+    )
+
+    val submit = {
+        if (isCodeValid) {
+            keyboardController?.hide()
+            onConfirm()
+        }
+    }
 
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
@@ -78,8 +92,6 @@ fun FileReceiveCodeSheet(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Header: title + close button in one row instead of a separate
-            // "Cancel" link buried under the keyboard.
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -100,7 +112,8 @@ fun FileReceiveCodeSheet(
                     )
                 }
                 IconButton(
-                    onClick = onDismiss, colors = IconButtonDefaults.iconButtonColors(
+                    onClick = onDismiss,
+                    colors = IconButtonDefaults.iconButtonColors(
                         MaterialTheme.colorScheme.surfaceContainer
                     )
                 ) {
@@ -111,58 +124,45 @@ fun FileReceiveCodeSheet(
                 }
             }
 
-            BasicTextField(
+            TextField(
                 value = prompt.code,
                 onValueChange = { raw ->
-                    val digitsOnly = raw.filter { it.isDigit() }
-                        .take(FileReceiveCode.DIGIT_COUNT)
-                    onCodeChange(digitsOnly)
+                    onCodeChange(
+                        raw.filter { it.isDigit() }.take(FileReceiveCode.DIGIT_COUNT)
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
+                    .heightIn(min = 104.dp)
                     .focusRequester(focusRequester)
-                    .semantics {
-                        contentDescription = "Four-digit transfer code"
-                    },
+                    .semantics { contentDescription = "Four-digit transfer code" },
                 singleLine = true,
+                textStyle = codeStyle,
+                placeholder = {
+                    Text(
+                        text = "0".repeat(FileReceiveCode.DIGIT_COUNT),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = codeStyle,
+                        color = MaterialTheme.colorScheme.outlineVariant
+                    )
+                },
                 keyboardOptions = KeyboardOptions(
                     keyboardType = KeyboardType.Number,
                     imeAction = ImeAction.Done
                 ),
-                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                decorationBox = { innerTextField ->
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clearAndSetSemantics { },
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            repeat(FileReceiveCode.DIGIT_COUNT) { index ->
-                                ReceiveCodeDigit(
-                                    digit = prompt.code.getOrNull(index),
-                                    isActive = index == prompt.code.length,
-                                    modifier = Modifier.weight(1f)
-                                )
-                            }
-                        }
-
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .alpha(0f)
-                        ) {
-                            innerTextField()
-                        }
-                    }
-                }
+                keyboardActions = KeyboardActions(onDone = { submit() }),
+                shape = MaterialTheme.shapes.extraExtraLarge,
+                colors = TextFieldDefaults.colors(
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    focusedIndicatorColor = Color.Transparent,
+                    unfocusedIndicatorColor = Color.Transparent,
+                    cursorColor = MaterialTheme.colorScheme.primary
+                )
             )
 
             Button(
-                onClick = {
-                    keyboardController?.hide()
-                    onConfirm()
-                },
+                onClick = { submit() },
                 enabled = isCodeValid,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -171,38 +171,5 @@ fun FileReceiveCodeSheet(
                 Text(prompt.sendButtonLabel)
             }
         }
-    }
-}
-
-@Composable
-private fun ReceiveCodeDigit(
-    digit: Char?,
-    isActive: Boolean,
-    modifier: Modifier = Modifier
-) {
-    val borderColor = when {
-        digit != null -> MaterialTheme.colorScheme.primary
-        isActive -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.outlineVariant
-    }
-    val borderWidth by animateDpAsState(
-        targetValue = if (isActive || digit != null) 2.dp else 1.dp,
-        label = "digitBorderWidth"
-    )
-
-    Box(
-        modifier = modifier
-            .height(72.dp)
-            .border(
-                width = borderWidth,
-                color = borderColor,
-                shape = RoundedCornerShape(12.dp)
-            ),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            text = digit?.toString().orEmpty(),
-            style = MaterialTheme.typography.displaySmall
-        )
     }
 }

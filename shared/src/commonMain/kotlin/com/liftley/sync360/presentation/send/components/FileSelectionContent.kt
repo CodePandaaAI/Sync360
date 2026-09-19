@@ -12,10 +12,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -184,55 +186,29 @@ private fun FilePickerActions(
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         if (onPickMedia != null) {
-            Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.primaryContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
+            Button(
+                modifier = Modifier.weight(1f),
+                onClick = {
                     onPickMedia()
                 }
             ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        "Select Media",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                    Text(
-                        "Photos · Videos",
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    "Select Media",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
-            Sync360Surface(
-                containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.weight(1f).clip(MaterialTheme.shapes.extraLarge).clickable {
+
+            OutlinedButton(
+                modifier = Modifier.weight(1f),
+                onClick = {
                     onPickFiles()
                 }
             ) {
-                Column(
-                    Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text("Select docs", maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        "Pdf · Docs · Excel",
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
+                Text(
+                    "Select docs", maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
             }
         } else {
             Sync360Surface(
@@ -244,20 +220,13 @@ private fun FilePickerActions(
                 Column(
                     Modifier.fillMaxWidth().padding(16.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Text(
                         if (hasSelectedFiles) "Add more files" else "Select files",
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         color = MaterialTheme.colorScheme.onSecondaryContainer
-                    )
-                    Text(
-                        "Pdf · Docs · Excel",
-                        maxLines = 1,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

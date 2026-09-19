@@ -12,6 +12,5 @@ interface NetworkServices {
 
     suspend fun startDiscoveryAndAdvertising(httpServerPort: Int, fileTransferPort: Int)
 
-    /** Stops discovery and advertising, not transfer listeners. */
     suspend fun stopDiscoveryAndAdvertising()
 }
