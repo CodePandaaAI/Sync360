@@ -23,8 +23,8 @@ fun main() {
             icon = painterResource(Res.drawable.app_icon)
         ) {
             Sync360Theme(
-                darkTheme = false,
-                dynamicColor = false
+                dynamicColor = false,
+                darkTheme = false
             ) {
                 Sync360Root()
             }
