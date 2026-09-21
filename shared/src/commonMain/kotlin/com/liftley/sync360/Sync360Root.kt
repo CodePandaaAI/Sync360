@@ -1,21 +1,20 @@
 package com.liftley.sync360
 
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBarDefaults
@@ -25,8 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.keepScreenOn
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -86,26 +85,34 @@ fun Sync360Root() {
         is SendState.Failed -> "Could Not Send"
     }
 
+    val navigationBarColorWhenSelected = NavigationBarItemDefaults.colors().copy(
+        selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer.copy(
+            alpha = 0.6f
+        )
+    )
+
+    val navigationRailColorWhenSelected = NavigationRailItemDefaults.colors().copy(
+        selectedIndicatorColor = MaterialTheme.colorScheme.secondaryContainer.copy(
+            alpha = 0.6f
+        )
+    )
+
     Scaffold(
         bottomBar = {
             if (!useNavigationRail) {
-                NavigationBar(
-                    modifier = Modifier
-                        // 1. Fetch system bar insets dynamically to protect the Android gesture area
-                        .windowInsetsPadding(NavigationBarDefaults.windowInsets)
-                        // 2. Add outer floating padding around the bar (converted from dp)
-                        .padding(horizontal = 32.dp, vertical = 16.dp)
-                        // 3. Clip the corners after padding to create the floating card shape
-                        .clip(MaterialTheme.shapes.extraExtraLarge),
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    // 4. Disable internal inset consumption so our custom modifiers control the shape
-                    windowInsets = WindowInsets(0, 0, 0, 0)
-                ) {
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                     NavigationBarItem(
+                        colors = navigationBarColorWhenSelected,
                         onClick = { navigationViewModel.navigateTo(NavScreen.ReceiveScreen) },
                         selected = navigationViewModel.currentScreen() ==
                                 NavScreen.ReceiveScreen,
-                        label = { Text("Receive") },
+                        label = {
+                            Text(
+                                "Receive", fontWeight = if (navigationViewModel.currentScreen() ==
+                                    NavScreen.ReceiveScreen
+                                ) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
                         icon = {
                             Icon(
                                 imageVector = Download,
@@ -114,10 +121,17 @@ fun Sync360Root() {
                         }
                     )
                     NavigationBarItem(
+                        colors = navigationBarColorWhenSelected,
                         onClick = { navigationViewModel.navigateTo(NavScreen.SendScreen) },
                         selected = navigationViewModel.currentScreen() ==
                                 NavScreen.SendScreen,
-                        label = { Text("Send") },
+                        label = {
+                            Text(
+                                "Send", fontWeight = if (navigationViewModel.currentScreen() ==
+                                    NavScreen.SendScreen
+                                ) FontWeight.Bold else FontWeight.Normal
+                            )
+                        },
                         icon = {
                             Icon(
                                 imageVector = Send,
@@ -164,11 +178,10 @@ fun Sync360Root() {
             if (useNavigationRail) {
                 NavigationRail(
                     modifier = Modifier.fillMaxHeight(),
-                    containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                    // Scaffold has already supplied the system-bar padding.
-                    windowInsets = WindowInsets(0, 0, 0, 0)
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
                 ) {
                     NavigationRailItem(
+                        colors = navigationRailColorWhenSelected,
                         selected = currentScreen == NavScreen.ReceiveScreen,
                         onClick = { navigationViewModel.navigateTo(NavScreen.ReceiveScreen) },
                         icon = {
@@ -181,6 +194,7 @@ fun Sync360Root() {
                     )
 
                     NavigationRailItem(
+                        colors = navigationRailColorWhenSelected,
                         selected = currentScreen == NavScreen.SendScreen,
                         onClick = { navigationViewModel.navigateTo(NavScreen.SendScreen) },
                         icon = {
