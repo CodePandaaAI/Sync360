@@ -1,6 +1,10 @@
 package com.liftley.sync360
 
 import android.app.Application
+import android.util.Log
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.liftley.sync360.core.di.androidModule
 import com.liftley.sync360.core.di.initKoinSync360
 import com.liftley.sync360.data.NetworkServicesController
@@ -14,7 +18,19 @@ class Sync360Application : Application() {
         }
 
         val networkServices = koinApplication.koin.get<NetworkServicesController>()
-        networkServices.startNetworkServices(discoveryAllowedAtStartup = false)
-        AndroidNearbyDiscoveryObserver(networkServices).observeAppVisibility()
+
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    networkServices.startNetworkServices()
+                    Log.d("LC", "visible")
+                }
+
+                override fun onStop(owner: LifecycleOwner) {
+                    networkServices.stopNetworkServices()
+                    Log.d("LC", "hidden")
+                }
+            }
+        )
     }
 }

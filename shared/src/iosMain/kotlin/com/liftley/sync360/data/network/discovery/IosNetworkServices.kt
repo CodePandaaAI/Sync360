@@ -87,21 +87,28 @@ class IosNetworkServices(
     private val resolveRefsByKey = mutableMapOf<String, DNSServiceRef>()
     private val addressRefsByKey = mutableMapOf<String, DNSServiceRef>()
 
-    override suspend fun startDiscoveryAndAdvertising(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun startDiscovery() {
         locked {
             startDiscoveryService()
+        }
+    }
+
+    override suspend fun startAdvertising(httpServerPort: Int, fileTransferPort: Int) {
+        locked {
             startRegistrationService(httpServerPort, fileTransferPort)
         }
     }
 
-    override suspend fun stopDiscoveryAndAdvertising() {
+    override suspend fun stopDiscovery() {
         locked {
             if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
                 stopDiscoveryService()
             }
+        }
+    }
+
+    override suspend fun stopAdvertising() {
+        locked {
             if (registrationServiceStatus.value == RegistrationStatus.Running) {
                 stopRegistrationService()
             }

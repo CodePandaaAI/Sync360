@@ -39,85 +39,97 @@ class JvmNetworkServices(
 
     private val jmDnsByAddress = mutableMapOf<InetAddress, JmDNS>()
     private val listenerByAddress = mutableMapOf<InetAddress, ServiceListener>()
+    private val serviceByAddress = mutableMapOf<InetAddress, ServiceInfo>()
     private val resolvedDevicesByServiceKey = ConcurrentHashMap<String, NearbyDevice>()
 
-    override suspend fun startDiscoveryAndAdvertising(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun startDiscovery() {
         if (discoveryServiceStatus.value != DiscoveryStatus.Idle) return
 
-        val registrationIsStarting =
-            registrationServiceStatus.value == RegistrationStatus.Idle
-
-        if (
-            !registrationIsStarting &&
-            registrationServiceStatus.value != RegistrationStatus.Running
-        ) {
-            return
-        }
-
         _discoveryServiceStatus.value = DiscoveryStatus.Starting
-        if (registrationIsStarting) {
-            _registrationServiceStatus.value = RegistrationStatus.Starting
-        }
 
         try {
             withContext(Dispatchers.IO) {
-                if (registrationIsStarting) {
-                    if (jmDnsByAddress.isNotEmpty() && !closeAllInstances()) {
-                        error("Could not close the previous JmDNS instances")
-                    }
-                    startOnLanInterfaces(httpServerPort, fileTransferPort)
-                } else {
-                    addDiscoveryListeners()
-                }
-            }
-
-            if (registrationIsStarting) {
-                _registrationServiceStatus.value = RegistrationStatus.Running
+                ensureJmDnsOnLanInterfaces()
+                addDiscoveryListeners()
             }
             _discoveryServiceStatus.value = DiscoveryStatus.Running
         } catch (exception: Exception) {
-            val closed = withContext(Dispatchers.IO) { closeAllInstances() }
-            _registrationServiceStatus.value = if (closed) RegistrationStatus.Idle else RegistrationStatus.Running
-            _discoveryServiceStatus.value = if (closed) DiscoveryStatus.Idle else DiscoveryStatus.CleanupFailed
+            removeDiscoveryListeners()
+            _discoveryServiceStatus.value = DiscoveryStatus.FailedToStart
             exception.printStackTrace()
         }
     }
 
-    override suspend fun stopDiscoveryAndAdvertising() {
+    override suspend fun stopDiscovery() {
+        if (discoveryServiceStatus.value == DiscoveryStatus.FailedToStart) {
+            _discoveryServiceStatus.value = DiscoveryStatus.Idle
+            closeInstancesIfUnused()
+            return
+        }
+        if (discoveryServiceStatus.value != DiscoveryStatus.Running &&
+            discoveryServiceStatus.value != DiscoveryStatus.CleanupFailed
+        ) return
+
         _discoveryServiceStatus.value = DiscoveryStatus.Stopping
-        _registrationServiceStatus.value = RegistrationStatus.Stopping
-        val closed = withContext(Dispatchers.IO) { closeAllInstances() }
-        _discoveryServiceStatus.value = if (closed) DiscoveryStatus.Idle else DiscoveryStatus.CleanupFailed
-        _registrationServiceStatus.value = if (closed) RegistrationStatus.Idle else RegistrationStatus.Running
+        val stopped = withContext(Dispatchers.IO) { removeDiscoveryListeners() }
+        _discoveryServiceStatus.value = if (stopped) DiscoveryStatus.Idle else DiscoveryStatus.CleanupFailed
+        if (stopped) closeInstancesIfUnused()
     }
 
-    private fun startOnLanInterfaces(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun startAdvertising(httpServerPort: Int, fileTransferPort: Int) {
+        if (registrationServiceStatus.value != RegistrationStatus.Idle) return
+
+        _registrationServiceStatus.value = RegistrationStatus.Starting
+        try {
+            withContext(Dispatchers.IO) {
+                ensureJmDnsOnLanInterfaces()
+                registerServices(httpServerPort, fileTransferPort)
+            }
+            _registrationServiceStatus.value = RegistrationStatus.Running
+        } catch (exception: Exception) {
+            unregisterServices()
+            _registrationServiceStatus.value = RegistrationStatus.FailedToStart
+            closeInstancesIfUnused()
+            exception.printStackTrace()
+        }
+    }
+
+    override suspend fun stopAdvertising() {
+        if (registrationServiceStatus.value == RegistrationStatus.FailedToStart) {
+            _registrationServiceStatus.value = RegistrationStatus.Idle
+            closeInstancesIfUnused()
+            return
+        }
+        if (registrationServiceStatus.value != RegistrationStatus.Running &&
+            registrationServiceStatus.value != RegistrationStatus.CleanupFailed
+        ) return
+
+        _registrationServiceStatus.value = RegistrationStatus.Stopping
+        val stopped = withContext(Dispatchers.IO) { unregisterServices() }
+        _registrationServiceStatus.value = if (stopped) {
+            RegistrationStatus.Idle
+        } else {
+            RegistrationStatus.CleanupFailed
+        }
+        if (stopped) closeInstancesIfUnused()
+    }
+
+    private fun ensureJmDnsOnLanInterfaces() {
         val addresses = findLanAddresses()
         var lastFailure: Throwable? = null
 
         addresses.forEach { address ->
+            synchronized(this) {
+                if (address in jmDnsByAddress) return@forEach
+            }
+
             var jmDns: JmDNS? = null
             try {
                 val startedJmDns = JmDNS.create(address)
                 jmDns = startedJmDns
-                val listener = createServiceListener(startedJmDns, address)
-                val service = createService(
-                    httpServerPort = httpServerPort,
-                    fileTransferPort = fileTransferPort
-                )
-
-                startedJmDns.registerService(service)
-                startedJmDns.addServiceListener(SERVICE_TYPE, listener)
 
                 synchronized(this) {
                     jmDnsByAddress[address] = startedJmDns
-                    listenerByAddress[address] = listener
                 }
             } catch (exception: Exception) {
                 runCatching {
@@ -132,10 +144,30 @@ class JvmNetworkServices(
         synchronized(this) {
             if (jmDnsByAddress.isEmpty()) {
                 throw IllegalStateException(
-                    "Could not start Sync360 on any active LAN interface",
+                    "Could not create JmDNS on any active LAN interface",
                     lastFailure
                 )
             }
+        }
+    }
+
+    @Synchronized
+    private fun registerServices(httpServerPort: Int, fileTransferPort: Int) {
+        val registeredAddresses = mutableListOf<InetAddress>()
+        try {
+            jmDnsByAddress.forEach { (address, jmDns) ->
+                if (address in serviceByAddress) return@forEach
+                val service = createService(httpServerPort, fileTransferPort)
+                jmDns.registerService(service)
+                serviceByAddress[address] = service
+                registeredAddresses += address
+            }
+        } catch (exception: Exception) {
+            registeredAddresses.forEach { address ->
+                val service = serviceByAddress.remove(address) ?: return@forEach
+                runCatching { jmDnsByAddress[address]?.unregisterService(service) }
+            }
+            throw exception
         }
     }
 
@@ -193,16 +225,18 @@ class JvmNetworkServices(
 
     @Synchronized
     private fun addDiscoveryListeners() {
-        if (listenerByAddress.isEmpty()) {
-            error("No registered JmDNS instances are available for discovery")
+        if (jmDnsByAddress.isEmpty()) {
+            error("No JmDNS instances are available for discovery")
         }
 
         val addedListeners = mutableListOf<Pair<JmDNS, ServiceListener>>()
 
         try {
-            listenerByAddress.forEach { (address, listener) ->
-                val jmDns = jmDnsByAddress[address] ?: return@forEach
+            jmDnsByAddress.forEach { (address, jmDns) ->
+                if (address in listenerByAddress) return@forEach
+                val listener = createServiceListener(jmDns, address)
                 jmDns.addServiceListener(SERVICE_TYPE, listener)
+                listenerByAddress[address] = listener
                 addedListeners += jmDns to listener
             }
         } catch (exception: Exception) {
@@ -210,9 +244,42 @@ class JvmNetworkServices(
                 runCatching {
                     jmDns.removeServiceListener(SERVICE_TYPE, listener)
                 }
+                listenerByAddress.entries.removeAll { it.value === listener }
             }
             throw exception
         }
+    }
+
+    @Synchronized
+    private fun removeDiscoveryListeners(): Boolean {
+        var stopped = true
+        listenerByAddress.toMap().forEach { (address, listener) ->
+            val jmDns = jmDnsByAddress[address] ?: return@forEach
+            runCatching { jmDns.removeServiceListener(SERVICE_TYPE, listener) }
+                .onSuccess { listenerByAddress.remove(address) }
+                .onFailure {
+                    stopped = false
+                    it.printStackTrace()
+                }
+        }
+        resolvedDevicesByServiceKey.clear()
+        _nearbyDevices.value = emptyList()
+        return stopped
+    }
+
+    @Synchronized
+    private fun unregisterServices(): Boolean {
+        var stopped = true
+        serviceByAddress.toMap().forEach { (address, service) ->
+            val jmDns = jmDnsByAddress[address] ?: return@forEach
+            runCatching { jmDns.unregisterService(service) }
+                .onSuccess { serviceByAddress.remove(address) }
+                .onFailure {
+                    stopped = false
+                    it.printStackTrace()
+                }
+        }
+        return stopped
     }
 
     @Synchronized
@@ -232,11 +299,20 @@ class JvmNetworkServices(
         closedAddresses.forEach { address ->
             jmDnsByAddress.remove(address)
             listenerByAddress.remove(address)
+            serviceByAddress.remove(address)
         }
         resolvedDevicesByServiceKey.clear()
         _nearbyDevices.value = emptyList()
 
         return jmDnsByAddress.isEmpty()
+    }
+
+    private suspend fun closeInstancesIfUnused() {
+        if (discoveryServiceStatus.value != DiscoveryStatus.Idle ||
+            registrationServiceStatus.value != RegistrationStatus.Idle
+        ) return
+
+        withContext(Dispatchers.IO) { closeAllInstances() }
     }
 
     @Synchronized

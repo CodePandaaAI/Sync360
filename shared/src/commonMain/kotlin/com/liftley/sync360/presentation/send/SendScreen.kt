@@ -104,7 +104,8 @@ fun SendScreen() {
 
                 NearbyDevicesSection(
                     screenState = screenState,
-                    onDiscoveryEnabledChange = sendScreenViewModel::setDiscoveryEnabled,
+                    onStartNearbySharing = sendScreenViewModel::startNearbySharing,
+                    onStopNearbySharing = sendScreenViewModel::stopNearbySharing,
                     onRetryDiscovery = sendScreenViewModel::retryDiscovery,
                     onDeviceClick = sendScreenViewModel::sendToDevice
                 )

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -38,7 +37,8 @@ import com.liftley.sync360.presentation.send.model.SendScreenState
 @Composable
 fun NearbyDevicesSection(
     screenState: SendScreenState,
-    onDiscoveryEnabledChange: (Boolean) -> Unit,
+    onStartNearbySharing: () -> Unit,
+    onStopNearbySharing: () -> Unit,
     onRetryDiscovery: () -> Unit,
     onDeviceClick: (String) -> Unit
 ) {
@@ -46,9 +46,18 @@ fun NearbyDevicesSection(
     val status = when (screenState.discoveryStatus) {
         DiscoveryStatus.Idle -> "Discovery is off"
         DiscoveryStatus.Starting -> "Starting discovery…"
+        DiscoveryStatus.FailedToStart -> "Couldn’t start discovery"
         DiscoveryStatus.Running -> if (hasDevices) "searching for more devices…" else "Searching for nearby devices…"
         DiscoveryStatus.Stopping -> "Stopping discovery…"
         DiscoveryStatus.CleanupFailed -> "Couldn’t stop discovery"
+    }
+    val (buttonLabel, onButtonClick) = when (screenState.discoveryStatus) {
+        DiscoveryStatus.Idle -> "Start" to onStartNearbySharing
+        DiscoveryStatus.Starting,
+        DiscoveryStatus.Running,
+        DiscoveryStatus.Stopping -> "Stop" to onStopNearbySharing
+        DiscoveryStatus.FailedToStart,
+        DiscoveryStatus.CleanupFailed -> "Try again" to onRetryDiscovery
     }
     Column(
         modifier = Modifier
@@ -71,10 +80,8 @@ fun NearbyDevicesSection(
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleLarge
                 )
-                if (screenState.isDiscoveryEnabled || hasDevices) {
-                    OutlinedButton(onClick = { onDiscoveryEnabledChange(!screenState.isDiscoveryEnabled) }) {
-                        Text(if (screenState.isDiscoveryEnabled) "Stop" else "Start")
-                    }
+                OutlinedButton(onClick = onButtonClick) {
+                    Text(buttonLabel)
                 }
             }
         }
@@ -119,7 +126,7 @@ fun NearbyDevicesSection(
                     )
                 }
             }
-        } else if (screenState.discoveryErrorMessage == null) {
+        } else {
             Sync360Surface(
                 shape = MaterialTheme.shapes.large.copy(
                     topStart = CornerSize(8.dp),
@@ -146,10 +153,11 @@ fun NearbyDevicesSection(
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = if (screenState.isDiscoveryEnabled) {
-                            "Open Sync360 on the other device and connect both to the same Wi-Fi network or hotspot."
-                        } else {
-                            "Click Start discovery to find nearby devices and let them find you."
+                        text = when (screenState.discoveryStatus) {
+                            DiscoveryStatus.Idle -> "Click Start to find nearby devices and let them find you."
+                            DiscoveryStatus.FailedToStart,
+                            DiscoveryStatus.CleanupFailed -> "Tap Try again to retry discovery."
+                            else -> "Open Sync360 on the other device and connect both to the same Wi-Fi network or hotspot."
                         },
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
@@ -157,48 +165,6 @@ fun NearbyDevicesSection(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center
                     )
-                    if (!screenState.isDiscoveryEnabled) {
-                        Button(onClick = { onDiscoveryEnabledChange(true) }) { Text("Start discovery") }
-                    }
-                }
-            }
-        }
-
-        screenState.discoveryErrorMessage?.let { message ->
-            Sync360Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = if (hasDevices) MaterialTheme.shapes.extraLarge else {
-                    MaterialTheme.shapes.large.copy(
-                        topStart = CornerSize(8.dp),
-                        topEnd = CornerSize(8.dp)
-                    )
-                }
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Sync360Surface(containerColor = MaterialTheme.colorScheme.errorContainer) {
-                        Icon(
-                            imageVector = Wifi,
-                            contentDescription = null,
-                            modifier = Modifier.padding(16.dp).size(24.dp),
-                            tint = MaterialTheme.colorScheme.onErrorContainer
-                        )
-                    }
-                    Text(
-                        text = "Discovery needs attention",
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center
-                    )
-                    Text(
-                        text = message,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center
-                    )
-                    OutlinedButton(onClick = onRetryDiscovery) { Text("Try again") }
                 }
             }
         }
