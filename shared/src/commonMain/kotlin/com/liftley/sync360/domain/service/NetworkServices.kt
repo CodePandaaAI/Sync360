@@ -10,7 +10,11 @@ interface NetworkServices {
     val discoveryServiceStatus: StateFlow<DiscoveryStatus>
     val registrationServiceStatus: StateFlow<RegistrationStatus>
 
-    suspend fun startDiscoveryAndAdvertising(httpServerPort: Int, fileTransferPort: Int)
+    suspend fun startDiscovery()
 
-    suspend fun stopDiscoveryAndAdvertising()
+    suspend fun stopDiscovery()
+
+    suspend fun startAdvertising(httpServerPort: Int, fileTransferPort: Int)
+
+    suspend fun stopAdvertising()
 }

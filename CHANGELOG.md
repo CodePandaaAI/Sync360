@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-30
+
+### Changed
+
+- Rebuild the common nearby-network contract around four direct actions: start and stop discovery, plus start and stop advertising.
+- Introduce the new Android `NsdManager` implementation and select it through Android dependency injection. The implementation keeps separate modern and legacy discovery paths, a serialized legacy resolver, and one registration listener for advertising.
+- Simplify the shared network-services controller to start servers once and directly start, stop, or retry nearby sharing without carrying duplicate UI intent/error fields.
+- Derive Send-screen discovery actions from platform-reported discovery status instead of a separate enabled boolean.
+- Split Desktop and iOS discovery/advertising operations to match the new common contract.
+- Prepare Android, Desktop, and iOS packages as `0.6.0`; Android and iOS build numbers are `10`.
+
+### Known limitations
+
+- This release is primarily a developer-ownership and readability rebuild. Normal Android foreground discovery, addition, and removal have been manually observed, but broader lifecycle and failure validation is still pending.
+- Android 17 local-network permission handling is still not implemented.
+
 ## [0.5.2] - 2026-09-19
 
 ### Changed

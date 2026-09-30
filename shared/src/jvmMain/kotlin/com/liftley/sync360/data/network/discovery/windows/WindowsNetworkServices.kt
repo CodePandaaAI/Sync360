@@ -47,21 +47,28 @@ class WindowsNetworkServices(
     // Windows callback is still unwinding when Kotlin receives it.
     private val retiredNativeArenas = mutableListOf<Arena>()
 
-    override suspend fun startDiscoveryAndAdvertising(
-        httpServerPort: Int,
-        fileTransferPort: Int
-    ) {
+    override suspend fun startDiscovery() {
         synchronized(this) {
             startDiscoveryService()
+        }
+    }
+
+    override suspend fun startAdvertising(httpServerPort: Int, fileTransferPort: Int) {
+        synchronized(this) {
             startRegistrationService(httpServerPort, fileTransferPort)
         }
     }
 
-    override suspend fun stopDiscoveryAndAdvertising() {
+    override suspend fun stopDiscovery() {
         synchronized(this) {
             if (discoveryServiceStatus.value == DiscoveryStatus.Running) {
                 stopDiscoveryServices()
             }
+        }
+    }
+
+    override suspend fun stopAdvertising() {
+        synchronized(this) {
             if (registrationServiceStatus.value == RegistrationStatus.Running) {
                 stopRegistrationService()
             }
