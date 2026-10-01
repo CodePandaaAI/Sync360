@@ -11,9 +11,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CornerBasedShape
 import androidx.compose.foundation.shape.CornerSize
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.CircularWavyProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -37,31 +38,49 @@ import com.liftley.sync360.presentation.send.model.SendScreenState
 @Composable
 fun NearbyDevicesSection(
     screenState: SendScreenState,
-    onStartNearbySharing: () -> Unit,
-    onStopNearbySharing: () -> Unit,
-    onRetryDiscovery: () -> Unit,
+    onStartNetworkServices: () -> Unit,
+    onStopNetworkServices: () -> Unit,
+    onRetryNetworkServices: () -> Unit,
     onDeviceClick: (String) -> Unit
 ) {
+    val discoveryStatus = screenState.discoveryStatus
     val hasDevices = screenState.nearbyDevices.isNotEmpty()
-    val status = when (screenState.discoveryStatus) {
-        DiscoveryStatus.Idle -> "Discovery is off"
-        DiscoveryStatus.Starting -> "Starting discovery…"
-        DiscoveryStatus.FailedToStart -> "Couldn’t start discovery"
-        DiscoveryStatus.Running -> if (hasDevices) "searching for more devices…" else "Searching for nearby devices…"
-        DiscoveryStatus.Stopping -> "Stopping discovery…"
-        DiscoveryStatus.CleanupFailed -> "Couldn’t stop discovery"
+
+    val statusText = when (discoveryStatus) {
+        DiscoveryStatus.Idle -> "Device search is off"
+        DiscoveryStatus.Starting -> "Starting device search…"
+        DiscoveryStatus.FailedToStart -> "Couldn’t start device search"
+        DiscoveryStatus.Running -> if (hasDevices) {
+            "Searching for more devices…"
+        } else {
+            "Searching for nearby devices…"
+        }
+
+        DiscoveryStatus.Stopping -> "Stopping device search…"
+        DiscoveryStatus.CleanupFailed -> "Couldn’t stop device search"
     }
-    val (buttonLabel, onButtonClick) = when (screenState.discoveryStatus) {
-        DiscoveryStatus.Idle -> "Start" to onStartNearbySharing
-        DiscoveryStatus.Starting,
-        DiscoveryStatus.Running,
-        DiscoveryStatus.Stopping -> "Stop" to onStopNearbySharing
+
+    val buttonLabel = when (discoveryStatus) {
+        DiscoveryStatus.Idle -> "Start"
+        DiscoveryStatus.Starting -> "Starting…"
+        DiscoveryStatus.Running -> "Stop"
+        DiscoveryStatus.Stopping -> "Stopping…"
         DiscoveryStatus.FailedToStart,
-        DiscoveryStatus.CleanupFailed -> "Try again" to onRetryDiscovery
+        DiscoveryStatus.CleanupFailed -> "Try again"
     }
+
+    val onButtonClick: (() -> Unit)? = when (discoveryStatus) {
+        DiscoveryStatus.Idle -> onStartNetworkServices
+        DiscoveryStatus.Running -> onStopNetworkServices
+        DiscoveryStatus.FailedToStart,
+        DiscoveryStatus.CleanupFailed -> onRetryNetworkServices
+
+        DiscoveryStatus.Starting,
+        DiscoveryStatus.Stopping -> null
+    }
+
     Column(
-        modifier = Modifier
-            .fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -76,11 +95,14 @@ fun NearbyDevicesSection(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Nearby devices",
+                    text = "Nearby devices",
                     modifier = Modifier.weight(1f),
                     style = MaterialTheme.typography.titleLarge
                 )
-                OutlinedButton(onClick = onButtonClick) {
+                OutlinedButton(
+                    onClick = { onButtonClick?.invoke() },
+                    enabled = onButtonClick != null
+                ) {
                     Text(buttonLabel)
                 }
             }
@@ -98,16 +120,19 @@ fun NearbyDevicesSection(
                     device = device,
                     enabled = screenState.isContentReadyToSend,
                     actionLabel = screenState.deviceActionLabel,
-                    onClick = { onDeviceClick(device.id) })
+                    onClick = { onDeviceClick(device.id) }
+                )
             }
             Sync360Surface(
-                Modifier.fillMaxWidth(), shape = MaterialTheme.shapes.extraLarge.copy(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.extraLarge.copy(
                     topStart = CornerSize(8.dp),
-                    topEnd = CornerSize(8.dp),
+                    topEnd = CornerSize(8.dp)
                 )
             ) {
                 Spacer(Modifier.height(32.dp))
             }
+
             Spacer(modifier = Modifier)
 
             Sync360Surface {
@@ -116,11 +141,11 @@ fun NearbyDevicesSection(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    if (screenState.discoveryStatus == DiscoveryStatus.Running) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    if (discoveryStatus == DiscoveryStatus.Running) {
+                        CircularWavyProgressIndicator(modifier = Modifier.size(24.dp))
                     }
                     Text(
-                        status,
+                        text = statusText,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -139,24 +164,29 @@ fun NearbyDevicesSection(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
-                        Icon(
-                            Wifi,
-                            contentDescription = null,
-                            modifier = Modifier.padding(16.dp).size(24.dp),
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                    if (discoveryStatus == DiscoveryStatus.Running) {
+                        LoadingIndicator()
+                    } else {
+                        Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
+                            Icon(
+                                imageVector = Wifi,
+                                contentDescription = null,
+                                modifier = Modifier.padding(16.dp).size(24.dp),
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                     Text(
-                        status,
+                        text = statusText,
                         style = MaterialTheme.typography.titleMedium,
                         textAlign = TextAlign.Center
                     )
                     Text(
-                        text = when (screenState.discoveryStatus) {
-                            DiscoveryStatus.Idle -> "Click Start to find nearby devices and let them find you."
+                        text = when (discoveryStatus) {
+                            DiscoveryStatus.Idle -> "Click Start to find nearby devices."
                             DiscoveryStatus.FailedToStart,
-                            DiscoveryStatus.CleanupFailed -> "Tap Try again to retry discovery."
+                            DiscoveryStatus.CleanupFailed -> "Tap Try again to recover device search."
+
                             else -> "Open Sync360 on the other device and connect both to the same Wi-Fi network or hotspot."
                         },
                         maxLines = 2,
@@ -205,7 +235,8 @@ private fun NearbyDeviceRow(
                 )
             }
             Column(
-                modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Text(device.deviceName, style = MaterialTheme.typography.titleMedium)
                 Text(
