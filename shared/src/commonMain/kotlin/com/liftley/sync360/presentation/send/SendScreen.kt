@@ -104,12 +104,11 @@ fun SendScreen() {
 
                 NearbyDevicesSection(
                     screenState = screenState,
-                    onStartNearbySharing = sendScreenViewModel::startNearbySharing,
-                    onStopNearbySharing = sendScreenViewModel::stopNearbySharing,
-                    onRetryDiscovery = sendScreenViewModel::retryDiscovery,
+                    onStartNetworkServices = sendScreenViewModel::startNetworkServices,
+                    onStopNetworkServices = sendScreenViewModel::stopNetworkServices,
+                    onRetryNetworkServices = sendScreenViewModel::retryNetworkServices,
                     onDeviceClick = sendScreenViewModel::sendToDevice
                 )
-
             }
         }
 

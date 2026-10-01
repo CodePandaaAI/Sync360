@@ -6,6 +6,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-01
+
+### Changed
+
+- Separate nearby-network presentation by user intent: Send now reports device search, while Receive reports whether this device is visible to nearby peers.
+- Keep the shared network-service start, stop, and retry behavior while presenting discovery and advertising failures on their relevant screens.
+- Add failure badges to the Send and Receive navigation items so a problem on the other screen remains visible without mixing both statuses into one card.
+- Redesign the idle Receive screen around the advertised device name, file-transfer code, and nearby-visibility control.
+- Show the advertised device name on Android, Desktop, and iOS, and keep the Desktop hostname lookup off the UI thread.
+- Refine the Send discovery presentation with clearer transition controls and expressive search progress.
+- Prepare Android, Desktop, and iOS packages as `0.6.1`; Android and iOS build numbers are `11`.
+
+Release builds and cross-platform manual validation have not yet been recorded for `0.6.1`.
+
 ## [0.6.0] - 2026-09-30
 
 ### Changed

@@ -1,7 +1,6 @@
 package com.liftley.sync360.presentation.send.model
 
 import com.liftley.sync360.domain.model.DiscoveryStatus
-import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.domain.model.SelectedFile
 import com.liftley.sync360.domain.model.TextDeliveryLimits
 
@@ -13,8 +12,7 @@ data class SendScreenState(
     val fileReceiveCodePrompt: FileReceiveCodePrompt? = null,
     val sendState: SendState = SendState.Idle,
     val nearbyDevices: List<NearbyDeviceUiModel> = emptyList(),
-    val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle,
-    val registrationStatus: RegistrationStatus = RegistrationStatus.Idle
+    val discoveryStatus: DiscoveryStatus = DiscoveryStatus.Idle
 ) {
     val isTextTooLong: Boolean
         get() = textInput.length > TextDeliveryLimits.MAX_CHARACTER_COUNT

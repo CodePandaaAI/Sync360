@@ -5,6 +5,8 @@ import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.Icon
@@ -34,6 +36,8 @@ import androidx.navigation3.ui.NavDisplay
 import androidx.window.core.layout.WindowSizeClass.Companion.WIDTH_DP_MEDIUM_LOWER_BOUND
 import com.liftley.sync360.core.designsystem.icons.Download
 import com.liftley.sync360.core.designsystem.icons.Send
+import com.liftley.sync360.domain.model.DiscoveryStatus
+import com.liftley.sync360.domain.model.RegistrationStatus
 import com.liftley.sync360.presentation.navigation.NavScreen
 import com.liftley.sync360.presentation.navigation.NavigationViewModel
 import com.liftley.sync360.presentation.receive.ReceiveScreen
@@ -53,6 +57,7 @@ fun Sync360Root() {
     val sendScreenViewModel = koinInject<SendScreenViewModel>()
 
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val registrationStatus by receiveScreenViewModel.registrationStatus.collectAsStateWithLifecycle()
     val sendScreenState by sendScreenViewModel.sendScreenState.collectAsStateWithLifecycle()
     val currentScreen = navigationViewModel.currentScreen()
 
@@ -66,6 +71,10 @@ fun Sync360Root() {
 
     val isReceivingFiles = receiveScreenState is ReceiveState.ReceivingFiles
     val receivedText = receiveScreenState as? ReceiveState.ReceivedText
+    val sendNeedsAttention = sendScreenState.discoveryStatus == DiscoveryStatus.FailedToStart ||
+            sendScreenState.discoveryStatus == DiscoveryStatus.CleanupFailed
+    val receiveNeedsAttention = registrationStatus == RegistrationStatus.FailedToStart ||
+            registrationStatus == RegistrationStatus.CleanupFailed
 
     val receiveTitle = when (receiveScreenState) {
         is ReceiveState.Idle -> "Sync360"
@@ -114,10 +123,16 @@ fun Sync360Root() {
                             )
                         },
                         icon = {
-                            Icon(
-                                imageVector = Download,
-                                contentDescription = null
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (receiveNeedsAttention) Badge()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Download,
+                                    contentDescription = null
+                                )
+                            }
                         }
                     )
                     NavigationBarItem(
@@ -133,10 +148,16 @@ fun Sync360Root() {
                             )
                         },
                         icon = {
-                            Icon(
-                                imageVector = Send,
-                                contentDescription = null
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (sendNeedsAttention) Badge()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Send,
+                                    contentDescription = null
+                                )
+                            }
                         }
                     )
 
@@ -185,10 +206,16 @@ fun Sync360Root() {
                         selected = currentScreen == NavScreen.ReceiveScreen,
                         onClick = { navigationViewModel.navigateTo(NavScreen.ReceiveScreen) },
                         icon = {
-                            Icon(
-                                imageVector = Download,
-                                contentDescription = null
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (receiveNeedsAttention) Badge()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Download,
+                                    contentDescription = null
+                                )
+                            }
                         },
                         label = { Text("Receive") }
                     )
@@ -198,10 +225,16 @@ fun Sync360Root() {
                         selected = currentScreen == NavScreen.SendScreen,
                         onClick = { navigationViewModel.navigateTo(NavScreen.SendScreen) },
                         icon = {
-                            Icon(
-                                imageVector = Send,
-                                contentDescription = null
-                            )
+                            BadgedBox(
+                                badge = {
+                                    if (sendNeedsAttention) Badge()
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Send,
+                                    contentDescription = null
+                                )
+                            }
                         },
                         label = { Text("Send") }
                     )

@@ -37,7 +37,7 @@ class NetworkServicesController(
         }
     }
 
-    fun retryNearbySharing() {
+    fun retryNetworkServices() {
         controllerScope.launch {
             if (hasCleanupFailure()) {
                 stopNearbySharing()

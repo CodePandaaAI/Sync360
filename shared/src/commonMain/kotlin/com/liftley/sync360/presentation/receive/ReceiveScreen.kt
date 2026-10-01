@@ -18,6 +18,7 @@ import org.koin.compose.koinInject
 fun ReceiveScreen() {
     val receiveScreenViewModel = koinInject<ReceiveScreenViewModel>()
     val receiveScreenState by receiveScreenViewModel.screenState.collectAsStateWithLifecycle()
+    val registrationStatus by receiveScreenViewModel.registrationStatus.collectAsStateWithLifecycle()
     Sync360Surface(
         modifier = Modifier.fillMaxSize(),
         containerColor = MaterialTheme.colorScheme.surfaceContainer
@@ -25,7 +26,11 @@ fun ReceiveScreen() {
         when (val state = receiveScreenState) {
             is ReceiveState.Idle -> {
                 IdleReceiveStateUi(
-                    fileReceiveCode = state.fileReceiveCode
+                    fileReceiveCode = state.fileReceiveCode,
+                    registrationStatus = registrationStatus,
+                    onStartNetworkServices = receiveScreenViewModel::startNetworkServices,
+                    onStopNetworkServices = receiveScreenViewModel::stopNetworkServices,
+                    onRetryNetworkServices = receiveScreenViewModel::retryNetworkServices
                 )
             }
 

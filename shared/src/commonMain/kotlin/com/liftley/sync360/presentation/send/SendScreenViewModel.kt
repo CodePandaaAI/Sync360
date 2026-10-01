@@ -69,27 +69,19 @@ class SendScreenViewModel(
                 }
             }
         }
-
-        viewModelScope.launch {
-            networkServicesController.registrationServiceStatus.collect { status ->
-                _sendScreenState.update {
-                    it.copy(registrationStatus = status)
-                }
-            }
-        }
     }
 
 
-    fun startNearbySharing() {
+    fun startNetworkServices() {
         networkServicesController.startNetworkServices()
     }
 
-    fun stopNearbySharing() {
+    fun stopNetworkServices() {
         networkServicesController.stopNetworkServices()
     }
 
-    fun retryDiscovery() {
-        networkServicesController.retryNearbySharing()
+    fun retryNetworkServices() {
+        networkServicesController.retryNetworkServices()
     }
 
     fun sendToDevice(deviceId: String) {
