@@ -22,6 +22,7 @@ class Sync360Application : Application() {
         ProcessLifecycleOwner.get().lifecycle.addObserver(
             object : DefaultLifecycleObserver {
                 override fun onStart(owner: LifecycleOwner) {
+                    if (!hasLocalNetworkAccess()) return
                     networkServices.startNetworkServices()
                     Log.d("LC", "visible")
                 }

@@ -165,7 +165,7 @@ fun NearbyDevicesSection(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     if (discoveryStatus == DiscoveryStatus.Running) {
-                        LoadingIndicator()
+                        LoadingIndicator(modifier = Modifier.size(96.dp))
                     } else {
                         Sync360Surface(containerColor = MaterialTheme.colorScheme.surfaceContainer) {
                             Icon(

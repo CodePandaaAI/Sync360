@@ -40,8 +40,8 @@ Upcoming preview versions prioritize code review, quality, failure handling, and
 
 - Revisit automatic Android network-change recovery later; for now, users can Stop and Start discovery. Implement Desktop wake/network recovery.
 - Add the appropriate Android foreground/background service behavior.
-- Add Android 17 `ACCESS_LOCAL_NETWORK` declaration, runtime request, denial handling, and permission-aware network startup.
-- Validate queued Android 13 legacy NSD resolves and decide whether failed resolutions need bounded retries.
+- Validate Android 17 `ACCESS_LOCAL_NETWORK` grant, denial, revocation, and restoration on physical devices.
+- Validate queued Android 11-13 legacy NSD resolves and decide whether failed resolutions need bounded retries.
 - Consider replacing the remaining macOS/Linux JmDNS fallback with Bonjour and Avahi; implementation scope and timing are not confirmed.
 - Validate Desktop LAN-interface selection on more multi-adapter systems.
 - Add clear Windows Firewall onboarding and decide whether packaging should install an inbound application rule.

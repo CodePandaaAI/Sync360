@@ -9,7 +9,7 @@ This guide covers the current Android and Desktop/JVM development flow.
 - Android SDK Platform 37 for Android development
 - Git
 - A local network or hotspot that allows device-to-device traffic
-- Two Android 13+ devices for Android-to-Android testing, or Android plus Desktop for cross-platform testing
+- Two Android 11+ devices for Android-to-Android testing, or Android plus Desktop for cross-platform testing
 
 The repository includes the Gradle 9.3.1 wrapper.
 
@@ -58,7 +58,7 @@ The Desktop `hotRun` task is configured to use a Java 23 toolchain when it is a 
 
 ## Preparing public packages
 
-The current package version is `0.6.1`.
+The current package version is `0.6.2`.
 
 Android release APKs must use the maintainer's permanent private signing key. Copy `keystore.properties.example` to the ignored `keystore.properties` file and set:
 
@@ -101,7 +101,7 @@ For Windows testing, check IPv4 and IPv6 with Ethernet, Wi-Fi, VPN, WSL, Docker,
 
 On first network use, allow Sync360 on the intended private network when Windows Firewall prompts. The current MSI does not install its own inbound firewall exception; a denied prompt or administrator policy can block incoming HTTP and file-transfer sockets.
 
-Android currently targets SDK 37 but does not yet declare or request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission. Android 17 LAN testing is therefore expected to fail until permission-aware startup is implemented. On Android 13, also test several discoverable devices appearing close together to validate the queued legacy resolver.
+Android targets SDK 37 and gates its main UI and nearby-network startup behind Android 17's `ACCESS_LOCAL_NETWORK` runtime permission. Test initial grant and denial, grant through system settings, revocation, and return to the app. On Android 11 through 13, also test several discoverable devices appearing close together to validate the queued legacy resolver. Android 11-12 discovery does not currently acquire an explicit Wi-Fi multicast lock.
 
 macOS and Linux currently retain JmDNS. Test those systems with multiple adapters as well because JmDNS starts separately on each eligible address.
 
@@ -116,7 +116,8 @@ macOS and Linux currently retain JmDNS. Test those systems with multiple adapter
 - Check Android 13 with multiple peers and with a resolve completing after backgrounding.
 - Minimize Desktop: discovery stays active. Check repeated manual Stop/Start on each Desktop backend.
 - Force a service-info callback cleanup failure: show Try again in the Nearby devices section, retain callback ownership, and finish cleanup before restarting.
-- Observe platform startup/stop failures: no unbounded automatic retry and no synthetic successful cleanup. Android 17 local-network permission work remains outstanding.
+- Observe platform startup/stop failures: no unbounded automatic retry and no synthetic successful cleanup.
+- On Android 17, confirm no network services start before permission is granted, denial keeps the permission explanation visible, and grants or revocations made through Settings are reflected when returning to the app.
 
 ## If discovery or transfer fails
 
@@ -156,8 +157,8 @@ Automated coverage is still minimal. Add focused tests for pure Kotlin logic whe
 
 There is no stable release yet. Treat current builds as development software.
 
-## 0.6.1 validation
+## 0.6.2 validation
 
-Before publishing the final packages, check the Send screen with zero, one, and multiple devices and confirm that it reports only device-search status. Check the Receive screen's displayed device name, file-transfer code, and nearby-visibility states on each supported platform. Force discovery and registration failures separately and confirm that only the corresponding Send or Receive navigation item shows its warning badge and retry UI. Check light and dark themes, compact and wide windows, and larger font sizes.
+Before publishing the final packages, repeat the `0.6.1` Send and Receive presentation checks, then install on Android 11 and exercise discovery, advertising, text, files, Stop/Start, and both file selectors. On Android 17, test permission grant, denial, settings grant, revocation, and restoration while confirming that no nearby-network listener starts without permission. Check the enlarged discovery indicator in light and dark themes.
 
-Build and device validation for 0.6.1 have not been recorded in this preparation task.
+Build and device validation for 0.6.2 have not been recorded in this preparation task.
