@@ -78,8 +78,8 @@ In an initial Windows 11 Ethernet test, the native Windows DNS-SD backend discov
 - Broader IPv6 transfer validation and better address preference/selection.
 - Retry, pause/resume, and interrupted-transfer recovery.
 - Automated transfer coverage and broader device/router testing.
-- Android 17 local-network permission declaration, runtime request, and permission-aware network startup. The current target-SDK-37 build does not yet provide these, so LAN discovery and transfer are blocked by default on Android 17.
-- Serialize legacy Android 13 NSD resolution so several devices discovered together are not lost when another resolve is already active.
+- Validate Android 17 local-network permission grant, denial, revocation, and restoration on physical devices.
+- Validate queued legacy NSD resolution and local-network reliability across Android 11 through 13.
 - Broader Desktop validation across Windows, macOS, Linux, routers, firewalls, VPNs, and machines with multiple network adapters.
 - Better Windows first-run firewall guidance; inbound sharing depends on the user or administrator allowing Sync360 through Windows Firewall.
 - Desktop packaging and release testing.
@@ -193,7 +193,7 @@ The project remains Android-first, but Desktop and iOS reuse the shared UI, View
 - JDK 23
 - A recent Android Studio version compatible with Android Gradle Plugin 9.1.x
 - Android SDK Platform 37
-- Two physical Android 13+ devices for Android-to-Android testing, or one Android device and one Desktop machine for cross-platform testing
+- Two physical Android 11+ devices for Android-to-Android testing, or one Android device and one Desktop machine for cross-platform testing
 - A Wi-Fi network or hotspot that allows devices to communicate with each other
 
 ### Clone and open
@@ -267,7 +267,7 @@ Use the current app only for development and testing on private networks you con
 - Add integrity verification.
 - Test cancellation and failure reporting across more network-loss and transfer stages.
 - Strengthen lifecycle behavior and local-network reliability.
-- Add Android 17 local-network permission handling and validate queued Android 13 legacy NSD resolution.
+- Validate Android 17 local-network permission handling and queued legacy NSD resolution across Android 11 through 13.
 - Validate Desktop discovery and transfer across more operating systems, network adapters, routers, and firewall configurations.
 - Design session validation, authentication, and encryption deliberately.
 

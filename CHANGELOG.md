@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-04
+
+### Changed
+
+- Lower the Android minimum from Android 13 (API 33) to Android 11 (API 30), using the existing legacy NSD discovery and queued one-shot resolution path below Tiramisu SDK Extension 22.
+- Declare and request Android 17's `ACCESS_LOCAL_NETWORK` runtime permission before showing the main application or starting discovery, advertising, HTTP, or file-transfer listeners.
+- Recheck local-network access when the Android activity resumes so grants or revocations made through system settings update the visible UI and nearby-service state.
+- Update Compose Multiplatform, AndroidX Core, Ktor, Navigation 3, Material 3 Adaptive, and Coil dependencies, with Material 3 aligned to the Compose Multiplatform 1.12 release family.
+- Increase the active nearby-device search indicator for clearer discovery feedback.
+- Prepare Android, Desktop, and iOS packages as `0.6.2`; Android and iOS build numbers are `12`.
+
+### Known limitations
+
+- Android 11 compatibility and the complete Android 17 grant, denial, settings-grant, and revocation flows have not yet been recorded as manually validated.
+- The Android 11-12 legacy discovery path does not explicitly acquire a Wi-Fi multicast lock; discovery reliability still depends on the device and network multicast behavior.
+
+Release builds and cross-platform manual validation have not yet been recorded for `0.6.2`.
+
 ## [0.6.1] - 2026-10-01
 
 ### Changed
